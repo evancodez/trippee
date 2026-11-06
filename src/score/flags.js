@@ -13,8 +13,8 @@ export const flags = {
   direct: true, countdown: true, lock: true, heroRiley: true, onTheHit: true, lookRuns: true,
   // the film's rehearsal: patterns kept out of films, the good part of each long move, which way a flight goes
   pool: true, range: true, flightWay: true, flashGuard: true,
-  // the governor going by what the GPU says each frame took, not only by the frame rate
-  gpuTiers: true,
+  // the governor going by what the GPU says each frame took, not only by the frame rate. Off for now: on, it draws below full size more often, and that's the owner's call once it's measured on a quiet machine
+  gpuTiers: false,
   // pattern music: tools you can hear, and reading colour by its nearest ink
   toolsound: true, readInks: true,
 };
