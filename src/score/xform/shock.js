@@ -57,7 +57,8 @@ const GRID = [];
 for (let y = -1; y <= 1.001; y += 0.5) for (let x = -1; x <= 1.001; x += 0.5) GRID.push([x, y]);
 
 // Which family of a goes to which of b, how far apart they'd be, and so how wide the front has to be. Null if there's nothing a shock can do with them.
-export function canShock(a, b, aspect = 16 / 9, { centre = [0, 0], any = false, D = 10 } = {}) {
+// ink: a world numbers its lines (src/score/xform/plan.js has the rule): a family that carries numbers stays in its place, doesn't flip and ends a whole number of rows on, or there's no shock.
+export function canShock(a, b, aspect = 16 / 9, { centre = [0, 0], any = false, D = 10, ink = null } = {}) {
   // Patterns that lean on a sum need every family to count, and closing one up doesn't take it out of the sum.
   if (Math.abs(a[OFF.sum]) > 2e-3 || Math.abs(b[OFF.sum]) > 2e-3) return null;
   const A = [], B = [];
@@ -69,7 +70,9 @@ export function canShock(a, b, aspect = 16 / 9, { centre = [0, 0], any = false, 
   const options = [];
   for (const i of A) for (const j of B) {
     if (!canTravel(a, i, b, j)) continue;
+    if (ink && i !== j && (ink.fams.includes(i) || ink.fams.includes(j))) continue;
     for (const sign of (turns(a, i) || Math.abs(b[OFF.wob]) > 1e-5 ? [1] : [1, -1])) {     // a flip can't take the hand-cut wobble with it, or the landing would twitch
+      if (ink && sign < 0 && ink.fams.includes(i)) continue;
       const base = phaseAt(a, i, centre[0], centre[1], sa) - sign * phaseAt(b, j, centre[0], centre[1], sb);
       let spread = 0;
       for (const [gx, gy] of GRID) {
@@ -89,6 +92,11 @@ export function canShock(a, b, aspect = 16 / 9, { centre = [0, 0], any = false, 
     pair[o.i] = o.j; taken.add(o.j); flip[o.j] = o.sign < 0; offset[o.j] = o.offset; worst = Math.max(worst, o.spread); pairs++;
   }
   if (!pairs && !any) return null;
+  if (ink) for (const i of ink.fams) {
+    if (!realFam(a, i) && !realFam(b, i)) continue;
+    if (pair[i] !== i) return null;
+    if (!ink.roll) offset[i] = ink.R * Math.round(offset[i] / ink.R);
+  }
   const Rmax = Math.hypot(aspect + Math.abs(centre[0]), 1 + Math.abs(centre[1])), reach = Rmax * REACH;
   // The crowding is the steepest slope of T across the frame times how far apart the phases are: FINE * (1 - W) / (W * reach) * spread.
   // The speed is its steepest slope in time times the same: FINE / (W * D) * spread. Each says how wide the front has to be.
@@ -150,7 +158,7 @@ export default {
     const o = ctx.xform || {};
     if (ctx.D < 4) return null;
     // The director laid out the landing for a width and an answer. A plan looks at the patterns where they've actually come to rest, and it mustn't move the hit or change its mind.
-    const fit = canShock(a, b, ctx.aspect, { centre: o.centre ?? [0, 0], any: o.any || !!o.W, D: ctx.D });
+    const fit = canShock(a, b, ctx.aspect, { centre: o.centre ?? [0, 0], any: o.any || !!o.W, D: ctx.D, ink: ctx.ink });
     if (!fit) return null;
     if (o.W) fit.W = o.W;
     fit.dir = o.dir ?? 1; fit.push = o.push ?? PUSH; fit.beats = o.beats ?? null; fit.surge = o.surge ?? SURGE; fit.turn = o.turn ?? 0;

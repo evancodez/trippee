@@ -67,7 +67,9 @@ export default async ({ page, log, save, sleep }) => {
     zoom: async () => { await move(CX, CY); for (let i = 0; i < 12; i++) { await wheel(CX, CY, 0, -60); await sleep(24); } await sleep(350); return async () => {}; },
     weight: async () => { await move(CX, CY); for (let i = 0; i < 14; i++) { await wheel(CX, CY, 0, 40, { modifiers: SHIFT }); await sleep(24); } await sleep(300); return async () => {}; },
     sheet: async () => { await move(CX, CY); await down(CX, CY, { modifiers: ALT }); await sleep(750); return async () => { await up(CX, CY, { modifiers: ALT }); }; },
-    knob: async () => { await page.eval(() => { const h = app.hand; h.setKnob('freq', h.natural('freq') * 1.7); }); await sleep(450); return async () => {}; },
+    knob: async () => { await page.eval(() => { const h = app.hand, freq = h.linesPath() === 'freq'; h.setKnob(h.linesPath(), h.natural(h.linesPath()) * (freq ? 1.7 : 1 / 1.7)); }); await sleep(450);
+      // In a flight a knob belongs to the pattern opening up, and at its start that's still closed, with nothing yet to see it on
+      for (let i = 0; i < 10 && await page.eval(`(k => (k === 'dive' || k === 'rise') && app.lastFrame.T < .4 && !app.paused)(app.lastFrame.kind)`); i++) await sleep(600); return async () => {}; },
   };
   const clearAll = async () => { await page.eval('app.hand.clear()'); await sleep(250); await page.eval(() => { app.hand.fx.warp.twist.set(0); app.hand.fx.warp.pinch.set(0); app.R.clearBrush?.(); }); };
 

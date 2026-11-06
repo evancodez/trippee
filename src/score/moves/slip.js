@@ -192,3 +192,65 @@ export function idle(out, { phi, G }, sl) {
   writeOn(out, sl);
   writeTumblers(out, runs, x, 2, null);
 }
+
+// ---------------------------------------------------------------- the Countdown, as a hand cut wears it
+// The ticking Countdown of src/score/direct.js (ringRuns, tickClock and these numbers are its own, and a film with no cut never comes here), on a gesture a cut has already laid out, so nothing's spliced
+// or searched for. It differs in how it lets go. At the director's it takes a bar to pick up, and its long move sets off from rest, so a lock reads a second or two late. Here everything arrives on the hit
+// and lets go at once: flow in `release` bars, and the sheet leaves at speed.
+//   L        the picture's seconds: the hit the last ring falls on
+//   from     the picture's seconds: where the board has landed, so the run starts no earlier. Before the run it's coming in, bigger and turned, so it's never at rest
+//   end      when the sheet's long move has to be over: where the gesture's clock comes to rest
+//   grow     how much bigger the board is, for a return
+//   release  bars the flow takes to let go. leave: how much faster than its average the sheet leaves
+//   before   { scale, rot }: knots the sheet is already on, ln x for scale, if this dial has been showing for a while. It goes on from there to where the rings want it, and nothing has to change to get there.
+// Returns { move, start }, start being when the first ring breaks, or null if there isn't room for four rings.
+const RING_CRACK = 0.25, RING_SURGE = 0.95, RING_TUNE = 0.35, RING_TUNE_OFF = 2, BOARD_ARRIVES = [1.35, 0.32], BOARD_SETTLES = 2, RUN_LEAST = 9;
+const ringRuns = (T, step, seed, P, mirror) => Array.from({ length: MOST_BANDS }, (_, i) => {
+  const D = T - i * (step + RING_CRACK);
+  if (D <= 0) return null;
+  const w = 1 / P, e = P / 2, e0 = Math.min(0.75, 0.25 * D), Q = D - 0.5 * (e + e0), kick = Math.min(2, D);
+  return { D, Ds: D, B: 0, A: 0, e, e0, Q, K: Math.ceil(w * Q) - w * Q, kick, sign: (i % 2 ? -1 : 1) * (mirror && i ? -1 : 1), w };
+});
+const tickClock = (tau, L, P, W) => {
+  const b0 = tau(L);
+  return t => {
+    const y = b0 - tau(t), k = Math.round(y / P), d = y - k * P;
+    return -(k * P + (Math.abs(d) >= W / 2 ? Math.sign(d) * P / 2 : P * (smoother(d / W + 0.5) - 0.5)));
+  };
+};
+export function countdownOn(G, pattern, { L, score, meter = 4, seed = 1, mirror = false, grow = 1, release = 0.5, leave = 2.2, from = G.t0, end = G.arcEnd ?? G.t1, before = {} }) {
+  const { tau } = score, sl = pattern.slip;
+  if (!sl || !flag('slip') || !tau) return null;
+  const spb = 1 / Math.max(tau(L + 0.5) - tau(L - 0.5), 1e-3), bar = spb * meter, longest = Math.min(24, L - from);
+  const W = meter * RING_SURGE, run = (n, st) => (n - 1) * st + meter + W / 2;
+  let step = meter, bands = Math.min(sl.bands, MOST_BANDS);
+  if (run(bands, step) * spb < 12) step = 2 * meter;
+  while (bands > 4 && run(bands, step) * spb > longest) bands--;
+  if (run(bands, step) * spb > longest) step = meter;
+  while (bands > 4 && run(bands, step) * spb > longest) bands--;
+  if (run(bands, step) * spb > longest || longest < RUN_LEAST) return null;
+  const T = (bands - 1) * step + 1.5 * meter - 0.02, start = timeOfBeat(tau, tau(L) - run(bands, step) - 0.05, L);
+  const edge = sl.scale ? null : (sl.kind === 3 ? Math.exp(bands / sl.n - 2) : bands / sl.n);
+  const s0 = (sl.scale ? sl.scale[1] : clamp(1.72 / edge, sl.widest ?? 0.65, sl.closest ?? 2.8)) * grow;
+  const way = mirror ? -1 : 1, turn = way * (sl.turn ?? 0.9), first = Math.min(from, start - 0.01), settled = Math.min(timeOfBeat(tau, tau(start) + BOARD_SETTLES * meter, start), L - 1);
+  // It leaves at speed and coasts to rest at `end`. A knot half a bar on, reached from standing, so the speed picks up with the flow.
+  // ...and it doesn't try to go as far in less time. With a dozen seconds it goes all the way, as the director's does.
+  const r = release * bar, rest = end - L - r, far = clamp(rest / 12, 0.3, 1);
+  const on = (knots, x) => { const k = knots?.filter(q => q.t < settled - 0.5); return k?.length ? k : [{ t: first, x, v: 0 }]; };
+  const out = (x0, x1) => (rest > 1 ? (v => [{ t: L + r, x: x0 + 0.5 * v * r, v }, { t: end, x: x1, v: 0 }])(leave * (x1 - x0) / rest) : [{ t: Math.max(end, L + 1), x: x1, v: 0 }]);
+  const travel = {
+    rot: [...on(before.rot, way * BOARD_ARRIVES[1]), { t: settled, x: 0, v: 0 }, { t: L, x: 0, v: 0 }, ...out(0, turn * far)],
+    // On log rings that much bigger is half a ring out, which with the turn's half a spoke would make the same picture again and it wouldn't be seen to arrive
+    scale: [...on(before.scale, Math.log(s0 * (sl.kind === 3 ? 1.2 : BOARD_ARRIVES[0]))), { t: settled, x: Math.log(s0), v: 0 }, { t: L, x: Math.log(s0), v: 0 }, ...out(Math.log(s0), Math.log(s0) + Math.log(1.5) * far)],
+  };
+  // The tune still moves the loose rings, a little, and lets go as the run starts and as it ends, so the last ring comes to rest by itself.
+  let react = score.react;
+  if (react?.voiced) {
+    const voiced = react.voiced.slice(), cA = (react.C ? react.C(start) : start) * react.hz, cB = (react.C ? react.C(L) : L) * react.hz, off = RING_TUNE_OFF * spb * react.hz;
+    for (let i = Math.max(0, Math.floor(cA)); i < voiced.length && i <= cB + 1; i++) voiced[i] *= RING_TUNE * smoother((i - cA) / off) * smoother((cB - i) / off);
+    react = Object.assign(Object.create(react), { voiced });
+  }
+  const move = { id: 'slip', kind: sl.kind, n: sl.n, m: sl.m, seed, tau: tickClock(tau, L, meter, W), lockT: L, T, step, ease: sl.ease ?? 2, runs: ringRuns(T, step, seed, meter, mirror), travel, react, mirror: false,
+    hold: { t: L, release: r, phi: score.phi ? score.phi(L, G) : 0, pour: sl.pour, kick: sl.kick } };
+  return { move, start };
+}

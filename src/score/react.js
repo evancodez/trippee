@@ -114,6 +114,13 @@ export function buildReact(A, seed = 1) {
       let start = 0;
       if (meter === 4 && acc[1] + acc[3] > (acc[0] + acc[2]) * 1.3) start = acc[1] >= acc[3] ? 1 : 3;
       else if (meter === 4 && acc[2] > acc[0] * 1.35) start = 2;
+      // Three in a bar: a chord can change on any of them, so go by what's hit hardest.
+      if (meter === 3 && flag('onTheHit')) {
+        const hits = [0, 0, 0];
+        for (let b = b0; b < b1; b++) { let h = 0; for (let d = -0.04; d <= 0.07; d += 0.02) h = Math.max(h, at(A.bass, beats[b] + d) + at(A.perc, beats[b] + d) + at(A.onset, beats[b] + d)); hits[posOf(b)] += h; }
+        const top = hits.indexOf(Math.max(...hits));
+        if (hits[top] > hits[0] * 1.15) start = top;
+      }
       const beatLen = (seg.t1 - seg.t0) / Math.max(b1 - b0, 1);
       let e = 0, c = 0; for (let t = seg.t0; t < seg.t1; t += 0.5) { e += energyAt(t); c++; }
       const big = clamp((c ? e / c : 0.5) / 0.6);

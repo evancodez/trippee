@@ -25,13 +25,17 @@ function indexAt(g, t) {
 
 const lim = new Float32Array(SLOT_FLOATS), lim3 = new Float32Array(SLOT_FLOATS);
 
+// Set by src/worlds/engine.js when it loads, which is when someone first asks for a world. Until then this is one check of a null.
+let worldWrite = null;
+export const wearWorlds = f => { worldWrite = f; };
+
 // Time runs on for a moment and then comes to rest (or starts from rest), so only the transformation moves while it happens.
 const easeOut = (t, t0, stop) => (t <= t0 ? t : t0 + stop * (x => x - x * x / 2)(Math.min(1, (t - t0) / stop)));
 const easeIn = (t, t1, stop) => (t >= t1 ? t : t1 - stop * (x => x - x * x / 2)(Math.min(1, (t1 - t) / stop)));
 
 // Worked out once per transition, from both patterns at rest, which doesn't depend on when anyone asks: starting early only moves the cost.
 // A plan a transformation is waiting on finishes at once. One that's only coming up takes a step and may answer null.
-function planFor(m, dtf, stop, phiOf, R, aspect, now) {
+function planFor(m, dtf, stop, phiOf, R, aspect, now, ink) {
   const { from, to, t0, D, holder, phiFrom, handover } = m;
   if (holder.plan && holder.planFor === to) return holder.plan;
   let w = holder.planning;
@@ -44,7 +48,7 @@ function planFor(m, dtf, stop, phiOf, R, aspect, now) {
     // A handover can only ever fly in. Rising needs the next pattern at rest with its element where the plan found it, and a film's clock doesn't
     // stop for that: its element would have moved on, and the frame would sit inside whatever had moved there, one flat colour.
     const hurry = { now };
-    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? null : from.xform, noGlide: !handover && from.noGlide }, hurry) };
+    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? null : from.xform, noGlide: handover ? holder.noGlide : from.noGlide, ink }, hurry) };
   }
   w.hurry.now = now;
   let step = w.steps.next();
@@ -113,7 +117,7 @@ export function frame(score, t, R, edits) {
     const tB = m.handover ? t : easeIn(t, t0 + D, stop);
     // A click's plan hasn't had a look ahead. Looking all at once would stall the picture the moment it's clicked, so what's showing carries on for the few frames it takes,
     // and the transformation starts from 0 when it's ready. One that's been waited on this long finishes at once.
-    st.plan = planFor(m, dtf, stop, phiOf, R, aspect, !(h && h.e < PLAN_PATIENCE));
+    st.plan = planFor(m, dtf, stop, phiOf, R, aspect, !(h && h.e < PLAN_PATIENCE), score.world?.ink);
     if (!st.plan) h.e0 = h.e;
     fillSlot(A, from, tA, from.pattern, { phi: pf(tA) });
     shown = st.from = from;
@@ -135,7 +139,7 @@ export function frame(score, t, R, edits) {
   }
   if (N && G.morph) {
     const t0 = G.t1 - G.morph;
-    if (t <= t0 && t > t0 - LOOK_AHEAD) planFor({ from: G, to: N, t0, D: G.morph, holder: G, handover: false, phiFrom: null }, 0, Math.min(G.morph * 0.4, 3.5), phiOf, R, aspect, false);
+    if (t <= t0 && t > t0 - LOOK_AHEAD) planFor({ from: G, to: N, t0, D: G.morph, holder: G, handover: false, phiFrom: null }, 0, Math.min(G.morph * 0.4, 3.5), phiOf, R, aspect, false, score.world?.ink);
   }
 
   if (score.react && (st.kind === 'dive' || st.kind === 'rise')) songInFlight(st, score, edits);
@@ -156,6 +160,7 @@ export function frame(score, t, R, edits) {
   if (xf) xf.write(st, A, B, F);
   else A[OFF.theta] = st.theta;
   if (beyond) beyond.write(F, tFilm, score, shown, m ? m.to : null, st.T, st.plan);     // the plates stand still in a rest with everything else
+  if (worldWrite) worldWrite(st, score, R, edits);
   return { G, c, theta: st.theta, solid: st.solid, phi, T: st.T, kind: st.kind, from: m ? m.from : null, N: m ? m.to : null };
 }
 

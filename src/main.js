@@ -5,7 +5,7 @@ import { Stage } from './stage.js';
 import { Governor } from './gl/governor.js';
 import { patterns, byId, families } from './pattern/library.js';
 
-export const VERSION = 'v2.3';
+export const VERSION = 'v2.4';
 const canvas = document.getElementById('c');
 const R = new Renderer(canvas);
 // A different wander each visit, from a count rather than the clock, so a given seed always gives the same picture.
@@ -15,7 +15,7 @@ const stage = new Stage(visit * 7919 % 100000);
 const governor = new Governor(R);
 stage.now = () => app.pictureT();
 
-const app = window.app = {
+const app = stage.app = window.app = {
   R, stage, patterns, byId, families, canvas, VERSION, governor,
   t: 0, manual: false, paused: false, edits: {}, lastFrame: null, onFrame: [],
   clock: null,    // when a song is playing, a function returning song seconds
@@ -89,6 +89,7 @@ window.trippee = {
   // Draws one pattern at the middle of its move, for looking at many at once
   still(id, u = 0.5) { this.load(id); app.manual = true; app.t = 26 * u; render(); },
   capture() { render(); return canvas.toDataURL('image/png'); },
+  world: (id, opts) => stage.setWorld(id, opts),
   metrics() { const f = app.lastFrame; return { t: app.t, pattern: f?.G?.pattern?.id, theta: f?.theta, w: canvas.width, h: canvas.height }; },
 };
 

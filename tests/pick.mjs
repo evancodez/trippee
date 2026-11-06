@@ -15,6 +15,7 @@ export default async ({ page, log, save, sleep }) => {
   };
   const errCount = () => page.logs.filter(l => l.startsWith('[exception]') || l.startsWith('[error]')).length;
 
+  if (process.env.GPU === '0') await page.eval(`app.R.onCost = null; app.governor.timed = false; app.R.drawScale = 1; for (const s of app.governor.states.values()) s.tier = 0;`);     // the governor going by the frame rate alone, for A/B
   await page.eval(() => {
     try { document.querySelector('#hints [data-ok]').click(); } catch {}
     app.ui.library.show(true);
@@ -87,7 +88,8 @@ export default async ({ page, log, save, sleep }) => {
     const errors = errCount() - e0;
     const ok = landed !== null && landed <= limit && !pop && !errors && hereAtOnce === target;
     const tiers = [...new Set(tr.map(r => r[6]))];
-    const row = { name, ok, tiers, from: fromWas, target, landed: landed && +landed.toFixed(2), pop, worstStep: worst, kinds, fps: +(frames / secs).toFixed(0), errors, here: hereAtOnce === target ? 'at once' : hereAtOnce, end: st };
+    const wi = steps.indexOf(worst), worstAt = wi >= 0 ? { at: +(tr[wi][0] - clickAt).toFixed(2), kind: tr[wi][4], T: tr[wi][5], pat: tr[wi][2], N: tr[wi][3], near: steps.slice(Math.max(1, wi - 4), wi + 5).join(' ') } : null;
+    const row = { name, ok, tiers, from: fromWas, target, landed: landed && +landed.toFixed(2), pop, worstStep: worst, worstAt, kinds, fps: +(frames / secs).toFixed(0), errors, here: hereAtOnce === target ? 'at once' : hereAtOnce, end: st };
     log(ok ? 'ok  ' : 'FAIL', name.padEnd(30), (fromWas + '>' + target).padEnd(36), 'landed', String(row.landed).padEnd(6), kinds.join('+').padEnd(14), 'worst', String(worst).padEnd(6), 'fps', row.fps, tiers.length > 1 ? 'tiers ' + tiers.join() : '', pop ? 'POP ' + JSON.stringify(pop) : '', errors ? 'errors ' + errors : '', hereAtOnce !== target ? 'tile ' + hereAtOnce : '', landed === null ? JSON.stringify(st) : '');
     if (!ok) await page.shot(`pick-fail-${name.replace(/\W+/g, '-')}`);
     return row;

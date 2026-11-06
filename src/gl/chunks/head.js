@@ -22,4 +22,23 @@ float boil(vec2 x,float t,float seed){
      +.6*sin(x.x*3.1-x.y*2.3+t*1.1+seed*3.3)+.4*sin(x.y*4.3+x.x*1.1-t*.9+seed*.7));
 }
 
+#ifdef WORLD
+layout(std140) uniform WBlock { vec4 uW[64]; };
+uniform sampler2D uWT;
+uniform sampler2D uTrace;
+#ifdef WORLD_CELLS
+float gTh[3];
+bool gFlip[3]=bool[3](false,false,false);
+#endif
+#ifdef WORLD_X
+vec2 gX[3];
+#endif
+#ifdef WORLD_GEN
+float gGen[3]=float[3](0.,0.,0.);
+#endif
+#ifdef WORLD_WALL
+float gWall[3]=float[3](0.,0.,0.);
+#endif
+//@world:defs
+#endif
 `;

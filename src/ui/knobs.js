@@ -11,7 +11,8 @@ const fmt = v => {
 const GENERAL = hand => [
   { id: 'speed', name: 'speed', min: 0.1, max: 6, log: true, get: () => hand.speed, set: v => { hand.speed = v; }, def: 1, moved: () => Math.abs(hand.speed - 1) > 1e-3, reset: () => { hand.speed = 1; } },
   { id: 'rotation', name: 'rotation', min: -1.2, max: 1.2, get: () => hand.spinRate, set: v => { hand.spinRate = Math.abs(v) < 0.015 ? 0 : v; }, def: 0, moved: () => hand.spinRate !== 0, reset: () => { hand.spinRate = 0; } },
-  { id: 'lines', name: 'lines', path: 'freq', min: 0.2, max: 8, log: true },
+  // How many lines. On a pattern of rings and spokes there's nothing for freq to multiply, so it's how big the view is: more lines is further away.
+  hand.linesPath() === 'freq' ? { id: 'lines', name: 'lines', path: 'freq', min: 0.2, max: 8, log: true } : { id: 'lines', name: 'lines', min: 0.2, max: 8, log: true, get: () => hand.natural('scale') / hand.liveValue('scale'), set: v => hand.setKnob('scale', hand.natural('scale') / v), def: 1, moved: () => hand.knobValue('scale') !== null, reset: () => hand.releaseKnob('scale'), via: 'scale' },
 ];
 
 export class Knobs {
@@ -37,7 +38,7 @@ export class Knobs {
     this.rows = [];
     const seen = new Set(), axes = [];
     for (const a of pat?.axes || []) { if (a.path) { seen.add(a.path); axes.push(a); } }
-    const gen = GENERAL(hand).filter(a => !a.path || !seen.has(a.path));
+    const gen = GENERAL(hand).filter(a => !seen.has(a.path ?? a.via));
     for (const a of axes) this.row(a);
     if (axes.length) { const h = document.createElement('h3'); h.textContent = 'every pattern'; this.rowsEl.appendChild(h); }
     for (const a of gen) this.row(a);

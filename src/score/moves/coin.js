@@ -66,11 +66,11 @@ export function coinAmbient(G, t) {
 }
 
 // And the flow to go with it, as a gesture's phiTrack: what's on the coin slows to a stop for the last bars, so only the lean is moving, and it's let go on the landing and pours.
-// A track in beats, as phi reads it. rate, after: cycles per beat before and after. hold: bars at a standstill.
-export function coinFlow(score, m, { rate = 1 / 8, after = 1 / 4, hold = 2, slow = 2 } = {}) {
+// A track in beats, as phi reads it. rate, after: cycles per beat before and after. hold: bars at a standstill. pour: bars it takes to get to `after` from the landing.
+export function coinFlow(score, m, { rate = 1 / 8, after = 1 / 4, hold = 2, slow = 2, pour = 1 } = {}) {
   const b = m.tau ? m.tau(m.land) : 0, bar = m.meter ?? 4, a0 = b - m.beats - 8, a1 = b - (hold + slow) * bar, a2 = b - hold * bar;
   const x1 = rate * (a1 - a0), x2 = x1 + rate * slow * bar / 2;
-  return [{ t: a0, x: 0, v: rate }, { t: a1, x: x1, v: rate }, { t: a2, x: x2, v: 0 }, { t: b, x: x2, v: 0 }, { t: b + bar, x: x2 + after * bar / 2, v: after }];
+  return [{ t: a0, x: 0, v: rate }, { t: a1, x: x1, v: rate }, { t: a2, x: x2, v: 0 }, { t: b, x: x2, v: 0 }, { t: b + pour * bar, x: x2 + after * pour * bar / 2, v: after }];
 }
 
 // The whole of a coin, for the director. It wears `pattern` from before the build through the landing, up to the first boundary with room to land first; it ends with that boundary's

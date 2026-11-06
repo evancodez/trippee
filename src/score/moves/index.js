@@ -7,8 +7,16 @@ import slip from './slip.js';
 import star from './star.js';
 import coin from './coin.js';
 import snap from './snap.js';
+import cue from './cue.js';
+import relay from './relay.js';
+import ramp from './ramp.js';
+import moire from './moire.js';
+import vertigo from './vertigo.js';
+import confocal from './confocal.js';
+import mirror from './mirror.js';
+import riot from './riot.js';
 
-export const MOVES = { slip, star, coin, snap };
+export const MOVES = { slip, star, coin, snap, cue, moire, vertigo, confocal, mirror, relay, ramp, ...riot };
 
 export function runMoves(out, ctx) {
   for (const m of ctx.G.moves) {

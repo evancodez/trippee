@@ -10,12 +10,23 @@ export const flags = {
   // fields and worlds
   river: true, arcade: true, blaze: true, octagrid: true, metamorphosis: true, labyrinth: true,
   // the director
-  direct: true, countdown: true, lock: true, heroRiley: true,
+  direct: true, countdown: true, lock: true, heroRiley: true, onTheHit: true, lookRuns: true,
   // the film's rehearsal: patterns kept out of films, the good part of each long move, which way a flight goes
   pool: true, range: true, flightWay: true, flashGuard: true,
+  // the governor going by what the GPU says each frame took, not only by the frame rate
+  gpuTiers: true,
   // pattern music: tools you can hear, and reading colour by its nearest ink
   toolsound: true, readInks: true,
 };
 export const flag = id => flags[id] !== false;
 export const setFlag = (id, on) => { flags[id] = !!on; };
 export const setAllFlags = on => { for (const id in flags) flags[id] = !!on; };
+
+// How a film is directed (docs/DIRECTION.md). Off means the film is exactly the film. setAllFlags can't reach these, so a test that turns everything on is still about today's film.
+// ?direct=1 turns both on, ?peak=1 the timing alone.
+export const directing = { peak: false, sheet: false };
+{
+  const q = new URLSearchParams(globalThis.location?.search ?? ''), all = q.get('direct') === '1';
+  directing.peak = all || q.get('peak') === '1';
+  directing.sheet = all;
+}

@@ -15,9 +15,15 @@ vec3 hitQuadric(int b,vec3 ro,vec3 rd,inout float cover){
   return ro+max(t,0.)*rd;
 }
 
+#ifdef WORLD_SURFACE
+//@world:surface
+#endif
 vec3 surface(int b,vec2 p,inout float cover,inout float parity){
   vec4 sf=uG[b+I_surf],cam=uG[b+I_cam];
   if(sf.x<.5) return vec3(p,0.);
+#ifdef WORLD_SURFACE
+  if(sf.x>2.5) return worldSurface(b,p,cover,parity);
+#endif
   float d=cam.w;
   mat2 Rp=rot(cam.x),Ry=rot(cam.y),Rr=rot(cam.z);
   vec3 rd=normalize(vec3(p,-max(d,.05)));

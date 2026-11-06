@@ -59,7 +59,8 @@ export function arcU(G, t) {
   }
   const [lo, hi] = boldRange(G);
   let x;
-  if (t <= G.t0) x = 0;
+  if (G.uTrack) x = clamp(evalTrack(G.uTrack, t));     // a Ramp: the long move on a clock of its own. See moves/ramp.js
+  else if (t <= G.t0) x = 0;
   else if (G.period) { const w = ((t - G.t0) / G.period) % 2; x = smoother(w < 1 ? w : 2 - w); }
   // Arcs run to a fixed horizon, not to t1, so rewriting a gesture's end (the user picked something else) can't make them jump.
   else {

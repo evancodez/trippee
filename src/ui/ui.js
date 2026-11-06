@@ -38,7 +38,7 @@ export function init(app) {
       <dt>move</dt><dd>a ball under the sheet</dd>
       <dt>drag</dt><dd>comb the lines. dents stay and relax slowly</dd>
       <dt>scroll, pinch</dt><dd>zoom about the cursor, hairline to huge</dd>
-      <dt>sideways, shift scroll</dt><dd>the threshold. past each solid is the next pattern</dd>
+      <dt>sideways, shift scroll</dt><dd>the threshold: thinner or fatter lines</dd>
       <dt>alt drag</dt><dd>lift a copy of the sheet. up and down turns it, sideways slides it. it locks where the fringes close</dd>
       <dt>alt scroll</dt><dd>turn the copy very finely</dd>
       <dt>alt double-click</dt><dd>lay the copy back down</dd>
@@ -51,6 +51,9 @@ export function init(app) {
       <dt>6 comb</dt><dd>drag to comb. the same number again goes back to the plain hand</dd>
       <dt>l</dt><dd>static: it stays and only flows, until you turn it off</dd>
       <dt>b</dt><dd>colour: the pattern printed twice, in two inks. shift b for the next inks</dd>
+      <dt>v</dt><dd>the next world</dd>
+      <dt data-compare hidden>d &nbsp; shift d</dt><dd data-compare hidden>the other film. shift: from the last switch</dd>
+      <dt data-compare hidden>= &nbsp; -</dt><dd data-compare hidden>yes, no: noted against the film and the time</dd>
       <dt>g</dt><dd>make music: the picture plays itself. a song waits while it does</dd>
       <hr>
       <dt>p</dt><dd>patterns</dd>
@@ -132,6 +135,7 @@ export function init(app) {
   addEventListener('pointerdown', wake, { passive: true });
   addEventListener('keydown', wake);
 
+  let compareShown = false;
   app.onFrame.push(() => {
     const overBox = pointer.target && pointer.target !== app.canvas && pointer.target.closest?.('.box');
     if (performance.now() - lastMove > IDLE_MS && performance.now() > firstRead && !hand.dragging && !overBox) document.body.classList.add('idle');
@@ -140,6 +144,8 @@ export function init(app) {
       note.textContent = `${r.deg >= 0 ? '' : '-'}${Math.abs(r.deg).toFixed(2)}°${r.locked ? '  locked' : ''}`;
       note.hidden = false; note.dataset.sheet = '1';
     } else if (note.dataset.sheet) { note.hidden = true; delete note.dataset.sheet; }
+    const comparing = !!app.song?.compare;
+    if (comparing !== compareShown) { compareShown = comparing; help.querySelectorAll('[data-compare]').forEach(n => { n.hidden = !comparing; }); }
     if (recorder.on) {
       const s = recorder.seconds() | 0;
       rec.querySelector('[data-t]').textContent = `recording  ${(s / 60) | 0}:${String(s % 60).padStart(2, '0')}`;
@@ -155,8 +161,12 @@ export function init(app) {
     const tag = e.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     switch (e.key.toLowerCase()) {
+      case 'd': song.switchFilm(e.key === 'D'); break;
+      case '=': case '+': song.markFilm(true); break;
+      case '-': song.markFilm(false); break;
       case 'p': library.show(); break;
       case 'l': fxBar.toggleStatic(); break;
+      case 'v': fxBar.nextWorld(); break;
       case '1': case '2': case '3': case '4': case '5': case '6': fxBar.key(e.key); break;
       case 'k': knobs.show(); break;
       case 's': song.show(); break;
@@ -165,7 +175,7 @@ export function init(app) {
       case 'f': fullscreen(); break;
       case 'h': document.body.classList.toggle('bare'); break;
       case 'm': hand.setCalm(!hand.calm); say(hand.calm ? 'calm' : 'calm off'); break;
-      case '?': case '/': toggleHelp(); break;
+      case '?': case '/': toggleHelp(); song.revealFilms(); break;
       case 'escape':
         library.show(false); knobs.show(false); help.hidden = true;
         if (song.state !== 'listening') song.show(false);

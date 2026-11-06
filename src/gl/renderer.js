@@ -7,9 +7,9 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // One shader, built sixteen ways: with or without the hand, colour's second plate, a flight between two patterns, and the rarer moves (slip, star, coin, fields). A GPU pays for what
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
 // The first four are what a film needs to run; the rest build behind it.
-const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8;
+export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8;
 const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
-const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
+export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -30,6 +30,7 @@ export class Renderer {
   constructor(canvas, { bare = false } = {}) {
     this.canvas = canvas;
     this.order = bare ? ORDER.slice(0, 4) : ORDER;
+    this.bare = bare;
     const gl = this.gl = canvas.getContext('webgl2', {
       antialias: false, alpha: false, depth: false, stencil: false,
       powerPreference: 'high-performance', preserveDrawingBuffer: false, desynchronized: false,
@@ -41,8 +42,13 @@ export class Renderer {
     this.frame = this.block.subarray(2 * SLOT_FLOATS);
     this.ready = false;
     this.pushOn = false;
+    this.wp = null;      // the world programs in use (src/worlds/engine.js). Null is the film, and nothing below does anything else.
+    this.warm = null;    // a world program waiting for its first draw
     this.drawScale = 1;
     this.parallel = gl.getExtension('KHR_parallel_shader_compile');
+    // How long the GPU really took over each frame, for the governor. It knows within a few frames instead of after seconds of dropped ones. No extension, and it goes by the frame rate as before.
+    this.timer = bare ? null : gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    this.onCost = null; this._timing = []; this._spareQ = [];
     this.floatOk = !!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float');
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);
@@ -57,6 +63,9 @@ export class Renderer {
     this._whenAll = new Promise(res => { this._resolveAll = res; });
     this._poll();
   }
+
+  // A world's programs, built behind the picture. Resolves when its plain and flight programs are ready. No world, and this file is all that ever runs.
+  async prepareWorld(world) { const { prepare } = await import('../worlds/engine.js'); return prepare(this, world); }
 
   whenReady() { return this._whenReady; }
   whenAllReady() { return this._whenAll; }
@@ -93,8 +102,29 @@ export class Renderer {
     if (v === FLIGHT) { this.ready = true; this._resolveReady(); }
     // The next one, without holding anything up. With no way to build in the background, the rest wait until each is first asked for.
     const next = this.order.find(n => !this.progs[n]);
-    if (next === undefined) { this._pending = null; this._resolveAll(); return; }
-    if (this.parallel || v === 0) { this._start(next); this._poll(); } else { this._pending = null; this._resolveAll(); }
+    if (next === undefined) { this._pending = null; this._warmAll(); return; }
+    if (this.parallel || v === 0) { this._start(next); this._poll(); } else { this._pending = null; this._warmAll(); }
+  }
+
+  // A program's first draw is when the GPU really builds it, up to 440 ms measured, and that would be a stall in the middle of the film the first time a flight or colour needs it.
+  // So each draws one pixel now, one at a time with the picture carrying on between them, to the canvas and to the smaller target, which the GPU may build separately.
+  _warmAll() {
+    const list = this.progs.filter(Boolean);
+    if (!list.length) { this._resolveAll(); return; }
+    const gl = this.gl, c = this.canvas;
+    let i = 0;
+    const one = () => {
+      if (i >= list.length) { this._resolveAll(); return; }
+      const low = this._lowTarget(0.5);
+      gl.useProgram(list[i++]);
+      gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
+      gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, low.fbo); gl.viewport(0, 0, low.w, low.h); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, c.width, c.height); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.disable(gl.SCISSOR_TEST);
+      setTimeout(one, 60);
+    };
+    one();
   }
 
   // The smallest program with what this frame needs. One still building, the frame goes without the hand or colour for a moment. They both come up slowly anyway.
@@ -104,10 +134,11 @@ export class Renderer {
 
   // Does this slot wear anything only the fuller programs have?
   _extra(S) {
-    return S[OFF['slip.kind']] > .5 || S[OFF['star.k']] > 0 || S[OFF['field.kind']] > .5 || S[OFF['matte.kind']] > 2.5 || S[OFF['lathe.k']] !== 0 || S[OFF['lathe.w']] !== 0 || S[OFF['meta.amt']] !== 0;
+    return S[OFF['slip.kind']] > .5 || S[OFF['star.k']] > 0 || (S[OFF['field.kind']] > .5 && S[OFF['field.kind']] < 3.5) || S[OFF['matte.kind']] > 2.5 || S[OFF['lathe.k']] !== 0 || S[OFF['lathe.w']] !== 0 || S[OFF['meta.amt']] !== 0;
   }
 
   _programFor(F) {
+    if (this.wp) return this.wp.program(F);
     const v = this._variantOf(F);
     if (!this.progs[v] && !this.parallel && !this._pending) { this._start(v); this._poll(); }
     const got = this.progs[v] ? v : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
@@ -231,7 +262,7 @@ export class Renderer {
     this.frame.set([W, H, W / H, 0], FRAME.res * 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.probeT.fbo);
     gl.viewport(0, 0, W, H);
-    gl.useProgram(this.progs[this._variantOf(this.frame)] ?? this.prog);    // the program this slot needs, alone, with no hand, colour or flight
+    gl.useProgram(this.wp ? this.wp.forProbe() : this.progs[this._variantOf(this.frame)] ?? this.prog);    // the program this slot needs, alone, with no hand, colour or flight
     gl.activeTexture(gl.TEXTURE0);
     if (this.brushOk) gl.bindTexture(gl.TEXTURE_2D, this.brushA.tex);
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
@@ -253,15 +284,20 @@ export class Renderer {
     const F = this.frame, res = FRAME.res * 4;
     const low = this.drawScale < 1 ? this._lowTarget() : null;
     const w = low ? low.w : c.width, h = low ? low.h : c.height;
+    if (this.warm) this.warm();
     F[res] = w; F[res + 1] = h; F[res + 2] = w / h; F[res + 3] = this.pushOn ? 1 : 0;
     gl.bindFramebuffer(gl.FRAMEBUFFER, low ? low.fbo : null);
     gl.viewport(0, 0, w, h);
     gl.useProgram(this._programFor(F));
+    this.costKey = this.variant + (F[FRAME.xf * 4] > 0.5 ? 0.5 : 0);     // a shock draws two patterns in a plain program: it costs what it costs, and what's plain stays sharp
     gl.activeTexture(gl.TEXTURE0);
     if (this.brushOk) gl.bindTexture(gl.TEXTURE_2D, this.brushA.tex);
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.block);
+    if (this.wp) this.wp.upload();
+    const timing = this._timeBegin(F);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (timing) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
     if (low) {
       // Stretched back up to fill a canvas that hasn't changed size
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, low.fbo);
@@ -271,10 +307,27 @@ export class Renderer {
     }
   }
 
+  // Hands in the frames the GPU has finished, then starts timing this one. A few at a time at most: a query is cheap but it isn't nothing.
+  _timeBegin(F) {
+    const T = this.timer;
+    if (!T || !this.onCost) return false;
+    const gl = this.gl;
+    while (this._timing.length && gl.getQueryParameter(this._timing[0].q, gl.QUERY_RESULT_AVAILABLE)) {
+      const e = this._timing.shift(), ns = gl.getQueryParameter(e.q, gl.QUERY_RESULT);
+      this._spareQ.push(e.q);
+      if (!gl.getParameter(T.GPU_DISJOINT_EXT)) this.onCost(e.key, e.scale, ns / 1e6);
+    }
+    if (this._timing.length >= 4) return false;
+    const q = this._spareQ.pop() ?? gl.createQuery();
+    gl.beginQuery(T.TIME_ELAPSED_EXT, q);
+    this._timing.push({ q, key: this.costKey, scale: this.drawScale });
+    return true;
+  }
+
   // The smaller picture the governor draws into, remade when the size it wants changes
-  _lowTarget() {
+  _lowTarget(scale = this.drawScale) {
     const gl = this.gl, c = this.canvas;
-    const w = Math.max(2, Math.round(c.width * this.drawScale)), h = Math.max(2, Math.round(c.height * this.drawScale));
+    const w = Math.max(2, Math.round(c.width * scale)), h = Math.max(2, Math.round(c.height * scale));
     let t = this.low;
     if (t && t.w === w && t.h === h) return t;
     if (!t) { t = this.low = { fbo: gl.createFramebuffer(), rb: gl.createRenderbuffer() }; }

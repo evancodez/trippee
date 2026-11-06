@@ -112,8 +112,8 @@ export default [
   { id: 'riley.metamorphosis', name: 'Metamorphosis', family: 'riley', get pool() { return flag('metamorphosis'); },
     g: { fams: [plane(1.4, 0), plane(1.4, 90)], meta: { amt: 0.85, k: 2.8 }, star: { _1: 0.17 } },
     flow: { 'f0.ph': 1e-3, 'f1.ph': 1e-3 },      // so a tune slides both families, along the diagonal, and not one alone
-    // It travels, for ever, in steps of the whole sheet that can't be seen, so a slide away from it never has far to come back
-    drive(out, { phi, OFF }) { const P = 1 / 1.4; out[OFF.tx] = (1.1 * phi) % P; out[OFF.ty] = (0.7 * phi) % P; },
+    // It travels, for ever. Not wrapped round by a whole sheet: the song makes the lines finer or broader, and at any freq but 1 a whole sheet isn't a whole number of lines, so that was a pop right across the frame.
+    drive(out, { phi, OFF }) { out[OFF.tx] = 1.1 * phi; out[OFF.ty] = 0.7 * phi; },
     arcs: [
       { path: 'star._2', from: 0, to: 1 },
       { path: 'f0.ph', from: 0, to: 0.5 },

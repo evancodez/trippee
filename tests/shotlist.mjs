@@ -1,12 +1,13 @@
 // A shot list: what the film really does next to what the music really does, phrase by phrase, for someone who can't hear the song. The numbers have to carry it.
 //
 //   node tools/lab.mjs tests/shotlist.mjs --size 1280,720 --out lab-out/direction
-//   SONGS=ppp,mgmt   only these.  SEED=7   another take (7 is what a dropped song gets).
+//   SONGS=ppp,mgmt   only these.  SEED=7   another take (7 is what a dropped song gets).  CUT=1   the song's hand cut, once rehearsed, in place of the generated film.
 //
 // Each song gets a fresh page, as a person dropping one song would, and the film is the one the rehearsal passed. It's then stepped on a fixed clock at 12 fps with the rehearsal's own eyes (no sound
 // plays), so what's measured is what's drawn: kinds of transformation as the plan really chose them, pixels flipping, edges crossing. Writes, into --out:
 //   <song>.shots.txt   the header, one row per breath, every gesture, and the whole-song numbers (each section of it says how its numbers are defined)
 //   <song>.strip.jpg   a frame at each section boundary and every 8 bars, captioned
+//   <song>.walk.json   the walk itself: what tests/judge.mjs's STAGE=direction reads, and node tests/judge.mjs --direction <folder> reads again. Numbers only, and lab-out stays out of the repo
 //   summary.txt        the whole-song numbers of every song in this run, side by side
 import { closeSync, openSync, readSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -18,7 +19,7 @@ const VIS = 1.5;                      // a moment "shows" if the picture changes
 const EXACT = 0.12;                   // seconds: closer than this is on it
 
 // ---------------------------------------------------------------- in the page: walk the film
-const collect = async ({ F, W, H }) => {
+export const collect = async ({ F, W, H }) => {
   const here = u => new URL(u, location.href).href;
   const [{ getRig, shot }, { fineness, fillSlot }, { OFF, SLOT_FLOATS }, { reactAt }, { chordName }, { lookOf }] = await Promise.all(
     ['src/music/rehearse.js', 'src/score/slot.js', 'src/pattern/layout.js', 'src/score/react.js', 'src/music/understand.js', 'src/score/compose.js'].map(u => import(here(u))));
@@ -122,6 +123,14 @@ const collect = async ({ F, W, H }) => {
   });
   const NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
   const rh = app.song.rehearsal;
+  // Bar means of what docs/DIRECTION.md section 5 listens to, for the jumps and the ride in tests/judge.mjs. Numbers from the analysis, in a file that stays in lab-out.
+  const barList = Array.from(A.bars), per = {};
+  for (const k of ['loud', 'bright', 'bass', 'perc', 'voiced']) per[k] = barList.map((t, i) => {
+    const a = Math.round(t * A.fps), b = Math.round((barList[i + 1] ?? t + M.bar) * A.fps); let v = 0, c = 0;
+    for (let f = Math.max(0, a); f < b && f < (A[k]?.length ?? 0); f++) { v += A[k][f]; c++; }
+    return c ? +(v / c).toFixed(5) : 0;
+  });
+  const directing = await import(here('src/score/flags.js')).then(m => m.directing ?? null);
   return JSON.stringify({
     dur, bpm: A.bpm, meter: A.meter, keyOwn: NAMES[A.key] + (A.minor ? 'm' : ''), home: M.home.name, homeC: M.home.c, keySig: NAMES[M.key], beat: M.beat, bar: M.bar, climax: A.climax,
     character: A.character, swell: A.swellRegularity, phraseBars: A.phraseBars,
@@ -132,8 +141,9 @@ const collect = async ({ F, W, H }) => {
     runs: M.runs.map(r => ({ t0: r.t0, t1: r.t1, c: r.c, name: chordName(r.c) })), conductor: M.conductor.map(c => ({ t: c.t, lead: c.lead, second: c.second, margin: c.margin })),
     family: S.family, stats: S.stats, seed: S.seed, sitOut: rh?.sitOut ?? [], rehearsal: rh?.seconds, handoverFrom: S.handover?.G?.pattern?.id ?? null,
     cast: (S.cast ?? []).map(h => ({ ...h, sAt: songAt(h.at), s0: songAt(h.t0), s1: songAt(h.t1) })), samples: s,
+    per, directing, sheet: S.sheet ?? null, refused: S.refused ?? null,
     gestures: g.map((G, i) => ({
-      i, t0: G.t0, t1: G.t1, s0: songAt(G.t0), s1: songAt(G.t1), sm: G.morph ? songAt(G.t1 - G.morph) : null, id: G.pattern.id, fam: G.pattern.family, look: lookOf(G.pattern), drive: !!G.pattern.drive, morph: G.morph || 0,
+      i, t0: G.t0, t1: G.t1, s0: songAt(G.t0), s1: songAt(G.t1), sm: G.morph ? songAt(G.t1 - G.morph) : null, hitS: G.peak ? songAt(G.peak.hit) : null, id: G.pattern.id, fam: G.pattern.family, look: lookOf(G.pattern), drive: !!G.pattern.drive, morph: G.morph || 0,
       kindIn: G.kindIn ?? null, kindOut: G.kindOut ?? null, label: G.label ?? null, visit: G.visit ?? 0, replayOf: G.replayOf ?? null, change: G.change ?? null, hero: G.hero ?? null, moves: (G.moves ?? []).map(m => m.id), xform: G.xform?.id ?? null,
       into: G.plan ? (G.plan.fall ? 'fall' : G.plan.kind) : G.xform?.id ?? null, rise: G.rise ?? null, range: G.range ?? null, gears: G.gears ?? [], noGlide: !!G.noGlide, calm: G.calm ?? null, phiScale: G.phiScale ?? null, ride: i < g.length - 1 ? sweep(G, G.t0, G.t1) : [],
     })),
@@ -203,10 +213,10 @@ function tagsOf(song) {
 }
 
 // ---------------------------------------------------------------- numbers
-const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
-const pctOf = (a, p) => { const s = a.filter(Number.isFinite).sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * p))] : 0; };
-const medOf = a => pctOf(a, 0.5);
-const pearson = (x, y) => {
+export const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
+export const pctOf = (a, p) => { const s = a.filter(Number.isFinite).sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * p))] : 0; };
+export const medOf = a => pctOf(a, 0.5);
+export const pearson = (x, y) => {
   const px = [], py = [];
   x.forEach((v, i) => { if (Number.isFinite(v) && Number.isFinite(y[i])) { px.push(v); py.push(y[i]); } });
   if (px.length < 3) return NaN;
@@ -215,7 +225,7 @@ const pearson = (x, y) => {
   px.forEach((v, i) => { a += (v - mx) * (py[i] - my); b += (v - mx) ** 2; c += (py[i] - my) ** 2; });
   return b && c ? a / Math.sqrt(b * c) : NaN;
 };
-const nearest = (list, t) => { let best = null; for (const v of list) if (best === null || Math.abs(t - v) < Math.abs(t - best)) best = v; return best === null ? null : { v: best, d: t - best }; };
+export const nearest = (list, t) => { let best = null; for (const v of list) if (best === null || Math.abs(t - v) < Math.abs(t - best)) best = v; return best === null ? null : { v: best, d: t - best }; };
 const pad = (v, n) => String(v).padStart(n), rpad = (v, n) => String(v).padEnd(n);
 const fx = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '-');
 const sign = (v, d = 2) => (Number.isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(d) : '-');
@@ -228,15 +238,108 @@ const sweepText = paths => paths.map(([p, a, b, lo, hi]) => {
   return back > 0.25 * (hi - lo) ? `${p} ${num(a)}>${num(b)} via ${num(lo)}..${num(hi)}` : `${p} ${num(a)}>${num(b)}${times}`;
 }).join(', ');
 
-function report(song, d, tags) {
-  const s = d.samples, n = s.diff.length, beat = d.beat, bar = d.bar, dur = d.dur, out = [], p = (x = '') => out.push(x);
-  const g = d.gestures, real = g.slice(0, -1), iOf = t => Math.max(0, Math.min(n - 1, Math.round(t * F)));
+// ---------------------------------------------------------------- the measures, shared with tests/judge.mjs (STAGE=direction). All pure, over what collect returned.
+export { F as WALK_FPS, VIS, EXACT };
+export const WALK_SIZE = { F, W, H };
+
+export function measures(d) {
+  const s = d.samples, n = s.diff.length;
   const range = (a, b) => { const r = []; for (let i = Math.ceil(a * F); i < Math.min(n, Math.ceil(b * F)); i++) if (i >= 0) r.push(i); return r; };
   const avg = (key, a, b) => meanOf(range(a, b).map(i => s[key][i]));
-  const eOf = (a, b) => avg('E', a, b);
-  const secName = x => `${x.label}${x.visit + 1}`, sectionAt = t => d.segments.find(x => t >= x.t0 && t < x.t1) ?? d.segments.at(-1);
   // Edge speed from the picture itself: how many pixels flip per second, over how much edge there is per pixel. Stripes of period P moving at v flip 2v/P of the frame a second and have 2/P of edge per pixel, so this gives v. In % of the frame's width per second, as in STUDY.md (the reference: 5 to 10).
   const edge = s.flips.map((f, i) => { const e = s.nx[i] / W + s.ny[i] / H; return e * W > 0.5 ? f * F / e / W * 100 : NaN; });
+  // Does a moment show? The picture's rate of change, around it, against what's usual nearby
+  const diff3 = s.diff.map((_, i) => (s.diff[Math.max(0, i - 1)] + s.diff[i] + s.diff[Math.min(n - 1, i + 1)]) / 3);
+  const shows = t => {
+    const near = range(t - 0.25, t + 0.25).map(i => diff3[i]), base = [...range(t - 8, t - 1), ...range(t + 1, t + 8)].map(i => s.diff[i]);
+    return (near.length ? Math.max(...near) : 0) / Math.max(medOf(base), 0.2);
+  };
+  // Where the eye sees a transformation: its fastest moment, against where it's meant to hit.
+  const peakOf = (sm, end, hit) => {
+    const r = range(sm, end + 0.25);
+    if (!r.length) return null;
+    let top = r[0]; for (const i of r) if (diff3[i] > diff3[top]) top = i;
+    const body = range(sm - 8, sm).map(i => s.diff[i]);
+    return { peakAt: top / F, peakOff: top / F - hit, peakBar: nearest(d.bars, top / F)?.d, peakX: diff3[top] / Math.max(medOf(body), 0.2) };
+  };
+  return { n, range, avg, edge, diff3, shows, peakOf };
+}
+
+// The structural changes: a pattern landing, where its transformation means it to hit, and the big moves that hit inside a gesture.
+export function changesOf(d) {
+  const g = d.gestures, real = g.slice(0, -1);
+  const castOf = (G, kind) => d.cast.find(h => h.kind === kind && Math.abs(h.t1 - G.t1) < 0.06);
+  const changes = real.slice(0, -1).map(G => {
+    const N = g[G.i + 1], hero = G.xform === 'shock' || G.xform === 'iris' ? castOf(G, G.xform) : null;
+    return { s: G.hitS ?? (hero ? hero.sAt : G.s1), end: G.s1, sm: G.sm, type: G.into ?? '?', from: G.id, to: N.id, D: G.morph, G };
+  });
+  for (const h of d.cast) {
+    if (!['countdown', 'coin', 'lock'].includes(h.kind)) continue;
+    const t = h.kind === 'lock' ? h.s1 : h.sAt, on = changes.find(c => Math.abs(c.s - t) < 0.3);
+    if (on) on.type += `+${h.kind}`;
+    else changes.push({ s: t, end: t, sm: null, type: `hit:${h.kind}`, from: h.id, to: h.id, D: 0, G: null });
+  }
+  changes.sort((a, b) => a.s - b.s);
+  return changes;
+}
+
+// The same bar-line control report() prints: how often any bar line away from the ends shows.
+export const barLinesShow = (d, shows) => meanOf(d.bars.filter(t => t > 8 && t < d.dur - 8).map(t => (shows(t) >= VIS ? 1 : 0)));
+
+// What docs/DIRECTION.md section 5 hears, from the bar means collect saves, for rows that must not take the sheet's word for what matters. Lane B1's src/music/phrasing.js is the same formula; once it lands, it should replace these two.
+const sdOf = a => { const m = meanOf(a); return Math.sqrt(meanOf(a.map(v => (v - m) ** 2))) || 1; };
+export function jumpsOf(d) {
+  const { per, bars, bar, dur } = d, N = bars.length, WEIGHT = { loud: 1, bright: 0.5, bass: 0.7, perc: 0.5, voiced: 0.3 };
+  const span = (a, i, j) => meanOf(a.slice(Math.max(0, i), Math.max(0, j)));
+  const J = {};
+  for (const k in WEIGHT) { const v = bars.map((_, i) => span(per[k], i, i + 2) - span(per[k], i - 2, i)), sd = sdOf(v); J[k] = v.map(x => x / sd); }
+  const score = bars.map((t, i) => {
+    let up = 0, dn = 0;
+    for (const k in WEIGHT) { up += WEIGHT[k] * Math.max(0, J[k][i]); dn += (k === 'bright' ? 0.4 : WEIGHT[k]) * Math.max(0, -J[k][i]); }
+    return { i, t, s: Math.max(up, dn), sign: up >= dn ? 1 : -1 };
+  });
+  const peaks = score.filter(x => x.t > 4 * bar && x.t < dur - 4).filter(x => { for (let k = -4; k <= 4; k++) if (k && score[x.i + k]?.s > x.s) return false; return true; });
+  // A rise goes to the section start or arrival nearest it within 2 bars, a fall to the biggest single-bar drop within 2 bars.
+  const marks = [...d.segments.slice(1).map(x => x.t0), ...d.arrivals.map(x => x.t)];
+  const refined = peaks.map(x => {
+    if (x.sign < 0) {
+      let best = x.i, drop = 0;
+      for (let k = Math.max(1, x.i - 2); k <= Math.min(N - 1, x.i + 2); k++) { const v = per.loud[k - 1] - per.loud[k]; if (v > drop) { drop = v; best = k; } }
+      return { ...x, i0: x.i, i: best, t: bars[best] };
+    }
+    const m = nearest(marks, x.t);
+    if (!m || Math.abs(m.d) > 2 * bar + 1e-3) return { ...x, i0: x.i };
+    const at = bars.reduce((b, t, i) => (Math.abs(t - m.v) < Math.abs(bars[b] - m.v) ? i : b), 0);
+    return { ...x, i0: x.i, i: at, t: m.v };
+  }).sort((a, b) => b.s - a.s);
+  return { score, peaks: refined };
+}
+// The level, 0 whisper to 4 peak, of each bar.
+export function rideOf(d, jumps = jumpsOf(d)) {
+  const { per, bars } = d, N = bars.length, z = a => { const m = meanOf(a), sd = sdOf(a); return a.map(v => (v - m) / sd); };
+  const lz = z(per.loud), bz = z(per.bright), pz = z(per.perc);
+  const h0 = bars.map((_, i) => lz[i] + 0.5 * bz[i] * Math.min(1, Math.max(0, per.loud[i] / 0.4)) + 0.4 * pz[i]);
+  const heat = bars.map((_, i) => meanOf(h0.slice(Math.max(0, i - 1), Math.min(N, i + 3))));
+  const qs = [0.15, 0.4, 0.7, 0.9].map(q => { const v = [...heat].sort((a, b) => a - b); return v[Math.floor((v.length - 1) * q)]; });
+  const lv = heat.map(h => qs.filter(q => h >= q).length);
+  const runs = () => { const r = []; let a = 0; for (let i = 1; i <= N; i++) if (i === N || lv[i] !== lv[a]) { r.push({ a, b: i, l: lv[a] }); a = i; } return r; };
+  // Runs under 4 bars join their nearest neighbour; then each edge goes to a jump within 4 bars, because the mean runs late.
+  for (let pass = 0; pass < 4; pass++) { const r = runs(); r.forEach((x, i) => { if (x.b - x.a >= 4) return; const L = r[i - 1], R = r[i + 1], to = !L ? R : !R ? L : Math.abs(L.l - x.l) <= Math.abs(R.l - x.l) ? L : R; if (to) for (let k = x.a; k < x.b; k++) lv[k] = to.l; }); }
+  const big = jumps.peaks.filter(p => p.s >= 2.5).map(p => p.i0), r = runs();
+  for (let i = 1; i < r.length; i++) {
+    const e = r[i].a, m = nearest(big, e);
+    if (!m || Math.abs(m.d) > 4 || m.d === 0) continue;
+    for (let k = Math.min(e, m.v); k < Math.max(e, m.v); k++) lv[k] = m.v < e ? r[i].l : r[i - 1].l;
+  }
+  return lv;
+}
+
+export function report(song, d, tags) {
+  const s = d.samples, n = s.diff.length, beat = d.beat, bar = d.bar, dur = d.dur, out = [], p = (x = '') => out.push(x);
+  const g = d.gestures, real = g.slice(0, -1), iOf = t => Math.max(0, Math.min(n - 1, Math.round(t * F)));
+  const { range, avg, edge, diff3, shows, peakOf } = measures(d);
+  const eOf = (a, b) => avg('E', a, b);
+  const secName = x => `${x.label}${x.visit + 1}`, sectionAt = t => d.segments.find(x => t >= x.t0 && t < x.t1) ?? d.segments.at(-1);
   const lines = s.nx.map((v, i) => v + s.ny[i]);
   const barAt = t => { let k = 0; for (let i = 0; i < d.bars.length; i++) { if (d.bars[i] <= t + 1e-3) k = i; else break; } return k; };
 
@@ -246,28 +349,11 @@ function report(song, d, tags) {
   const fallAt = d.bars.map(t => (t > 4 * bar && t < dur - 4 * bar ? eOf(t - 4 * bar, t) - eOf(t, t + 4 * bar) : 0));
   const falls = d.bars.map((t, i) => ({ t, v: fallAt[i], i })).filter(x => x.v >= 0.08 && x.v >= (fallAt[x.i - 1] ?? 0) && x.v >= (fallAt[x.i - 2] ?? 0) && x.v > (fallAt[x.i + 1] ?? 0) && x.v > (fallAt[x.i + 2] ?? 0));
 
-  // ---- the structural changes: a pattern landing, where its transformation means it to hit, and the big moves that hit inside a gesture
-  const castOf = (G, kind) => d.cast.find(h => h.kind === kind && Math.abs(h.t1 - G.t1) < 0.06);
-  const changes = real.slice(0, -1).map(G => {
-    const N = g[G.i + 1], hero = G.xform === 'shock' || G.xform === 'iris' ? castOf(G, G.xform) : null;
-    return { s: hero ? hero.sAt : G.s1, end: G.s1, sm: G.sm, type: G.into ?? '?', from: G.id, to: N.id, D: G.morph, G };
-  });
-  for (const h of d.cast) {
-    if (!['countdown', 'coin', 'lock'].includes(h.kind)) continue;
-    const t = h.kind === 'lock' ? h.s1 : h.sAt, on = changes.find(c => Math.abs(c.s - t) < 0.3);
-    if (on) on.type += `+${h.kind}`;
-    else changes.push({ s: t, end: t, sm: null, type: `hit:${h.kind}`, from: h.id, to: h.id, D: 0, G: null });
-  }
-  changes.sort((a, b) => a.s - b.s);
+  // ---- the structural changes
+  const changes = changesOf(d);
   const changeT = changes.map(c => c.s);
 
-  // ---- does a moment show? The picture's rate of change, around it, against what's usual nearby
-  const diff3 = s.diff.map((_, i) => (s.diff[Math.max(0, i - 1)] + s.diff[i] + s.diff[Math.min(n - 1, i + 1)]) / 3);
-  const shows = t => {
-    const near = range(t - 0.25, t + 0.25).map(i => diff3[i]), base = [...range(t - 8, t - 1), ...range(t + 1, t + 8)].map(i => s.diff[i]);
-    return (near.length ? Math.max(...near) : 0) / Math.max(medOf(base), 0.2);
-  };
-  // The same, as a profile: how fast the picture changes in the 2 s before a moment, on it and in the 2 s after, against that same typical rate. Whether it surges into the moment, or after, or not at all.
+  // ---- does a moment show? As a profile: how fast the picture changes in the 2 s before a moment, on it and in the 2 s after, against that same typical rate. Whether it surges into the moment, or after, or not at all.
   const profile = t => {
     const base = Math.max(medOf([...range(t - 8, t - 1), ...range(t + 1, t + 8)].map(i => s.diff[i])), 0.2);
     return [[-2, -1], [-1, -0.25], [-0.25, 0.25], [0.25, 1], [1, 2]].map(([a, b]) => fx(meanOf(range(t + a, t + b).map(i => s.diff[i])) / base, 1)).join(' ');
@@ -275,7 +361,7 @@ function report(song, d, tags) {
   // ...and what's going on at it
   const stateAt = t => { const i = iOf(t), G = g[s.gi[i]]; return s.kind[i] ? `${G?.into ?? s.kind[i]} ${Math.round(s.x[i] * 100)}%` : `holding ${G?.id ?? '?'}`; };
   const onBars = d.bars.filter(t => t > 8 && t < dur - 8);
-  const chanceShow = meanOf(onBars.map(t => (shows(t) >= VIS ? 1 : 0))), chanceBeat = meanOf(onBars.map(t => (Math.abs(nearest(changeT, t)?.d ?? 99) <= beat ? 1 : 0)));
+  const chanceShow = barLinesShow(d, shows), chanceBeat = meanOf(onBars.map(t => (Math.abs(nearest(changeT, t)?.d ?? 99) <= beat ? 1 : 0)));
 
   // ---- where a change lands
   const strongNear = t => {
@@ -302,10 +388,7 @@ function report(song, d, tags) {
     Object.assign(c, tierOf(c.s));
     c.show = shows(c.s);
     // Where the eye sees it: the fastest moment of the transformation, against where it's meant to land. A move that eases to rest on its beat is doing almost nothing on that beat.
-    if (c.sm != null) {
-      const r = range(c.sm, c.end + 0.25);
-      if (r.length) { let top = r[0]; for (const i of r) if (diff3[i] > diff3[top]) top = i; c.peakAt = top / F; c.peakOff = c.peakAt - c.s; c.peakBar = nearest(d.bars, c.peakAt)?.d; const body = range(c.sm - 8, c.sm).map(i => s.diff[i]); c.peakX = diff3[top] / Math.max(medOf(body), 0.2); }
-    }
+    if (c.sm != null) Object.assign(c, peakOf(c.sm, c.end, c.s));
   }
   const allTiers = onBars.map(t => tierOf(t).tier), chanceStrong = meanOf(allTiers.map(x => (x === 'strong' ? 1 : 0))), chancePhrase = meanOf(allTiers.map(x => (x === 'phrase' ? 1 : 0)));
 
@@ -571,9 +654,15 @@ export default async ({ page, log, save, sleep, out }) => {
     for (let i = 0; i < 3000; i++) { if (await page.eval('window.__done||!!window.__err')) break; await sleep(200); }
     const err = await page.eval('window.__err');
     if (err || !(await page.eval('window.__done'))) throw new Error(`${song} didn't load: ${err ?? 'timed out'}`);
+    if (process.env.CUT) {
+      for (let i = 0; i < 1500 && !(await page.eval('!!app.song.compare')); i++) await sleep(200);
+      if (!(await page.eval('!!app.song.compare'))) throw new Error(`CUT=1: ${song} has no hand cut, or it never got rehearsed`);
+      await page.eval(`(()=>{const sc=app.song.compare.score('cut');app.song.score=sc;app.stage.setScore(sc)})()`);
+    }
     log(song, 'loaded in', ((Date.now() - t0) / 1000).toFixed(0), 's. Walking it.');
     const raw = await page.eval(collect, { F, W, H });
     const parsed = JSON.parse(raw);
+    save(`${song}.walk.json`, raw);
     const tags = tagsOf(song);
     const { text, glance } = report(song, parsed, tags);
     save(`${song}.shots.txt`, text);

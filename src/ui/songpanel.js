@@ -11,12 +11,14 @@ export class SongPanel {
         <button data-pick>choose a song</button>
         <button data-play hidden>play</button>
         <button data-take hidden>another take</button>
+        <button data-film hidden></button>
         <button data-mine>use the pattern on screen</button>
         <button data-eject hidden>eject</button>
         <span class="grow quiet" data-name>or drop one anywhere</span>
         <span class="quiet" data-time></span>
         <button data-close>close</button>
       </div>
+      <div class="row refused quiet" data-refused hidden></div>
       <div class="progress" data-progress hidden><i></i></div>
       <div class="strip" data-strip hidden><div class="head"></div></div>
       <div class="row balance">
@@ -45,6 +47,7 @@ export class SongPanel {
     $('[data-close]').onclick = () => this.show(false);
     $('[data-play]').onclick = () => { if (app.song?.aside) app.sound?.handBack?.(); else hand.togglePause(); };
     $('[data-take]').onclick = () => this.take();
+    $('[data-film]').onclick = () => this.switchFilm();
     $('[data-mine]').onclick = () => this.toggleMine();
     $('[data-eject]').onclick = () => this.eject();
     $('[data-strip]').onclick = e => {
@@ -106,15 +109,50 @@ export class SongPanel {
     }
   }
 
-  // Another film of the same song: the old one closes to a solid and the new one opens from it, while the music carries on.
+  // Another film of the same song: it's made out of sight and rehearsed while this one carries on, then the old one bends into it, with the music going all the time.
   take() {
     this.seed = (this.seed * 2654435761 >>> 0) % 100000 + 1;
-    this.hand.veil(() => { this.app.song.rebuild({ seed: this.seed }); this.buildStrip(); });
+    return this.nextFilm({ seed: this.seed });
   }
 
   compose() {
-    const pattern = this.useMine ? this.hand.mine() : null;
-    this.hand.veil(() => { this.app.song.rebuild({ pattern }); this.buildStrip(); });
+    return this.nextFilm({ pattern: this.useMine ? this.hand.mine() : null });
+  }
+
+  async nextFilm(o) {
+    const name = this.file?.name || this.$('[data-name]').textContent;
+    this.say('another take is on its way');
+    const show = await this.app.song.prepareTake(o);
+    this.say(name);
+    if (show) this.hand.veil(() => { show(); this.buildStrip(); });
+  }
+
+  // A song with a hand cut. d: the other film. D: the other film, from where the last switch happened. The song says what's possible, and for a song with no cut none of this does anything at all.
+  switchFilm(back = false) {
+    const song = this.app.song, c = song?.compare;
+    if (!c) { if (song?.compareComing && !song.aside && !this.app.stage.world) this.app.ui?.say?.('the other film is still rehearsing'); return false; }
+    c.onShow ??= f => {
+      const line = f === 'cut' ? c.lineOnce() : null;
+      // The note keeps its line breaks, and a sentence this long wants some.
+      this.app.ui?.say?.(line ? line.replace(/(.{1,88})(\s+|$)/g, '$1\n').trim() : c.label, line ? 9000 : 1500);
+    };
+    c.flip(back);
+    return true;
+  }
+
+  // = and -: logged against the film and the time.
+  markFilm(yes) {
+    const c = this.app.song?.compare;
+    if (!c) return false;
+    const m = c.mark(yes);
+    this.app.ui?.say?.(`${yes ? 'yes' : 'no'}  ${clock(m.t)}`, 900);
+    return true;
+  }
+
+  // Blind, ? tells which is which.
+  revealFilms() {
+    const told = this.app.song?.compare?.reveal();
+    if (told) this.app.ui?.say?.(told, 4000);
   }
 
   eject() {
@@ -158,7 +196,16 @@ export class SongPanel {
   }
 
   update() {
-    if (!this.open || this.state !== 'ready') return;
+    if (!this.open) return;
+    // Only for a song with a hand cut, once both films have been rehearsed. It says which one's showing.
+    const c = this.app.song?.compare, film = this.$('[data-film]'), text = c?.label ?? '';
+    if (film.hidden !== !c) film.hidden = !c;
+    if (film.textContent !== text) film.textContent = text;
+    // What couldn't run in the cut, or what the guard took from it. Never in a blind test.
+    const gone = c && !c.blind && c.film === 'cut' ? (this.app.song.score?.refused ?? []) : [], box = this.$('[data-refused]');
+    if (box.hidden !== !gone.length) box.hidden = !gone.length;
+    if (gone.length !== this.goneSeen) { this.goneSeen = gone.length; box.textContent = gone.map(r => `${clock(r.t)} ${r.what}: ${r.why}`).join('   '); }
+    if (this.state !== 'ready') return;
     const s = this.app.song, d = this.duration(), t = s?.resting ? d : s?.aside ? s.time() : this.app.t;
     if (d) {
       this.head.style.left = Math.min(100, t / d * 100) + '%';

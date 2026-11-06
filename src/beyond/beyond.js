@@ -109,14 +109,7 @@ function songTable(A) {
     if (end > b + 0.2) knots.push({ t: end, x: L });
     prev = knots[knots.length - 1].x;
   });
-  // At most one stop in a song: the start of its quietest long stretch, long enough to catch up again before anything lands.
-  let stop = null, low = Infinity;
-  const need = DEC + STOP_LEN;
-  if (arc) for (let a = A.duration * 0.15; a + need < A.duration * 0.95; a += 2) {
-    const e = energy(a, a + need);
-    if (e < low) { low = e; stop = a + DEC; }
-  }
-  tab = { knots, stop };
+  tab = { knots };
   songTables.set(A, tab);
   return tab;
 }
@@ -127,11 +120,16 @@ const breath = t => 0.3 + 0.7 * smoother(0.5 + 0.5 * (0.72 * Math.sin(t * 2 * Ma
 // ---------------------------------------------------------------- the quadrature stop
 // Everything comes to rest for a few seconds with the plates at exactly a quarter period, then catches up. Only ever a lag, so nothing
 // can jump. The picture keeps crawling in your peripheral vision, if the staircase does its work.
-const DEC = 2.5, HOLD = 5.5, RES = 2.5, FAST = 0.3, END = 6;
-const LAG1 = DEC / 2 + HOLD + RES * (1 - FAST) / 2;
-const CRUISE = (LAG1 - FAST * END / 2) / FAST;
+const stopShape = (DEC, HOLD, RES, FAST, END) => {
+  const LAG1 = DEC / 2 + HOLD + RES * (1 - FAST) / 2, CRUISE = (LAG1 - FAST * END / 2) / FAST;
+  return { DEC, HOLD, RES, FAST, END, LAG1, CRUISE, LEN: DEC + HOLD + RES + CRUISE + END };
+};
+// With no song a stop can take its time. A film has somewhere to be: everything it lands on is on the song, so a stop is short, pays its lag back quickly, and only goes where nothing lands (songStop).
+const WANDER = stopShape(2.5, 5.5, 2.5, 0.3, 6), SONG = stopShape(1.5, 3, 1.5, 0.8, 3);
+const shapeOf = score => (score?.song ? SONG : WANDER);
 const I5 = u => u * u * u * u * (u * (u - 3) + 2.5);    // the integral of smoother
-function lagOf(t, a) {
+function lagOf(t, a, S) {
+  const { DEC, HOLD, RES, FAST, END, LAG1, CRUISE } = S;
   if (t <= a - DEC) return 0;
   if (t < a) return DEC * I5((t - a + DEC) / DEC);
   if (t < a + HOLD) return DEC / 2 + t - a;
@@ -143,13 +141,12 @@ function lagOf(t, a) {
   if (x < END) { const v = x / END; return Math.max(0, LAG1 - FAST * CRUISE - FAST * END * (v - I5(v))); }
   return 0;
 }
-const STOP_LEN = DEC + HOLD + RES + CRUISE + END;
 const wanderStop = t => { const n = Math.floor((t - 150 + 60) / 300); return 150 + 300 * Math.max(n, 0); };   // the nearest one that could matter
-const stopEnv = (t, a) => (a == null ? 0 : smoother((t - a + 7) / 7) * (1 - smoother((t - a - HOLD) / 7)));
+const stopEnv = (t, a, S) => (a == null ? 0 : smoother((t - a + 7) / 7) * (1 - smoother((t - a - S.HOLD) / 7)));
 
 // ---------------------------------------------------------------- start
 export function init(app) {
-  let active = false, level = 0, pinned = null, force = null, paused = 0;
+  let active = false, level = 0, pinned = null, force = null, paused = 0, shutIn = 0;
   // A stop only counts if its rest starts while colour is on and this score is up. Anything else would make the clock suddenly lag.
   let from = Infinity, until = Infinity, seen = null;
   let shown = palettes[0].lin.slice(), fadeFrom = null, fade = 1;
@@ -158,7 +155,7 @@ export function init(app) {
   // It also has to keep clear of the film's own stops (score.time.windows). While the film pays a rest back its clock runs at 1.5 with the song's tables at 1, so a colour stop holding the
   // picture still there would run the tables backward at half speed. Colour's own catching up is faster than that, so only its slowing down, its hold and its start up count.
   const clearOfMorphs = (a, score) => {
-    const p = a - DEC / 2;
+    const DEC = WANDER.DEC, p = a - DEC / 2;
     for (const G of score?.gestures || []) {
       if (!G.morph) continue;
       const m0 = G.t1 - G.morph;
@@ -166,33 +163,38 @@ export function init(app) {
     }
     return a;
   };
-  const clearOfRests = (a, score) => {
-    for (const w of score?.time?.windows || []) if (a - DEC < w.paid && a + HOLD + RES > w.from) return w.from - HOLD - RES - 0.5;
-    return a;
-  };
-  const safeStop = (a, score) => {
-    if (a == null) return a;
-    if (!score?.time?.windows?.length) return clearOfMorphs(a, score);
-    // Each move goes earlier, so this settles unless there's no room at all. Then there's no stop in this song.
-    for (let i = 0; i < 6; i++) {
-      const b = clearOfRests(clearOfMorphs(a, score), score);
-      if (b === a) return a;
-      a = b;
+  // In a film: the quietest place where the stop and all of its catching up fit inside one gesture's body, clear of every hero and every one of the film's own stops, so that nothing it lands on is ever late.
+  // No such place, no stop in this song.
+  const songStops = new WeakMap();
+  const songStop = (score, A) => {
+    if (songStops.has(score)) return songStops.get(score);
+    const { DEC, LEN } = SONG, cast = score.cast ?? [], lags = score.time?.windows ?? [];
+    const quiet = (x, y) => { let e = 0, n = 0; for (let t = x; t < y; t += 0.5) { e += A.E[clamp(Math.round(t * A.fps), 0, A.E.length - 1)]; n++; } return n ? e / n : Infinity; };
+    let best = null, low = Infinity;
+    for (const G of score.gestures) {
+      if (!G.morph || G.hero || G.moves?.length) continue;
+      for (let a = G.t0 + 2 + DEC; a + LEN < G.t1 - G.morph - 1; a += 1) {
+        const x = a - DEC, y = a + LEN;
+        if (cast.some(h => x < h.t1 && y > h.t0) || lags.some(w => x < w.paid && y > w.from)) continue;
+        const e = quiet(x, y);
+        if (e < low) { low = e; best = a; }
+      }
     }
-    return null;
+    songStops.set(score, best);
+    return best;
   };
   const analysis = score => (score?.song && app.song?.analysis?.hash === score.song.hash ? app.song.analysis : null);
   const stopFor = (t, score) => {
     if (score !== seen) { seen = score; from = t; }
     const A = score?.song ? analysis(score) : null;
-    const a = safeStop(score?.song ? (A ? songTable(A).stop : null) : wanderStop(t), score);
+    const a = score?.song ? (A ? songStop(score, A) : null) : clearOfMorphs(wanderStop(t), score), DEC = shapeOf(score).DEC;
     return a == null || a - DEC < from || a - DEC >= until ? null : a;
   };
   function openAt(t, score) {
     if (force != null) return force;
     const A = analysis(score);
     let x = A ? evalTrack(songTable(A).knots, t) : breath(t);
-    const env = Math.max(stopEnv(t, stopFor(t, score)), paused);
+    const env = Math.max(stopEnv(t, stopFor(t, score), shapeOf(score)), paused);
     x = 1 - (1 - clamp(x)) * (1 - env);
     return x;
   }
@@ -217,8 +219,8 @@ export function init(app) {
     // the score's clock, with the stops taken out of it
     time(t, score) {
       if (force != null) return t;
-      const a = stopFor(t, score);
-      return a == null || t > a + STOP_LEN ? t : t - lagOf(t, a);
+      const a = stopFor(t, score), S = shapeOf(score);
+      return a == null || t > a + S.LEN ? t : t - lagOf(t, a, S);
     },
     write(F, t, score, ga, gb, T, plan) {
       let open = openAt(t, score) * smoother(level);
@@ -260,7 +262,7 @@ export function init(app) {
     openAt: t => openAt(t, app.stage.score),
     // Still catching up from a stop, turning it off and on again changes nothing. Otherwise the stops count from now.
     on() { if (!(app.edits.beyond && engine.time(app.t, app.stage.score) !== app.t)) from = app.t; until = Infinity; active = true; app.edits.beyond = engine; },
-    off() { active = false; until = app.t; },
+    off({ fast = 0 } = {}) { active = false; until = app.t; shutIn = fast; },       // fast: seconds to shut in, for a world that's waiting
     toggle() { if (active) b.off(); else b.on(); return active; },
     setPalette(i) { pinned = ((i % palettes.length) + palettes.length) % palettes.length; fadeFrom = shown.slice(); fade = 0; },
     // for looking at it: all the way there at once, at a chosen opening
@@ -269,7 +271,8 @@ export function init(app) {
 
   // How far "on" this is moves a little each frame, about six seconds, and any pick by hand about two, so the mix of two inks doesn't linger.
   app.onFrame.push(() => {
-    level = clamp(level + (active ? 1 : -1) / 360);
+    level = clamp(level + (active ? 1 / 360 : -1 / (shutIn ? shutIn * 60 : 360)));
+    if (active) shutIn = 0;
     if (fade < 1) { fade = Math.min(1, fade + 1 / 130); if (fade === 1) fadeFrom = null; }
     paused = clamp(paused + (active && app.paused && !app.clock ? 1 : -1) / 180);
     // Turned off in the middle of a stop, its clock still has to catch up before it can let go, or the picture would jump.

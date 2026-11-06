@@ -15,6 +15,7 @@
 // at least four kinds and one within 90 s. A different take is cast differently: other bodies, other turns, other sections. Pure: the same song and seed make the same film.
 import { rng, clamp, lerp, smoother } from './curves.js';
 import { flag } from './flags.js';
+import { land } from './land.js';
 import { base, boldRange, fillSlot, fineness } from './slot.js';
 import { OFF, SLOT_FLOATS } from '../pattern/layout.js';
 import { MOVES } from './moves/index.js';
@@ -32,8 +33,8 @@ const RILEY = {     // what suits how big the section is
   mid: ['riley.metamorphosis', 'riley.labyrinth', 'riley.shift', 'riley.alhambra', 'riley.swarm'],
   loud: ['riley.octagrid', 'riley.mosaic', 'riley.rose', 'riley.snap', 'riley.snap3'],
 };
-const RING_CRACK = 0.1;     // beats from one ring breaking to the next
-const RING_SURGE = 0.62;     // the share of a bar each surge takes
+const RING_CRACK = 0.25;    // beats from one ring breaking to the next
+const RING_SURGE = 0.95;    // the share of a bar each surge takes: nearly all of it, so the rings lean into each downbeat and never stop dead between them
 const RING_TUNE = 0.35;     // how much of the tune's push on the loose rings stays: they hang, and shouldn't look as if they're drifting
 const RING_TUNE_OFF = 2;    // beats either end of the run that the tune leaves the rings alone
 const BOARD_ARRIVES = [1.35, 0.32], BOARD_SETTLES = 2;     // the board comes in this much bigger and this far turned (radians), and settles over this many bars, so that it's arriving at the same time as it breaks
@@ -54,6 +55,7 @@ const REPLAYS = 2;          // how many times a section's hero can come round ag
 const IRIS_D = 12, IRIS_HIT = 0.61, IRIS_NEAR = 30, IRIS_FINE = 9, IRIS_NEXT = 7, IRIS_AFTER = 16;     // seconds it takes; how far along it turns inside out; how far from the climax its landing can be; how fine a sheet it can roll up, cycles per picture unit: it comes in as it goes; seconds the gesture after it wants if it's cut out of a long one
 const IRIS_BODIES = ['lattice.master', 'riley.octagrid', 'lines.river', 'pole.dipole', 'checks.twist', 'riley.rose', 'dots.inflate', 'riley.mosaic', 'waves.current', 'lattice.teeth'];     // what makes a good flower, for when what's there can't
 const COUNT_OPENING = 13.1;
+const LOOK_RUN = 50;        // seconds of one look, at most, unless it's all heroes
 const OPENING = 14;         // seconds: a song arriving takes 7 s to fly in and wants 6 more to itself, and whatever's next in that time gets swallowed. So nothing that matters starts before this.
 
 const slot = new Float32Array(SLOT_FLOATS);
@@ -204,8 +206,8 @@ export function direct(score, A, M) {
     const j = g.findIndex(x => x.t1 >= l.B && x.t1 - (x.morph || 0) >= l.B + 2 * bar);
     if (j < 0 || j >= lastG() || start < OPENING || !free(start - 15, g[j].t1)) return null;
     const dir = rand() < 0.5 ? 1 : -1;
-    // After it lands it zooms in a little as it pours, and however long it has before the next transformation it mustn't end up one huge flat shape.
-    const tail = Math.max(g[j].t1 - (g[j].morph || 0) - l.B, 1), after = Math.min(0.045, COIN_GROWS / tail);
+    // It lands broad, so past the landing it draws back as it pours: going the other way, a few big shapes are all that's left of it by the end of a long tail.
+    const tail = Math.max(g[j].t1 - (g[j].morph || 0) - l.B, 1), after = -Math.min(0.045, COIN_GROWS / tail);
     const H = spliceCoin(score, l.B, pat, { beats, dir, w0: rand() * Math.PI * 2, after });
     return H ? put('coin', H, l.B, H.t0, H.t1, H.t0 + 2 * bar, l.B + bar) : null;
   };
@@ -317,8 +319,38 @@ export function direct(score, A, M) {
   if (flag('iris')) { putIris(); putTheStar(); lateCoin(); }
   else { lateCoin(); putTheStar(); }
 
-  // A section that comes back wears it again, the other way round: the same dial, turning and locking the other way.
-  if (cd) for (const L of comeback) putCountdown(L, dial, true);
+  // A section that comes back wears it again, the other way round: another dial, turning and locking the other way.
+  if (cd) {
+    const others = DIALS.map(lib).filter(p => p && p !== dial);
+    for (const L of comeback) putCountdown(L, (flag('lookRuns') && others.length ? others[Math.floor(rand() * others.length) % others.length] : null) ?? dial, true);
+  }
+
+  // ------------------------------------------------------------- not too long in one look
+  // A dial, a check and a coin of rings and spokes are all a checker to the eye, and left alone a film can run two minutes of it. So the plainest gesture in the middle of a long run becomes something else.
+  if (flag('lookRuns') && score.remake) {
+    const checker = p => (p.g.round ?? 0) <= 0.5 && (p.g.fams || []).filter(f => Math.abs(f.d ?? 0) <= 1.01).length === 2;
+    for (let round = 0; round < 8; round++) {
+      let a = -1, b = -1, longest = 0;
+      for (let i = 0; i < lastG();) {
+        let j = i, len = 0;
+        while (j < lastG() && checker(g[j].pattern)) { len += g[j].t1 - g[j].t0; j++; }
+        if (len > longest) { longest = len; a = i; b = j; }
+        i = Math.max(j, i + 1);
+      }
+      if (longest <= LOOK_RUN) break;
+      const mid = (g[a].t0 + g[b - 1].t1) / 2, away = G => Math.abs((G.t0 + G.t1) / 2 - mid) + (G.replayOf != null ? 1e3 : 0);
+      const spots = g.slice(Math.max(a, 1), b).filter(G => isPlain(G) && G.k != null && !g[g.indexOf(G) - 1]?.xform).sort((x, y) => away(x) - away(y));
+      let swapped = false;
+      for (const G of spots) {
+        const i = g.indexOf(G), others = (score.patterns ?? []).filter(p => !checker(p) && p.fine !== true && p.family !== g[i - 1].pattern.family && p.family !== g[i + 1]?.pattern.family && !g.some(x => x.pattern === p)).map(p => [rand(), p]).sort((x, y) => x[0] - y[0]);
+        if (!others.length) continue;
+        g[i] = score.remake(G, others[0][1]);
+        swapped = true;
+        break;
+      }
+      if (!swapped) break;
+    }
+  }
 
   // ------------------------------------------------------------- Locks
   if (flag('lock') && flag('slip')) {
@@ -551,5 +583,7 @@ export function direct(score, A, M) {
   for (const h of cast) { const l = score.landings.find(x => Math.abs(x.B - h.at) < 0.05); if (l) l.hero = h.kind; }
   score.cast = cast.map(h => ({ kind: h.kind === 'riley' ? h.G.hero : h.kind, at: +h.at.toFixed(2), t0: +h.a.toFixed(2), t1: +h.b.toFixed(2), id: h.G.pattern.id, mirror: !!h.mirror, gain: h.gain }));
   score.stats = { ...score.stats, gestures: g.length - 1, cast: score.cast.map(h => `${h.kind}@${h.at.toFixed(0)}`).join(' ') };
+  score.kit = { cast, putCountdown, makeCountdown, rand, lib };     // what a hand cut places with (docs/DIRECTION.md section 7)
+  land(score, A, M, cast);     // last of all. Behind directing.peak
   return score;
 }

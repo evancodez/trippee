@@ -2,7 +2,9 @@
 //   SONG=media/mgmt.mp3 node tools/lab.mjs tests/flash.mjs --out lab-out/repair         the whole film at 12 fps, and at 60 around each thing flagged
 //   AT=204.5-206.2 EVERY=.1 ...                                                         close frames across a stretch, with their numbers, as <song>-<at>.jpg
 //   FLAGS=lung=0,weight=0 SET=reactAmt=0 SEED=3                                         another configuration of the same film
+//   WORLD=numbers ...                                                                   a world: true colour through all three channels (luma, WCAG's red, red minus cyan), at a world's limits, 0 and 1. No WORLD and nothing here reads them
 import { resolve, basename } from 'node:path';
+import { enterWorld, makeChannels, CHANNELS, WORLD_FLASH } from '../tools/look.mjs';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const r2 = x => +(+x).toFixed(2);
 // The judge's count, in tools/look.mjs: opposing swings of at least 10% of full scale within a second.
@@ -29,6 +31,8 @@ export default async ({ page, log, save }) => {
   await page.send('Input.dispatchDragEvent', { type: 'dragEnter', x: 320, y: 180, data });
   await page.send('Input.dispatchDragEvent', { type: 'drop', x: 320, y: 180, data });
   for (let i = 0; i < 1800; i++) { if (await page.eval('app.ui.song.state==="ready"')) break; await sleep(100); }
+  const world = process.env.WORLD && process.env.WORLD !== 'film' ? process.env.WORLD : null;
+  if (world) await enterWorld(page, world, log);
   await page.eval(async ({ flags, set, seed }) => {
     const F = await import(new URL('src/score/flags.js', location.href).href);
     for (const f of flags) { const [k, v] = f.split('='); F.setFlag(k, +v !== 0); }
@@ -79,6 +83,23 @@ export default async ({ page, log, save }) => {
     }
     return o;
   }, { duration: info.duration, FPS });
+  if (world) {
+    // The same frames again, in colour. Which channel, which tile, what was going on.
+    const c = await page.eval(async ({ duration, FPS, src }) => {
+      const T = window.trippee, chan = (0, eval)(`(${src})`)(), W = 320, H = 180, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const x = cv.getContext('2d', { willReadFrequently: true });
+      const o = { luma: [], red: [], rc: [], whole: { luma: [], red: [], rc: [] } }, N = Math.floor(duration * FPS);
+      for (let i = 0; i < N; i++) { T.seek(i / FPS); x.drawImage(T.canvas, 0, 0, W, H); const r = chan(x.getImageData(0, 0, W, H).data, W, H); for (const k of ['luma', 'red', 'rc']) { o[k].push(r[k]); o.whole[k].push(r.whole[k]); } if (i % 40 === 0) await new Promise(r => setTimeout(r)); }
+      return o;
+    }, { duration: info.duration, FPS, src: makeChannels.toString() });
+    for (const name of Object.keys(CHANNELS)) {
+      const swing = CHANNELS[name], over = (series, limit, who) => { const sw = []; let dir = 0, pivot = series[0]; series.forEach((v, i) => { if (dir >= 0 && v > pivot) { pivot = v; dir = 1; } if (dir <= 0 && v < pivot) { pivot = v; dir = -1; } if (dir === 1 && pivot - v >= swing) { sw.push(i); dir = -1; pivot = v; } else if (dir === -1 && v - pivot >= swing) { sw.push(i); dir = 1; pivot = v; } }); const o = []; for (let a = 0; a < sw.length; a++) { let b = a; while (b < sw.length && sw[b] - sw[a] < FPS) b++; const n = Math.floor((b - a) / 2); if (n > limit) o.push({ t: res.time[sw[a]], n, who }); } return o; };
+      const spots = [...over(c.whole[name], WORLD_FLASH.whole, 'whole'), ...Array.from({ length: 16 }, (_, k) => over(c[name].map(v => v[k]), WORLD_FLASH.tile, 't' + k)).flat()].sort((a, b) => a.t - b.t);
+      log(`${name}: ${spots.length} over the limits`);
+      const seen = new Set();
+      for (const x of spots) { const key = Math.round(x.t); if (seen.has(key)) continue; seen.add(key); const i = Math.round(x.t * FPS); log(`  ${r2(x.t)} x${x.n} ${x.who} [${res.kinds[i]}] ${res.ids[i]}`); if (seen.size > 40) break; }
+    }
+    return;
+  }
   const whole = flashSpans(res.mean, FPS, res.time, 0);
   const tiles = Array.from({ length: 16 }, (_, k) => flashSpans(res.tiles.map(a => a[k]), FPS, res.time, 2));
   log(`FLASH ${song}: whole ${whole.worst} tile ${Math.max(...tiles.map(t => t.worst))}`);

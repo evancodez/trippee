@@ -40,6 +40,7 @@ export function biggestElement(R, slot, aspect, seen) {
 // as a hole in it. Open the same on both sides (xor) and the outer pattern is gone but for a crack through the inner one, which reads as one laid over the other.
 export const FORM = { r0: 0.06, r1: 0.45, t1: 0.37, o0: 0.25, o1: 1.2, o2: 0.6, xor: false };
 const ramp = (v, a, b) => smoother((v - a) / (b - a));
+const CLOSES = 0.93;      // how far in T the outer pattern starts to close up. Most of it has left the frame by then, and what hasn't goes as a shape closing, not all at once.
 
 // How far a flight has to go to have the element fill the frame. With room for the song's lenses moving the frame a little, unless told how much.
 const reachOf = (e, aspect, room = 0.4, over = 1.15) => clamp((Math.hypot(e.x, e.y) + Math.hypot(Math.max(aspect, 1.9), 1) + room) * over / Math.max(e.r, 0.012), 1.5, 240);
@@ -94,7 +95,7 @@ const flight = {
     F[Dv] = plan.q[0]; F[Dv + 1] = plan.q[1]; F[Dv + 2] = Math.exp(lnS);
     F[Dv + 3] = kind === 'dive' ? (plan.white ? 1 : 2) : (plan.white ? 3 : 4);
     F[FRAME.spare * 4] = st.thFar;
-    F[FRAME.spare * 4 + 1] = smoother(((kind === 'dive' ? T : 1 - T) - 0.97) / 0.03);    // the last of a dive, the first of a rise: the frame is wholly in the element, so the outer pattern is exactly its colour
+    F[FRAME.spare * 4 + 1] = smoother(((kind === 'dive' ? T : 1 - T) - CLOSES) / (1 - CLOSES));    // the last of a dive, the first of a rise: whatever's left of the outer pattern closes up (chunks/main.js), and by the end it's exactly its element's colour
     A[OFF.theta] = st.theta; B[OFF.theta] = st.thetaB;
   },
 };

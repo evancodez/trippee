@@ -83,7 +83,7 @@ export function init(app) {
     if (standing) { standing = null; if (wasPlaying) s?.play?.(); return; }
     if (!s?.analysis || s.resting) return;    // it was ejected or ran out meanwhile: the wander just carries on
     stage.settle(app.pictureT(), () => {
-      if (app.clock || active) return;        // a song has started some other way, or the picture's been asked to play again, and that wins
+      if (app.clock || active || !s.score) return;        // a song has started some other way, the picture's been asked to play again, or the song's been ejected while this waited its turn: any of those wins
       const snap = stage.snapshot(app.pictureT());
       stage.setScore(s.score);                // the latest take, if there's been another
       app.clock = clock;

@@ -4,6 +4,9 @@
 //   uF[F_XF2] x, y: the centre; z: the front's width at the centre (the iris's radius, in an iris); w: how far the front itself pushes the sheet aside
 export default `vec2 gDT=vec2(0.);
 float xfU(vec2 p0){ vec4 x=uF[F_XF]; float R=length(p0-uF[F_XF2].xy)/x.w;
+#ifdef WORLD_FRONT
+  if(x.x>2.5) R=.5+.5*dot(p0-uF[F_XF2].xy,vec2(cos(uW[3].w),sin(uW[3].w)))/x.w;      // mode 3: a straight front, travelling along uW[3].w
+#endif
   float W=mix(uF[F_XF2].z,x.z,min(R,1.));      // it's slow and wide at the rim and tightens on the centre, which turns in moments, on the hit
   if(x.x>1.5) R=1.-R; return clamp((x.y-(1.-R)*(1.-W))/W,0.,1.); }
 float xfT(vec2 p0,float T){ if(uF[F_XF].x<.5) return T;

@@ -64,10 +64,11 @@ export default async ({ page, log, save }) => {
     // the toggles
     let r = await clickFx('static'); log('static button', r?.[2], await page.eval(`[app.stage.staticOn,document.querySelector('[data-fx=static]').className,document.querySelector('[data-fx=static]').textContent.trim()]`));
     r = await clickFx('static'); log('static button again', await page.eval(`[app.stage.staticOn,document.querySelector('[data-fx=static]').className]`));
-    r = await clickFx('beyond'); await sleep(7000);
+    r = await clickFx('beyond'); await sleep(1500);     // the button opens the world strip now
+    await page.eval(`document.querySelector('#worlds [data-w=colour]').click()`); await sleep(7000);
     log('colour button', r?.[2], await page.eval(`[app.beyond.active,document.querySelector('[data-fx=beyond]').className]`), 'coloured share', await page.eval('__px().then(__chroma)'));
     await page.shot('colour-on');
-    r = await clickFx('beyond'); await sleep(7000);
+    await page.eval(`document.querySelector('#worlds [data-w=film]').click()`); await sleep(7000);
     log('colour off', await page.eval(`[app.beyond.active,document.querySelector('[data-fx=beyond]').className]`), 'coloured share', await page.eval('__px().then(__chroma)'));
     r = await clickFx('sound'); await sleep(2500);
     log('music button', r?.[2], await page.eval(`[app.sound.active,document.querySelector('[data-fx=sound]').className,app.sound.context.state,app.sound.log.length]`));
@@ -412,6 +413,7 @@ export default async ({ page, log, save }) => {
       out.pickInStop = walk(150, 175); out.arrived = app.lastFrame.G.pattern.id;
       // static asked for during a rest, in a morph on the picture's clock
       app.beyond.off(); app.beyond.snap(); fresh(); T.seek(100); app.beyond.on(); app.beyond.snap(null);
+      app.stage._extend(155);
       const sc = app.stage.score.gestures, G = sc.find(x => x.t1 > 155); G.morph = 10; delete G.plan;
       walk(100, Math.max(101, G.t1 - 3));
       app.hand.setStatic(true);

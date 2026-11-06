@@ -2,7 +2,13 @@
 // (0 off, 1 river, 2 arcade, 3 blaze) to field-impossible.js and field-riley.js. See docs/NEXT.md 2.4.
 // field-impossible.js says it's there with #define FIELD_IMPOSSIBLE, and gives float fieldImpossible(int b,vec2 X,vec4 f).
 // In a program built with NORILEY S is simply 0, so it folds away and with it the look-up of fieldK in every family.
-export default `float fieldS(int b,vec2 X){
+export default `#ifdef WORLD_FIELD
+//@world:field
+#endif
+float fieldS(int b,vec2 X){
+#ifdef WORLD_FIELD
+  { vec4 wf=uG[b+I_field]; if(wf.x>3.5) return worldField(b,X,wf); }
+#endif
 #ifdef NORILEY
   return 0.;
 #else

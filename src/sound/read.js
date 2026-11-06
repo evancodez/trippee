@@ -41,9 +41,13 @@ export class Reader {
   _blit() {
     const gl = this.gl, c = this.R.canvas;
     this._lookAtInks();
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.fbo);
-    gl.blitFramebuffer(0, 0, c.width, c.height, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+    // In a world what's on the canvas is colour, so the frame is drawn again small as coverage (src/worlds/engine.js), and the brain reads what it always has.
+    if (this.R.wp) this.R.wp.coverage(this.fbo, W, H);
+    else {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.fbo);
+      gl.blitFramebuffer(0, 0, c.width, c.height, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+    }
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fbo);
   }
 

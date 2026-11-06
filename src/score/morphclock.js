@@ -11,6 +11,22 @@ import { clamp } from './curves.js';
 // From where it was to the end in a set time. It picks up speed from what it had over the first third and then holds it, so nothing passes through the middle
 // of a transformation (where T moves fastest) any faster than it must. x can arrive at speed: T = smoother(x) has already come to rest by then.
 const UP = 0.3;
+// x as it goes in, warped so that T = smoother(x) is fastest at G.peak.hit, not half way through, with T's speed unbroken there. q is how long the decay after it is, and q 0 is no warp.
+// A hit outside the morph is one that's been left behind: a pick cut this gesture short, say. Then it's just a morph.
+const FLIGHT_MOST = 1.5;     // natural logs a second: a flight can't outrun what a fall is allowed
+export function peaked(G, x) {
+  const k = G.peak;
+  if (!k || !k.q || !G.morph) return x;
+  const t0 = G.t1 - G.morph;
+  if (k.hit <= t0 || k.hit >= G.t1) return x;
+  const h = clamp((k.hit - t0) / G.morph, 0.2, 0.92), q = k.q, p = q * h / (1 - h);
+  const w = x < h ? 0.5 * Math.pow(x / h, p) : 1 - 0.5 * Math.pow((1 - x) / (1 - h), q);
+  const lnZ = G.plan?.lnZ ?? 0, slope = 0.5 * q / (1 - h);
+  if (!lnZ) return w;
+  // It blends back towards plain until the camera's under that.
+  const a = clamp((FLIGHT_MOST * G.morph / (1.875 * lnZ) - 1) / Math.max(slope - 1, 1e-3));
+  return x + (w - x) * a;
+}
 function rushed(h, x) {
   const r = h.rush;
   if (!r) return x;
@@ -32,8 +48,9 @@ export function morphAt(score, G, N, t) {
     return { from: h.G, to: G, tf: t + (h.dt || 0), t0: h.t0, D, x: rushed(h, clamp((t - h.t0) / D)), holder: h, handover: true, phiFrom: h.phi };
   }
   if (N && G.morph && t > G.t1 - G.morph) {
-    const t0 = G.t1 - G.morph, D = G.morph;
-    return { from: G, to: N, tf: t, t0, D, x: rushed(G, clamp((t - t0) / D)), holder: G, handover: false, phiFrom: null };
+    const t0 = G.t1 - G.morph, D = G.morph, m = { from: G, to: N, tf: t, t0, D, x: rushed(G, clamp((t - t0) / D)), holder: G, handover: false, phiFrom: null };
+    // A flight's limit is in its plan, which frame() may not have until after this returns: a seek straight to here would show one frame on the wrong x. So x is read when it's asked for.
+    return G.peak?.q ? { ...m, get x() { return rushed(G, peaked(G, clamp((t - t0) / D))); } } : m;
   }
   return null;
 }

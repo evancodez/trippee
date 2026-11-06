@@ -58,7 +58,7 @@ function pan(S, dx, dy) {
 // How much of the rings each slot has, as a share [slot A, slot B]. On a plain frame it's only A. They've let go before a gesture's own transformation, and come back after it.
 // A click's flight, which nobody saw coming, can't have let go first. So what's showing lets go over the very start of it, while it's barely moving, and what it's flying into, closed all that time and holding none
 // of it, takes them up again as it lands. That has to be per slot: a duty that isn't zero opens a slot that's meant to be shut.
-const plainRings = (G, t) => { const end = G.ringsEnd ?? (G.morph ? G.t1 - G.morph : null); return smoother((t - G.t0) / RING_BACK) * (end != null ? smoother((end - t) / RING_LET) : 1); };
+const plainRings = (G, t) => { const end = G.ringsEnd ?? (G.morph ? G.t1 - G.morph : null); return smoother((t - (G.ringsFrom ?? G.t0)) / RING_BACK) * (end != null ? smoother((end - t) / RING_LET) : 1); };
 const ringShares = [0, 0];
 function ringsNow(st, score, edits, flight, dive) {
   const { x, G, t } = st;
@@ -94,7 +94,10 @@ export function songSheet(st, score, edits) {
   if (hOn && hd.ambient != null) { chordRoom = lerp(hd.ambient * coinAmbient(hd.G, hd.ts ?? st.t), chordRoom, hx); ambient = lerp(hd.ambient, ambient, hx); }
   // A gesture the rehearsal found flashing with the song on it takes less of it (src/music/rehearse.js), letting go of that at both ends so nothing steps.
   const calm = G.calm ? lerp(1, G.calm, smoother((st.t - G.t0) / 1.5) * smoother((G.t1 - st.t) / 1.5)) : 1;
-  const mPulse = (edits?.reactPulse ?? 1) * amt * ambient * calm, mMel = (edits?.reactMelody ?? 1) * amt * ambient, mTone = (edits?.reactTone ?? 1) * amt * ambient, mHarm = (edits?.reactHarmony ?? 1) * amt * chordRoom, mLung = (edits?.reactLung ?? 1) * amt * ambient * calm;
+  let mPulse = (edits?.reactPulse ?? 1) * amt * ambient * calm * (hOn && hd.pulse != null ? lerp(hd.pulse, score.pulseLane?.(st.t) ?? 1, hx) : score.pulseLane?.(st.t) ?? 1), mMel = (edits?.reactMelody ?? 1) * amt * ambient, mTone = (edits?.reactTone ?? 1) * amt * ambient, mHarm = (edits?.reactHarmony ?? 1) * amt * chordRoom, mLung = (edits?.reactLung ?? 1) * amt * ambient * calm;
+  // A world's own balance. It comes in with the handover, so nothing steps as the world changes.
+  const H = score.world?.hear;
+  if (H) { mPulse *= lerp(1, H.pulse ?? 1, hx); mMel *= lerp(1, H.melody ?? 1, hx); mTone *= lerp(1, H.tone ?? 1, hx); mHarm *= lerp(1, H.harmony ?? 1, hx); mLung *= lerp(1, H.lung ?? 1, hx); }
   const flight = kind === 'dive' || kind === 'rise', dive = kind === 'dive';
   const knows = flag('understand') && !!Rc.M && !Rc.M.neutral;
   const weighs = flag('weight'), lensMap = knows && flag('lensMap'), lung = knows && flag('lung'), rings = knows && flag('tuneRings');

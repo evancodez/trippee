@@ -12,6 +12,7 @@ import { rng, clamp, lerp, smoother, evalTrack } from './curves.js';
 import { buildReact, surgedBeats } from './react.js';
 import { buildTime } from './time.js';
 import { direct } from './direct.js';
+import { applyCut } from './cut.js';
 import { flag, flags } from './flags.js';
 import { understand } from '../music/understand.js';
 import { base } from './slot.js';
@@ -26,12 +27,13 @@ const AFFINITY = {          // slide, perc, tempo, harmRate
   lines: [0.8, 0.2, 0.3, 0.4], stripe: [0.8, 0.2, 0.3, 0.4], dots: [0.2, 0.2, 0.5, 0.7], bodies: [0.4, 0.5, 0.4, 0.3], body: [0.4, 0.5, 0.4, 0.3],
   checks: [0.3, 0.7, 0.6, 0.6], check: [0.3, 0.7, 0.6, 0.6], voids: [0.5, 0.3, 0.2, 0.3], waves: [0.9, 0.1, 0.3, 0.2],
 };
-const TARGET = 24, LMIN = 12, LMAX = 42;      // gesture length, seconds
+const LENGTHS = { TARGET: 24, LMIN: 12, LMAX: 42 };      // gesture length, seconds
 const BREATH_ON = 1.2, BREATH_HALF = 0.25, HOME_ON = 0.4, ARRIVE_NEAR = 0.5, ARRIVE_PEAK = 2.5;     // what a landing earns for falling on the song's form
 const LONG_WHEN_QUIET = 1.3, SHORT_WHEN_LOUD = 0.85;
+const HIT_REACH = [-1, 1, 2], HIT_BETTER = 1.35, HIT_MORE = 0.25;     // beats a landing can move to find the hit, how many times stronger that has to be, and by how much (a hit is bass + percussion, 0..2)
 const ONE_MORE = 3;        // what another landing has to be worth. Most bars are something now, and without this a film would land on all of them
 const REST_ROOM = 8;       // seconds, the shortest gesture a landing moved to a rest can leave behind it
-const MORPH_SHORTEST = 6.5, MORPH_LONGEST = 14, MORPH_AFTER_REST = 5.5;      // seconds
+const MORPHS = { MORPH_SHORTEST: 6.5, MORPH_LONGEST: 14 }, MORPH_AFTER_REST = 5.5;      // seconds
 const ZOOM_FOLLOWS = 0.035;      // how much the energy has to change across a gesture for the zoom to follow it
 const STRIPES_CYCLE = 3;   // seconds
 const QUIET_ON = 0.1, QUIET_OFF = 0.35;      // of the way from the song's lower quartile of energy to its upper
@@ -123,6 +125,10 @@ function whitestPhase(pat, G) {
 
 // ---------------------------------------------------------------- the whole film
 export function compose(A, seed = 1, opts = {}) {
+  // A world may go about things at its own pace. All of these are a film's own otherwise.
+  const pace = opts.world?.motion;
+  const { TARGET, LMIN, LMAX } = pace?.len ? { TARGET: (pace.len[0] + pace.len[1]) / 2, LMIN: pace.len[0], LMAX: pace.len[1] } : LENGTHS;
+  const { MORPH_SHORTEST, MORPH_LONGEST } = pace?.morph ? { MORPH_SHORTEST: pace.morph[0], MORPH_LONGEST: pace.morph[1] } : MORPHS;
   // The seed and the song together: the same seed on two songs shouldn't pick the same things.
   let songHash = 0;
   for (const c of String(A.hash ?? A.duration)) songHash = (Math.imul(songHash, 31) + c.charCodeAt(0)) >>> 0;
@@ -269,6 +275,20 @@ export function compose(A, seed = 1, opts = {}) {
   }
   let land = [0, ...chosen.map(j => nodes[j].t)];
   if (land[land.length - 1] < tEnd - 1e-3) land.push(tEnd);
+  // The bar line wanders on some songs and sits a beat out on others, and everything a film does lands exactly on its landing. So a landing goes where the hit is: the strongest beat from one before to two after,
+  // if that's clearly stronger. landedFrom keeps the bar it was chosen for, which is the bar its arrival was measured on.
+  const landedFrom = new Map();
+  if (flag('onTheHit') && form) {
+    const hitAt = t => { let h = 0; for (let d = -0.04; d <= 0.07; d += 0.02) { const i = clamp(Math.round((t + d) * fps), 0, A.E.length - 1); h = Math.max(h, (A.bass?.[i] || 0) + (A.perc?.[i] || 0)); } return h; };
+    const beatAt = t => { let lo = 0, hi = beatsArr.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (beatsArr[m] < t) lo = m + 1; else hi = m; } return lo > 0 && t - beatsArr[lo - 1] < beatsArr[lo] - t ? lo - 1 : lo; };
+    for (let j = 1; j < land.length - 1; j++) {
+      const t = land[j], k = beatAt(t), here = hitAt(t);
+      let best = t, top = here;
+      for (const d of HIT_REACH) { const b = beatsArr[k + d]; if (b == null) continue; const h = hitAt(b) * (1 - 0.02 * Math.abs(d)); if (h > top) { top = h; best = b; } }
+      if (best === t || top < HIT_BETTER * here || top - here < HIT_MORE || best - land[j - 1] < LMIN / 2 || land[j + 1] - best < LMIN / 2) continue;
+      land[j] = best; landedFrom.set(best, t);
+    }
+  }
   // Where the picture's clock isn't the song's: from, a, b, paid
   const lags = form ? time.windows ?? [] : [];
   // A landing near a rest moves to its start, and one that would happen while the clock is still catching up does too. The picture only gets as far as time(a) before the band
@@ -664,10 +684,11 @@ export function compose(A, seed = 1, opts = {}) {
     const out = { B: +l.B.toFixed(3), kind: l.kind, form: l.form, pol: l.pol, holdOut: l.holdOut, holdIn: l.holdIn, dE: +(l.dE ?? 0).toFixed(3) };
     if (!form) return out;
     // What the director reads: how much of an arrival this is, in M.arrival's 0..1 and as the raw s; whether it falls on a breath; the rest it's on, if any.
-    const i = barIdxAt(l.B + 0.01);
-    out.a = +(M.arrivalAt(l.B) ?? 0).toFixed(3);
+    const was = landedFrom.get(l.B) ?? l.B, i = barIdxAt(was + 0.01);
+    if (was !== l.B) out.from = +was.toFixed(3);
+    out.a = +(M.arrivalAt(was) ?? 0).toFixed(3);
     out.s = +(M.arrivalS[i] ?? 0).toFixed(3);
-    out.breath = M.breath.t.some(x => Math.abs(x - l.B) < 0.05);
+    out.breath = M.breath.t.some(x => Math.abs(x - was) < 0.05);
     const r = M.rests.find(x => Math.abs(time(x.a) - l.B) < 2e-3);
     if (r) out.rest = { a: r.a, b: r.b };
     return out;
@@ -680,12 +701,12 @@ export function compose(A, seed = 1, opts = {}) {
     kinds: landings.reduce((o, l) => { o[l.kind] = (o[l.kind] || 0) + 1; return o; }, {}),
     replays: gestures.filter(g => g.replayOf != null).length,
     black: landings.filter(l => l.pol > 0).length, white: landings.filter(l => l.pol < 0).length,
-    boundaryLanded: A.segments.slice(1).filter(s => landings.some(l => Math.abs(l.B - s.t0) < 0.3)).length + '/' + (A.segments.length - 1),
+    boundaryLanded: A.segments.slice(1).filter(s => landings.some(l => Math.abs((l.from ?? l.B) - s.t0) < 0.3)).length + '/' + (A.segments.length - 1),
   };
   if (form) {
     const inner = landings.slice(0, -1);
     stats.onBreath = inner.filter(l => l.breath).length + '/' + inner.length;
-    stats.arrivalsLanded = M.arrivals(0.3).filter(p => landings.some(l => Math.abs(l.B - p.t) < 0.3)).length + '/' + M.arrivals(0.3).length;
+    stats.arrivalsLanded = M.arrivals(0.3).filter(p => landings.some(l => Math.abs((l.from ?? l.B) - p.t) < 0.3)).length + '/' + M.arrivals(0.3).length;
     stats.restsLanded = M.rests.filter(r => landings.some(l => l.rest?.a === r.a)).length + '/' + M.rests.length;
   }
   if (spread) {
@@ -693,7 +714,8 @@ export function compose(A, seed = 1, opts = {}) {
     stats.families = share(p => p.family);
     stats.looks = share(lookOf);
   }
-  return direct({
+  const W = opts.world;
+  const film = (W?.direct ?? direct)({
     gestures, landings, stats, tau, rate, family, pool: pool.map(p => p.id), patterns, seed, aspect,
     library, remake: (G, pattern) => gestureFor(G.k, { pattern, a: G.t0, b: G.t1 }),
     // Flow surges on the strong beats and glides between, so it stays locked and never jolts
@@ -701,4 +723,15 @@ export function compose(A, seed = 1, opts = {}) {
     react, time,
     song: { duration, bpm: A.bpm, hash: A.hash, meter, phraseBars: A.phraseBars },
   }, A, react.M);
+  // A world's own: the tables it wants from the song, and how it goes about things. With none, nothing has been touched and no random number has been drawn.
+  if (W) {
+    film.world = W;
+    film.tables = W.tables?.(A, react.M) ?? null;
+    const m = W.motion;
+    if (m?.slower) { const phi = film.phi; film.phi = (t, G) => phi(t, G) / m.slower; }
+    if (m) for (const G of film.gestures) { if (m.glide === false) G.noGlide = true; if (m.rise != null) G.rise = m.rise; }
+  }
+  // A hand cut, if one's asked for: everything above has happened as it always does, so the seed's draws are untouched and with none there's nothing to see.
+  if (opts.cut) applyCut(film, opts.cut, A, react.M);
+  return film;
 }

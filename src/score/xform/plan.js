@@ -61,14 +61,28 @@ export function matchFamilies(a, b) {
   };
 }
 
-// ctx: { R, aspect, D, rise, xform, noGlide }. The same kind of thing: its numbers can simply glide. Otherwise lines can bend into lines if they're near
+// The ink rule (docs/MODES.md, section 4), only when a world numbers its lines. matchFamilies's whole cycles are invisible to coverage, but not to floor(phase): a line's number would jump at the landing.
+// A family that carries numbers keeps its place and doesn't flip, and it ends its travel a whole number of rows from where it started, so the frame after the landing has the same inks. If it can't, it's a flight, which adds nothing.
+// With ink.roll the ladder's slow enough to take the difference up itself (src/worlds/engine.js), so the offset stays.
+function inkFits(m, a, b, ink) {
+  const real = (s, i) => s[OFF[`f${i}.on`]] >= 0.5 && Math.abs(s[OFF[`f${i}.d`]]) <= 1.01;
+  for (const i of ink.fams) {
+    if (!real(a, i) && !real(b, i)) continue;
+    if (m.pair[i] !== i || m.flip[i]) return false;
+    if (!ink.roll) m.offset[i] = ink.R * Math.round(m.offset[i] / ink.R);
+  }
+  return true;
+}
+
+// ctx: { R, aspect, D, rise, xform, noGlide, ink }. The same kind of thing: its numbers can simply glide. Otherwise lines can bend into lines if they're near
 // enough in size. Otherwise it's a flight, which works between anything.
 export function makePlan(a, b, ctx) {
   const m = matchFamilies(a, b), c = { ...ctx, m };
+  if (ctx.ink) m.inkBars = !inkFits(m, a, b, ctx.ink);
   const want = ctx.xform && XFORMS[ctx.xform.id];
-  if (want && flag(want.id)) { const p = want.plan(a, b, c); if (p) return p; }
+  if (want && flag(want.id) && !(m.inkBars && (want === slide || want === bend))) { const p = want.plan(a, b, c); if (p) return p; }
   // A rehearsal that's watched a slide flash rules out gliding between these two (ctx.noGlide), and then it's a flight.
-  return (ctx.noGlide ? null : slide.plan(a, b, c) ?? bend.plan(a, b, c)) ?? flight.plan(a, b, c);
+  return (ctx.noGlide || m.inkBars ? null : slide.plan(a, b, c) ?? bend.plan(a, b, c)) ?? flight.plan(a, b, c);
 }
 
 // The same plan, one look per frame, so nothing stalls the film. Every look at the patterns is a draw read back, and a plan can want eight. Run this

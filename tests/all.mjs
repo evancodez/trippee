@@ -202,6 +202,7 @@ const steps = {
     await plain('Lanes', 'fallpops', 'tests/shockpops.mjs', { env: { KIND: 'fall', N: QUICK ? '10' : '30' }, minutes: 15 });
     await plain('Lanes', 'clickpop', 'tests/clickpop.mjs', { env: { SONG: 'mgmt' }, minutes: 10 });
     await plain('Lanes', 'repairs', 'tests/repairs.mjs', { env: { SONG: 'mgmt' }, minutes: 10 });
+    for (const s of SONGS) await plain('Lanes', `filmpops-${s}`, 'tests/filmpops.mjs', { env: { SONG: `media/${s}.mp3` }, minutes: 10 });
   },
 };
 

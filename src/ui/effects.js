@@ -25,17 +25,18 @@ export class EffectsBar {
       + '<i class="rule"></i>'
       + button('static', 'static', 'l', 'what is showing stays, and only flows. no automatic changes')
       + button('sound', 'make music', 'g', 'the picture plays itself: synths and arpeggios read off whatever is showing. a song waits while it does')
-      + button('beyond', 'colour', 'b', 'the pattern printed twice, in two inks. shift+b for the next inks');
+      + button('beyond', 'world', 'v', 'black and white, colour, and the worlds. b is colour');
     el.hidden = false;
     this.buttons = Object.fromEntries([...el.querySelectorAll('[data-fx]')].map(b => [b.dataset.fx, b]));
     for (const e of EFFECTS) this.buttons[e.id].onclick = () => this.choose(e.id);
     this.buttons.static.onclick = () => this.toggleStatic();
     this.buttons.sound.onclick = () => this.toggleMode(app.sound, 'sound');
-    this.buttons.beyond.onclick = () => this.toggleMode(app.beyond, 'beyond');
+    this.buttons.beyond.dataset.world = '1';
+    this.buttons.beyond.onclick = () => this.toggleStrip();
 
     this.lastMove = -1e9; this.over = false;
     addEventListener('pointermove', e => {
-      this.over = !!e.target?.closest?.('#fx');
+      this.over = !!e.target?.closest?.('#fx, #worlds');
       // In use, an effect has the picture to itself: the bar only comes up when the pointer goes to where it is, with nothing else floating about.
       const quiet = !!hand.effect() && !this.over && innerHeight - e.clientY > NEAR;
       document.body.classList.toggle('fx-quiet', quiet);
@@ -51,6 +52,7 @@ export class EffectsBar {
     hand.on('static', () => this.refresh());
     hand.on('wander', () => this.refresh());
     addEventListener('trippee:sound', () => this.refresh());
+    addEventListener('trippee:worlds', () => this.refresh());
     addEventListener('keyup', () => this.refresh());     // sound and beyond have their own keys
     this.refresh();
   }
@@ -63,6 +65,13 @@ export class EffectsBar {
     this.say(e ? `${e.name}: ${e.tip}` : 'the plain hand', e ? 3200 : 1400);
     this.refresh();
   }
+
+  // The strip's only loaded when it's first asked for, and nothing of the worlds with it.
+  strip() {
+    return this._strip ??= import('./worlds.js').then(({ WorldStrip }) => new WorldStrip(this.app, this.say));
+  }
+  async toggleStrip() { (await this.strip()).show(); }
+  async nextWorld() { (await this.strip()).next(); }
 
   key(k) {
     const e = EFFECTS.find(x => x.key === k);
@@ -80,7 +89,6 @@ export class EffectsBar {
   toggleMode(m, name) {
     if (!m) return;
     m.toggle?.();
-    if (name === 'beyond') this.say(modeOn(m) ? 'colour' : 'black and white', 1400);   // sound says so itself
     this.refresh();
   }
 
@@ -96,6 +104,7 @@ export class EffectsBar {
       B[name].hidden = !m;
       B[name].classList.toggle('now', !!m && modeOn(m));
     }
+    if (app.stage.world) B.beyond.classList.add('now');
   }
 }
 

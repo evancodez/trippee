@@ -2,11 +2,16 @@
 // Without a song none of this runs and the stage wanders.
 import { compose } from '../score/compose.js';
 import { ANALYSIS_VERSION, SR, analyse } from './analysis.js';
-import { rehearse } from './rehearse.js';
+import { rehearse, warmRehearsal, getRig, shot, FlashSeen } from './rehearse.js';
 import { flag } from '../score/flags.js';
+import { cutFor } from '../score/cuts/index.js';
+import { auditCut } from '../score/cut.js';
 
 const VISUAL_LEAD = 0.025;      // the picture a touch ahead: an edge seen just before it's heard reads as on time
 const END_HOLD = 2.5;           // seconds the film's last picture holds after the song has finished
+const ARRIVE = 7, FLIP = 6;     // seconds: a song's film flying in, and one film of a compared song flying into the other
+const HUSH = 0.45, HUSH_BACK = 2.5;      // seconds the song lets go of the sheet before a jump back in the music, and takes to come back after it
+const FLIGHT_MOST = 15, FLIGHT_FPS = 60, FLIGHT_H = 90;     // a flight that flashes takes longer, up to this. The rehearsal's way of counting, at the judge's rate and closer to its size: there's only the one flight to look at, and smaller and slower it passed flights the judge doesn't
 
 // ---------------------------------------------------------------- the analysis cache: a song is only analysed once
 const DB = 'trippee', STORE = 'analysis';
@@ -68,6 +73,7 @@ async function toBytes(src) {
 
 // ---------------------------------------------------------------- the song object
 export function init(app) {
+  app.R.whenAllReady().then(() => warmRehearsal()).catch(() => {});
   let ctx = null, buffer = null, source = null, gain = null;
   let startedAt = 0, offset = 0, playing = false, loadToken = 0;
   let tEst = 0, lastPerf = 0, needSnap = true;
@@ -75,6 +81,11 @@ export function init(app) {
   let endedAt = 0, resting = false;
   const lead = { value: VISUAL_LEAD };
   const sitOut = new Set();     // patterns that made a jump in a rehearsal
+  // A song with a hand cut has two films (docs/DIRECTION.md section 7), and for any other song all of these stay as they are. Which one's showing never touches the clock or the sound.
+  let films = null;             // { auto, cut }: auto is the generated film, the latest take of it. cut is null until it's composed
+  let showing = 'auto', comparing = null, cutComing = false;
+  let passage = 0;              // song seconds: where the last switch happened, or the last seek, which is where D goes back to
+  let autoRehearsal = null, cutRehearsal = null;
 
   const context = () => { if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' }); gain = ctx.createGain(); gain.connect(ctx.destination); } return ctx; };
   let tap = null;     // what a recording hears: the same mix the speakers get
@@ -119,23 +130,28 @@ export function init(app) {
     return tEst;
   };
 
+  let takeToken = 0;
   const composeNow = (o, keepFamily) => {
     opts = { ...opts, ...o };
     const aspect = app.canvas.width && app.canvas.height ? app.canvas.width / app.canvas.height : 16 / 9;
-    const allowed = app.patterns.filter(p => !sitOut.has(p.id));
-    score = compose(analysis, opts.seed ?? 7, { family: keepFamily ?? opts.family, pattern: opts.pattern, patterns: allowed.length ? allowed : app.patterns, aspect });
+    // A world's film is drawn from the world's own patterns, and with none on from the library as ever.
+    const W = app.stage.world, from = W?._pool?.length ? W._pool : app.patterns;
+    const allowed = from.filter(p => !sitOut.has(p.id));
+    // A pattern picked by hand before this world came on isn't one of its own, and a film can't be built round it.
+    const foreign = W?._pool?.length && opts.pattern && !from.some(p => p === opts.pattern || p.id === opts.pattern);
+    score = compose(analysis, opts.seed ?? 7, { family: keepFamily ?? opts.family, pattern: foreign ? undefined : opts.pattern, patterns: allowed.length ? allowed : from, aspect, ...(W ? { world: W } : null) });
     song.score = score;
     return score;
   };
   // Play it through once out of sight. A pattern that jumps sits this song out, and the film is composed again without it.
-  const rehearseNow = async onProgress => {
+  const rehearseNow = async (onProgress, stale = null, gentle = false) => {
     // The film that's shown is always one that's been rehearsed all the way through: the last try can't send it back to be composed again.
     const guarded = flag('flashGuard'), tryN = guarded ? 5 : 3;
     for (let tries = 0; tries < tryN; tries++) {
       let r;
       const last = guarded && tries === tryN - 1;
-      try { r = await rehearse(score, Math.min(analysis.duration, 1200), onProgress, { lastTry: last }); }
-      catch (e) { console.warn('rehearsal skipped:', e); return; }
+      try { r = await rehearse(score, Math.min(analysis.duration, 1200), onProgress, { lastTry: last, stale, gentle }); }
+      catch (e) { if (e.message !== 'stale') console.warn('rehearsal skipped:', e); return; }
       song.rehearsal = r;
       const mine = typeof opts.pattern === 'string' ? opts.pattern : opts.pattern?.id;
       const fresh = r.bad.filter(id => id !== mine && !sitOut.has(id));
@@ -145,6 +161,18 @@ export function init(app) {
       // the same family: one bad pattern shouldn't change what kind of film this is
       composeNow({}, score.family);
     }
+  };
+
+  // A pick makes a new film in the middle of the picture, with no time to rehearse it first. So once the click has landed the rest of it is rehearsed behind what's showing, taking very little at a time:
+  // only what's still ahead can change, and another pick starts over.
+  let behindToken = 0;
+  const REHEARSE_AFTER = 10000;
+  const rehearseBehind = () => {
+    const mine = ++behindToken, sc = score, stale = () => mine !== behindToken || sc !== score;
+    setTimeout(async () => {
+      if (stale()) return;
+      try { song.rehearsal = await rehearse(sc, Math.min(analysis.duration, 1200), () => {}, { stale, gentle: true }); if (sc.runway) keep(sc); } catch (e) { if (e.message !== 'stale') console.warn('rehearsal skipped:', e); }
+    }, REHEARSE_AFTER);
   };
 
   // The song has finished. The film's last pattern bends into the wander, so the picture never just stops. The song stays loaded:
@@ -161,11 +189,63 @@ export function init(app) {
       stage.morphFrom(snap, t, 3);
     });
   };
+  // A flight out of whatever's showing can't be rehearsed with the film: nobody knows what will be showing. So it's looked at just before it goes, out of sight, the way the rehearsal watches
+  // a film's own transformations, and one that flashes goes slower until it doesn't. Asks nothing of the film: it's a copy of it that's flown, unless this film looks after itself (sc.runway).
+  const flightLength = async (snap, sc, t, dur, stale = () => false) => {
+    if (!flag('flashGuard') || sc.world || app.stage.world) return dur;
+    const R = await getRig(), H = FLIGHT_H, aspect = sc.aspect ?? (app.canvas.width / app.canvas.height || 16 / 9), W = Math.max(8, Math.round(H * aspect)), px = new Uint8Array(W * H * 4);
+    let best = dur, least = Infinity, breath = performance.now();
+    for (let D = dur; ; D = Math.min(Math.round(D * 1.4), FLIGHT_MOST)) {
+      const look = { ...sc, handover: app.stage.flightFrom(snap, t, D, true) };
+      if (sc.runway) sc.runway(t, D);
+      else { look.gestures = sc.gestures.map(G => ({ ...G, plan: null, planFor: null, planning: null })); app.stage._clearRunway(t, D, look); }
+      const n = Math.ceil(D * FLIGHT_FPS), seen = new FlashSeen(n, W, H, FLIGHT_FPS);
+      for (let i = 0; i < n; i++) {
+        const f = shot(R, look, t + i / FLIGHT_FPS, W, H, px);
+        seen.take(i, px, f, look.gestures);
+        if (performance.now() - breath > 4) { await new Promise(res => setTimeout(res)); breath = performance.now(); if (stale()) return best; }
+      }
+      const over = seen.over().length;
+      if (over < least) { least = over; best = D; }
+      if (!over || D >= FLIGHT_MOST) break;
+    }
+    return best;
+  };
+
+  // What the song's doing to the sheet is a function of its time. A jump back in the music is a cut, and the whole frame can't take that between two frames: it lets go first, quickly, and comes back over the flight.
+  let hush = null;
+  const hushTo = (to, secs, then) => { hush = { t0: performance.now(), secs, from: app.edits.reactAmt ?? 1, to, then }; };
+  app.onFrame.push(() => {
+    if (!hush) return;
+    const h = hush, u = Math.min(1, (performance.now() - h.t0) / (h.secs * 1000));
+    app.edits.reactAmt = h.from + (h.to - h.from) * u * u * (3 - 2 * u);
+    if (u < 1) return;
+    hush = null;
+    h.then?.();
+  });
+
+  // The film that's meant to be showing.
+  const shown = () => (films ? (showing === 'cut' && films.cut) || films.auto : score);
+
+  // A film being compared has to be the same film each time it comes round, and a flight into it does things to it: it clears the way, so the stage's own way of clearing it would lose whatever
+  // was due in the next few seconds, for good. So this remembers it as it stands, and each flight into it starts from that. A change that's under way or due before the flight lands is flown past:
+  // the flight goes straight to where that was going, and the same passage goes on playing.
+  const keep = sc => {
+    const own = [...sc.gestures], saved = own.map(G => ({ ...G }));
+    sc.runway = (t, dur) => {
+      own.forEach((G, k) => { for (const key of Object.keys(G)) if (!(key in saved[k])) delete G[key]; Object.assign(G, saved[k]); });
+      const g = sc.gestures;
+      g.length = 0; g.push(...own);
+      let i = Math.max(0, g.findLastIndex(G => G.t0 <= t));
+      while (g[i + 1] && g[i].t1 - (g[i].morph || 0) < t + dur + 0.25) { const G = g[i], N = g[i + 1]; G.t1 = t; G.morph = 0; N.t0 = t; i++; }
+    };
+  };
+
   const wake = () => {
     resting = false; endedAt = 0;
     app.stage.settle(app.pictureT(), () => {
       const snap = app.stage.snapshot(app.pictureT());
-      app.stage.setScore(score);
+      app.stage.setScore(shown());
       app.clock = clock;
       needSnap = true;
       app.stage.morphFrom(snap, Math.max(0, offset), 6);
@@ -180,10 +260,14 @@ export function init(app) {
     get resting() { return resting; },
     get duration() { return duration; },
     get lead() { return lead.value; },
+    // Two films and a key between them: null for a song with no hand cut, and until both have been rehearsed. In a world, or with the picture making its own music, it stands aside.
+    get compare() { return comparing && !app.stage.world && !song.aside ? comparing : null; },
+    get compareComing() { return cutComing; },
     set lead(v) { lead.value = v; needSnap = true; },
 
     async load(src, { seed = 7, onProgress = () => {}, family, pattern, autoplay = false } = {}) {
       const token = ++loadToken;
+      films = null; showing = 'auto'; comparing = null; cutComing = false; passage = 0; autoRehearsal = cutRehearsal = null;
       onProgress(0.01);
       const bytes = await toBytes(src);
       const hash = await hashOf(bytes);
@@ -214,17 +298,24 @@ export function init(app) {
       app.governor?.quiet(3);    // the rehearsal holds up the frame loop for a moment; that's not the pixels' fault
       await rehearseNow(p => onProgress(0.98 + 0.02 * p));
       if (token !== loadToken) return null;
+      const cut = await cutFor(hash).catch(e => { console.warn('the hand cut could not be loaded:', e); return null; });
+      if (token !== loadToken) return null;
+      // Here, not behind the picture: composing takes a moment all at once, and nothing's waiting yet.
+      if (cut) { const made = composeCut(cut); if (made) { films = { auto: score, cut: made }; cutComing = true; } }
       // Something on its way somewhere gets there first. A film has to come out of one pattern, or it would pop.
       if (!app.manual && app.stage.morphing(app.pictureT())) await new Promise(res => app.stage.settle(app.pictureT(), res, 2.5));
+      if (token !== loadToken) return null;
+      song.arrival = await flightLength(app.stage.snapshot(app.pictureT()), score, 0, ARRIVE, () => token !== loadToken);
       if (token !== loadToken) return null;
       const snap = app.stage.snapshot(app.pictureT());
       app.stage.setScore(score);
       app.clock = clock;
       app.t = 0;
       lastPerf = 0; tEst = 0; needSnap = true;
-      app.stage.morphFrom(snap, 0, 7, { clocked: true });
+      app.stage.morphFrom(snap, 0, song.arrival, { clocked: true });
       onProgress(1);
       if (autoplay) song.play();
+      if (cutComing) rehearseCut(cut, token);
       return song;
     },
 
@@ -244,6 +335,7 @@ export function init(app) {
       needSnap = true;
     },
     seek(t) {
+      passage = Math.max(0, Math.min(duration, t));
       if (resting) { offset = Math.max(0, Math.min(duration - 0.02, t)); song.play(); return; }
       const was = playing;
       offset = Math.max(0, Math.min(duration, t));
@@ -263,7 +355,22 @@ export function init(app) {
       return tap.stream;
     },
 
-    // The same song, another film. The clock doesn't stop.
+    // Another take, made properly: composed and rehearsed out of sight just as a song arriving is, while the film that's showing carries on. It answers with a function that shows it,
+    // to be called where the picture's ready to change (hand.veil), or null if a later take got in first or the song's gone.
+    async prepareTake({ seed, family, pattern } = {}) {
+      if (!analysis) return null;
+      const mine = ++takeToken, token = loadToken, next = {};
+      if (seed !== undefined) next.seed = seed;
+      if (family !== undefined) { next.family = family; next.pattern = undefined; }
+      if (pattern !== undefined) next.pattern = pattern;
+      composeNow(next);
+      const stale = () => mine !== takeToken || token !== loadToken;
+      await rehearseNow(() => {}, stale, true);
+      if (stale()) return null;
+      return () => { if (films) { films.auto = score; toAuto(); } if (!resting && !song.aside) app.stage.setScore(score); return score; };
+    },
+
+    // The same song, another film, right now. The clock doesn't stop.
     // quiet: no rehearsal behind it, for a pick, which happens right there in the middle of the picture.
     rebuild({ seed, family, pattern, quiet = false } = {}) {
       if (!analysis) return null;
@@ -271,9 +378,11 @@ export function init(app) {
       if (seed !== undefined) next.seed = seed;
       if (family !== undefined) { next.family = family; next.pattern = undefined; }
       if (pattern !== undefined) next.pattern = pattern;
+      takeToken++;      // anything still on its way is out of date now
       composeNow(next);
+      if (films) { films.auto = score; toAuto(); }
       if (!resting && !song.aside) app.stage.setScore(score);
-      if (quiet) return score;
+      if (quiet) { rehearseBehind(); return score; }
       // It's called from under a solid, so it answers now; what this rehearsal learns is for the next take.
       rehearse(score, Math.min(analysis.duration, 1200)).then(r => {
         song.rehearsal = r;
@@ -289,6 +398,7 @@ export function init(app) {
       stopSource();
       endedAt = 0; resting = false;
       playing = false; buffer = null; analysis = null; score = null; duration = 0; offset = 0; song.aside = false;
+      films = null; showing = 'auto'; comparing = null; cutComing = false; passage = 0; autoRehearsal = cutRehearsal = null;
       song.analysis = null; song.score = null;
       app.clock = null;
       // A new score: nothing of the film's (its reactions, its clock) stays on the wander.
@@ -297,6 +407,102 @@ export function init(app) {
       app.stage._extend?.(app.t);
     },
   };
+
+  // ---------------------------------------------------------------- the compare
+  function composeCut(cut) {
+    const aspect = app.canvas.width && app.canvas.height ? app.canvas.width / app.canvas.height : 16 / 9;
+    try { const made = compose(analysis, opts.seed ?? 7, { patterns: app.patterns, aspect, cut }); if (made.cut) return made; console.warn('the hand cut was not laid:', made.refused); return null; }
+    catch (e) { console.warn('the hand cut could not be composed:', e); return null; }
+  }
+  const toAuto = () => { if (showing === 'cut') { song.rehearsal = autoRehearsal ?? song.rehearsal; showing = 'auto'; } };
+  // Rehearsed behind what's showing, taking very little of each frame. This is what the button and the keys wait for. What the guard does to it stays on it, and the patterns it picks are its own: nothing here touches the generated film.
+  async function rehearseCut(cut, token) {
+    const stale = () => token !== loadToken, film = films.cut;
+    try { cutRehearsal = await rehearse(film, Math.min(analysis.duration, 1200), () => {}, { lastTry: true, stale, gentle: true }); }
+    catch (e) { if (e.message !== 'stale') console.warn('the hand cut could not be rehearsed:', e); if (!stale()) { cutComing = false; films.cut = null; } return; }
+    if (stale()) return;
+    auditCut(film, cutRehearsal);
+    keep(film);
+    comparing = makeCompare(cut, film, token);
+    cutComing = false;
+    app.ui?.say?.(comparing.blind ? 'two films ready: d switches' : 'the hand cut is ready: d switches', 3000);
+  }
+  function makeCompare(cut, film, token) {
+    const hash = song.hash, KEY = 'trippee.compare.' + hash, blind = new URLSearchParams(location.search).get('blind') === '1';
+    const read = k => { try { return localStorage.getItem(k); } catch { return null; } };
+    const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* it just won't be remembered */ } };
+    // Blind: A and B, assigned once per song by a stored coin. ? reveals them.
+    let coin = read(KEY + '.coin');
+    if (blind && coin !== 'cut' && coin !== 'auto') { coin = Math.random() < 0.5 ? 'cut' : 'auto'; write(KEY + '.coin', coin); }
+    const letter = f => (f === coin ? 'A' : 'B');
+    let revealed = false, wanted = 'auto', goBack = false, flipping = false, lineSaid = false;
+    const name = f => (f === 'cut' ? 'hand cut' : 'generated');
+    const swap = f => {
+      if (f !== showing) {
+        if (f === 'cut') { autoRehearsal = song.rehearsal; song.rehearsal = cutRehearsal; showing = 'cut'; } else toAuto();
+      }
+      const sc = shown();
+      song.score = sc;
+      if (!resting && !song.aside) app.stage.setScore(sc);
+    };
+    const c = {
+      hash, blind, line: cut.line,
+      get film() { return showing; },
+      get wanted() { return wanted; },
+      get passage() { return passage; },
+      get label() { return blind && !revealed ? `film ${letter(showing)}` : blind ? `film ${letter(showing)}: ${name(showing)}` : name(showing); },
+      get flight() { return c.lastFlight; },
+      lastFlight: null,
+      score: f => (f === 'cut' ? films.cut : films.auto),
+      // d: the other film, through a flight, with the clock going on. D: and back to where the last switch happened, so the same passage plays in it. Pressed quickly, only where it ends up counts.
+      async flip(back = false) {
+        if (!films?.cut) return;
+        wanted = wanted === 'cut' ? 'auto' : 'cut';
+        if (back) goBack = true;
+        if (flipping) return;
+        flipping = true;
+        if (!films.auto.runway) keep(films.auto);
+        const stage = app.stage, stale = () => token !== loadToken;
+        // Where it's about to fly, looked at first. In a rest there's no flight: it comes back into whichever film it's told when it's played.
+        let dur = FLIP;
+        if (!resting && !app.stage.staticG) {
+          const to = wanted === 'cut' ? films.cut : films.auto, at = goBack ? passage : heard();
+          dur = await flightLength(stage.snapshot(app.pictureT()), to, to.time ? to.time(at) : at, FLIP, stale);
+          if (stale()) { flipping = false; return; }
+        }
+        const go = () => {
+          const f = wanted, b = goBack;
+          goBack = false;
+          if (stale() || (f === showing && !b)) { flipping = false; return; }
+          c.lastFlight = dur;
+          if (resting) { flipping = false; swap(f); if (b) song.seek(passage); return; }
+          const amt = app.edits.reactAmt ?? 1;
+          const fly = () => {
+            flipping = false;
+            app.ui.hand.veil(() => {
+              swap(f);
+              if (b) { song.seek(passage); hushTo(amt, HUSH_BACK); } else passage = heard();
+              c.onShow?.(f, b);
+            }, { dur });
+          };
+          if (b) hushTo(0, HUSH, fly); else fly();
+        };
+        if (resting) go(); else stage.settle(app.pictureT(), go);
+      },
+      // = and -: yes and no, against the film and the time. It costs nothing, and it's what gets read back.
+      mark(yes) {
+        const log = c.marks(), m = { film: showing, ...(blind ? { letter: letter(showing) } : null), t: +heard().toFixed(2), yes: !!yes, at: Date.now() };
+        log.push(m);
+        write(KEY, JSON.stringify(log));
+        return m;
+      },
+      marks() { try { return JSON.parse(read(KEY)) ?? []; } catch { return []; } },
+      reveal() { if (!blind) return null; revealed = true; return `A is the ${name(coin)}, B is the ${name(coin === 'cut' ? 'auto' : 'cut')}`; },
+      // The idea, in a sentence, the first time the cut comes up. Never in a blind test.
+      lineOnce() { if (blind || lineSaid || !cut.line) return null; lineSaid = true; return cut.line; },
+    };
+    return c;
+  }
 
   app.stage.rebuild = o => song.rebuild(o);
   if (window.trippee) window.trippee.song = (src, o) => song.load(src, o);

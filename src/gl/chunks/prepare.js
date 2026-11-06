@@ -7,6 +7,9 @@ float gLift=0.;                  // how far the sheet's phase has slipped at thi
 const vec4 LIFT=vec4(1.,.5,.75,.25);
 const vec4 DS=vec4(1.,-.5,.75,-.25);   // each family's share of the tune's change in line weight
 
+#ifdef WORLD_PHASE
+//@world:phase
+#endif
 // Everything up to the threshold: where this pixel lands, what each family's phase and gradient are. Returns coverage of the surface.
 float prepare(int K,int b,vec2 p){
   p=moveCarry(b,p);
@@ -96,6 +99,9 @@ float prepare(int K,int b,vec2 p){
   if(w.x!=0.){
     float r=max(length(X.xy),1e-5),th=atan(X.y,X.x),lr=log(r),k=w.x/TAU;
     float wx=lr+k*th,wy=th-k*lr;
+#ifdef WORLD_GEN
+    gGen[K]=floor((wx+w.y)/w.x);
+#endif
     wx=mod(wx+w.y,w.x);
     X.xy=exp(wx)*vec2(cos(wy),sin(wy));
   }
@@ -112,6 +118,9 @@ float prepare(int K,int b,vec2 p){
     cover=1.;
   }
   if(parity<0.==(uG[b+I_shape].w>.5)) parity=1.; else parity=-1.;
+#ifdef WORLD_X
+  gX[K]=X.xy;
+#endif
 
   // the families: each is a phase, each is XOR-ed in. This is the whole pattern language.
   vec4 tn=uG[b+I_tune];
@@ -147,7 +156,13 @@ float prepare(int K,int b,vec2 p){
     gPh[k]=sm+fb.z*b1.z+fc.z*b2.z+fa.w+fa.y*tn.x*slipY+sl*uG[b+I_slipM][i];
     if(parity<0.){ gPh[k]+=.5; parity=1.; }                 // half a cycle on one family inverts the whole XOR
     gGr[k]=g; gGn[k]=max(length(g),1e-5); gDu[k]=abs(fb.w)<.85?clamp(fb.w+gTune*DS[i]*tuneShare,-.85,.85):fb.w;   // a closed family stays closed
+#ifdef WORLD_PHASE
+    worldPhase(K,i,X);
+#endif
   }
+#ifdef WORLD_COVER
+  for(int i=K*FAM;i<(K+1)*FAM;i++){ gGn[i]*=uW[1].x; gGr[i]*=uW[1].x; }      // the sound's small coverage draw filters as if drawn full size, as the film's picture it would otherwise have read down from
+#endif
   gRnd[K]=uG[b+I_shape].x; gSum[K]=uG[b+I_shape].y;
   return cover;
 }

@@ -27,13 +27,28 @@ export class Stage {
     this.rebuild = null;       // set by the song: another film of it, with this pattern
     this.now = null;           // set by the app: the picture's time, which a new score can change
     this.onLeave = null;       // set by the hand: what it's done to a gesture stays on it as it's left, and nothing moves
+    this.world = null;         // the world that's on. Null is the film.
     this.score = { gestures: [], phi: t => (t * GHOST_BPM / 60) / 8, song: null };
     this._extend(0);
   }
 
+  // Every score that comes up wears the world that's on, whichever way it comes: a song's end, sound standing in, an eject. With none on, and never one on, this does nothing.
+  get score() { return this._score; }
+  set score(s) { this._score = s; if (s && (this.world || s.world)) s.world = this.world; }
+
+  // The only way in to a world. Null is the film. Boot is always the film, and until this is first called no world code has been loaded.
+  // opts: { pattern, dur }. Resolves when the change has begun, false if it didn't happen.
+  async setWorld(id, opts) {
+    const { changeWorld } = await import('./worlds/engine.js');
+    return changeWorld(this, id, opts);
+  }
+
+  // What the wander draws from: the world's own, or the library.
+  pool() { return this.world?._pool?.length ? this.world._pool : patterns.filter(p => p.pool !== false); }
+
   // Keep an endless wander going: one family for a while, then another, as the film does.
   _nextPattern() {
-    const open = patterns.filter(p => p.pool !== false);
+    const open = this.pool();
     if (!this._fam || this._famLeft <= 0) {
       const fams = [...new Set(open.map(p => p.family))];
       const others = fams.filter(f => f !== this._fam);
@@ -52,8 +67,9 @@ export class Stage {
     while (!g.length || g[g.length - 1].t1 < t + 60) {
       const prev = g[g.length - 1];
       const t0 = prev ? prev.t1 : 0;
-      const len = this.rand.range(24, 38);
-      g.push({ t0, t1: t0 + len, arcEnd: t0 + len, pattern: this._nextPattern(), morph: this.rand.range(MORPH[0], MORPH[1]) });
+      const m = this.world?.motion, len = m?.len ? this.rand.range(m.len[0], m.len[1]) : this.rand.range(24, 38);
+      g.push({ t0, t1: t0 + len, arcEnd: t0 + len, pattern: this._nextPattern(), morph: m?.morph ? this.rand.range(m.morph[0], m.morph[1]) : this.rand.range(MORPH[0], MORPH[1]) });
+      if (m) { const G = g[g.length - 1]; if (m.glide === false) G.noGlide = true; if (m.rise != null) G.rise = m.rise; }
     }
   }
 
@@ -211,6 +227,7 @@ export class Stage {
       ...last, t0: t, t1: last.t1, pattern: pat, arcs: like?.arcs ?? pat.arcs, arcEnd: Math.min(last.t1, t + 44), plan: null, planFor: null, range: null,
       phiTrack: [{ t: sc.tau ? sc.tau(t) : t, x: 0, v: 1 / (like?.gears?.[0] || 16) }], gears: like?.gears ?? [], thetaBody: null, replayOf: null, change: null, flow: like?.flow, flowOver: like?.flowOver,
       melMode: from.melMode ?? 0,       // the way the tune runs through the sheet doesn't change in the middle of it: that would jump
+      ringsFrom: t - 8,                 // the flight in brings the song's rings back as it lands, and with the film paused t doesn't move: if they waited for t they'd drop out on landing
     };
     delete G.moves; delete G.xform; delete G.over;
     // What came before stays as it was, up to now. Its morph has to fit in what's left of it, or seeking back into it would start part way through a transformation.
@@ -273,14 +290,23 @@ export class Stage {
     this.staticG = { ...G, freezeU: Math.min(1, Math.max(0, u + a)), freezeEase: { t0: t, tau: 1.5, a }, morph: 0, plan: null };
   }
 
+  // A static gesture on this pattern, held at the middle of the part of its long move that stays bold.
+  heldOn(pat, t) {
+    const G = { t0: t, t1: t + 3600, arcEnd: t + 44, period: 44, pattern: pat, morph: 0 }, [lo, hi] = boldRange(G);
+    G.freezeU = (lo + hi) / 2;
+    return G;
+  }
+
   _handover(from, t, dur) {
     this.score.handover = { G: { ...from, plan: null, planFor: null, morph: 0 }, ts: t, phi: this.score.phi, wall: true, e: 0, D: dur, plan: null, rings: !!this.score.react };
   }
 
   // A handover wants to finish before the film's next transformation starts, and with the film's gesture still the one it's going to.
-  _clearRunway(t, dur) {
+  // sc: another film's copy, being looked at. And a film that has to stay itself, because it's one of two being compared, clears its own (sc.runway).
+  _clearRunway(t, dur, sc = this.score) {
     if (this.staticG) return;
-    const g = this.score.gestures, i = g.indexOf(this.current(t)), cur = g[i];
+    if (sc.runway) { sc.runway(t, dur); return; }
+    const g = sc.gestures, i = sc === this.score ? g.indexOf(this.current(t)) : Math.max(0, g.findLastIndex(x => x.t0 <= t)), cur = g[i];
     while (g[i + 1] && cur.t1 < t + dur + 6) { const n = g[i + 1]; cur.t1 = n.t1; cur.morph = n.morph; g.splice(i + 1, 1); delete cur.plan; }
     if (cur.morph && cur.t1 - cur.morph < t + dur) { cur.morph = Math.max(0, cur.t1 - (t + dur)); delete cur.plan; }
   }
@@ -295,16 +321,27 @@ export class Stage {
   }
 
   // A song's film arriving is on the song's clock (clocked), so the film stays a pure function of its time. Anything by hand runs on real seconds.
-  morphFrom(snap, t, dur = 6, { clocked = false } = {}) {
+  // world (a change of world: where it's coming from, null for the film) and noGlide: see src/worlds/engine.js.
+  morphFrom(snap, t, dur = 6, { clocked = false, world, noGlide } = {}) {
     if (!snap) return;
-    const S = { ...snap.G, plan: null, planFor: null, morph: 0 }, rings = !!snap.score.react && snap.score.songFades == null;
-    delete S.rush;
-    this.score.handover = clocked
-      ? { G: S, t0: t, t1: t + dur, dt: snap.t - t, phi: snap.score.phi, plan: null, rings, ts: snap.t }
-      : { G: S, ts: snap.t, phi: snap.score.phi, wall: true, e: 0, D: dur, plan: null, rings };
+    const h = this.flightFrom(snap, t, dur, clocked), S = h.G;
+    this.score.handover = h;
+    if (noGlide) this.score.handover.noGlide = true;
+    if (world !== undefined) this.score.handover.change = { from: world, to: this.world };
     // the film's own next morph waits until this one is done
     this._clearRunway(t, dur);
     if (S.melMode != null) this.current(t).melMode = S.melMode;
+  }
+
+  // The flight out of what's showing, which morphFrom lays on the film, and which can be looked at first (see flightLength in the song).
+  flightFrom(snap, t, dur, clocked) {
+    // ringsEnd and ambient: where what's showing had got to with the song, so that it carries on from there and only comes round to the next film's as it flies. One film's heroes aren't another's.
+    const S = { ...snap.G, plan: null, planFor: null, morph: 0, ringsEnd: snap.G.morph ? snap.G.t1 - snap.G.morph : snap.G.ringsEnd ?? null }, rings = !!snap.score.react && snap.score.songFades == null;
+    const ambient = rings ? snap.score.ambient?.(snap.t) : undefined, pulse = rings ? snap.score.pulseLane?.(snap.t) ?? 1 : undefined;     // pulse: a hand cut can hold the beat back, and one film of a song may while the other doesn't
+    delete S.rush;
+    return clocked
+      ? { G: S, t0: t, t1: t + dur, dt: snap.t - t, phi: snap.score.phi, plan: null, rings, ts: snap.t, ambient, pulse }
+      : { G: S, ts: snap.t, phi: snap.score.phi, wall: true, e: 0, D: dur, plan: null, rings, ambient, pulse };
   }
 
   setScore(score) { this.score = score; this.hold = false; }

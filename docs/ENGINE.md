@@ -22,6 +22,10 @@ changes what's showing. Nothing is ever empty: past a surface or matte the same 
 default). Floors (a plane or a slab) can't tip far enough to show their horizon. A gesture only rides the part of its long move that stays bold
 (`BOLD` in frame.js; a pattern with `fine: true` is exempt).
 
+**Everything a film lands on is on a hit.** The bar line wanders on some songs and sits a beat out on others, so `compose.js` moves each landing to the strongest beat from one before to two after (bass plus percussion) if that's at least 1.35 times as strong, and `react.js` picks the strong beats of 3/4 the same way (flag `onTheHit`).
+
+**Another take** is made like a song arriving: `song.prepareTake(o)` composes and rehearses it out of sight while the film carries on, and answers with a function that shows it, which the panel calls inside `hand.veil`. A pick makes a film with no time for that, so it's rehearsed behind the picture once the click has landed, and only what's still ahead can change.
+
 **A film is watched for flashes before anyone sees it** (`guardFlashes` in `src/music/rehearse.js`, flag `flashGuard`). The rehearsal's last pass plays the whole film small at 10 fps and counts what `tests/judge.mjs` counts: opposing swings of 10% of full scale, none in a second for the whole frame, two per second per tile. Whatever goes over gets the least it needs, on that one gesture, and each change is kept only if it helps: what flows flows slower (`G.regear(range, arcs, slower)`, or `G.phiScale` on a hero), then the song lifts it less (`G.calm`); a glide becomes a flight (`G.noGlide`); a fall or a shock becomes a plain transformation; a flight turns round, then takes longer. `tests/flash.mjs` says where a film flashes and why, `AT=a-b` gives close frames with their numbers.
 
 The song's rings are per slot (`F_SPARE`.z, .w): a slot that's shut holds none, so what's showing can let go over the very start of a click's flight while what it's flying into stays closed.
@@ -129,7 +133,7 @@ in a song. The hand is applied once, to the coordinates, before the slots, so it
 
 **Colour** (`src/beyond/beyond.js`, `app.beyond`). A second plate made from phases already computed, with no family evaluated again. `plate.y` 0
 takes the plain path, byte-identical to black and white. The plates open to an eighth of a period at most: a misregistered print, never a poster. It can rest the picture's clock for a few seconds (the quadrature stop), which is only
-ever a lag: `edits.beyond.time(t, score)`. **The stage runs on that clock, so anything that plans a change uses `app.pictureT()`, not `app.t`.**
+ever a lag: `edits.beyond.time(t, score)`. With no song it takes its time. In a film it's short (3 s held, about 12 s until the lag's paid) and it only goes where all of that fits inside one plain gesture's body, clear of every hero and rest, or the film has no stop: nothing a film lands on is late because colour is on. **The stage runs on that clock, so anything that plans a change uses `app.pictureT()`, not `app.t`.**
 A stop only counts if it starts after colour came on and after this score came up, and turning colour off in a stop waits for the clock to catch up.
 
 **Pattern music** (`src/sound/`, `app.sound`). `read.js` copies the picture down to 64 x 36 through the GPU with no stall, `brain.js` turns a read line
@@ -151,9 +155,9 @@ These modules start themselves: `src/music/song.js`, `src/tools/input.js`, `src/
 `over` (path→value, the knobs), `pressX pressY press pressR` (the ball under the sheet), `sheetX sheetY sheetRot sheet` (a lifted copy
 XOR-ed on top), `ripples`, `warp`, `hand`, `staticG`, `beyond`, `plate`, `invert`. `app.brush` = `{ x, y, r, dx, dy, on, heal }` paints a push for one frame (x, y in 0..1 from bottom left).
 
-`app.governor` (`src/gl/governor.js`) lowers `R.drawScale` if the frame rate stays under 55 fps, straight to the tier its measurement says will fit,
-and tries going back up after 30 calm seconds. Each program variant remembers its own tier, so a plain picture stays sharp and a flight draws smaller only
-while it's flying. `R.draw` then renders to a smaller target and stretches it to fill. `canvas.width` and `canvas.height` never change for this.
+`app.governor` (`src/gl/governor.js`) goes by what the GPU says each frame took (`EXT_disjoint_timer_query_webgl2`, flag `gpuTiers`): over 15 ms for three frames and that program drops to the size that fits, under 11.5 ms at the next size up for 8 s and it goes back. A program never seen yet starts at the size its cost should fit, reckoned from the plain one. With no timer it goes by the frame rate as before: under 55 fps, straight to the tier its measurement says will fit,
+and tries going back up after 30 calm seconds. Each program variant remembers its own tier, and a shock has its own too, so a plain picture stays sharp and a flight draws smaller only
+while it's flying. Every program draws one pixel while the page starts (`R._warmAll`), because a program's first draw is when the GPU really builds it, up to 440 ms. `R.draw` then renders to a smaller target and stretches it to fill. `canvas.width` and `canvas.height` never change for this.
 
 ## Testing
 
@@ -166,7 +170,7 @@ node tools/lab.mjs tests/atlas.mjs --out lab-out/<you>                          
 
 Also `tests/v2.mjs` (`STAGE=boot,static,hand,music,clock,film,fps`: the bar and every mode together, with real input), `tests/effects.mjs`, `tests/beyond.mjs`,
 `tests/sound.mjs`, `tests/integrate.mjs` (boot, a real song through a real file drop, a recording), `tests/hand.mjs` (every verb), `tests/songend.mjs`,
-`tests/pops.mjs` (pops at the ends of morphs), `tests/flat.mjs` (morphs passing through one colour), `tests/fps.mjs`, `tests/governor.mjs` and `tests/film.mjs` (a film in real time, as a sheet). The lab always mutes Chrome.
+`tests/pops.mjs` (pops at the ends of morphs), `tests/filmpops.mjs` (one-frame pops anywhere in a whole film, at 60 fps by seek), `tests/flat.mjs` (morphs passing through one colour), `tests/fps.mjs`, `tests/governor.mjs` and `tests/film.mjs` (a film in real time, as a sheet). The lab always mutes Chrome.
 Then look at the image with the Read tool. `tools/look.mjs` gives contact sheets, time-slices and measurements; write your own lab
 script when you need to. Always use your own `--out lab-out/<you>` folder. Local songs for testing are in `media/` and served at
 `/media/ppp.mp3`, `/media/wildflower.mp3`, `/media/disclosure.mp3`, `/media/mgmt.mp3`. Never commit songs or video.

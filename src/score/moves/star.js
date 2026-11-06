@@ -12,10 +12,11 @@
 //     v       a plain roll: how fast the middle of the frame travels over the ball, in picture units a second
 //     dir     which way, radians on the screen. turn: how fast that changes. spin: how fast the ball turns about the middle of the frame, radians a second. pan: [x, y] picture units per second that the pattern itself slides through the chamber.
 //     chords  { runs, home, bar }, from understand(A): the ball rolls so that each chord lands at the middle on the moment it starts. 0 fifths from home is a ten-petal star, +1 six, -1 four. Same chord, same star.
+//     schedule  ln R as a track of { t, x, v } knots, instead of R0, R1, open and the chords' sizes: it can try, retreat and bloom. It's a cut's (src/score/cut.js), and it starts from R0 at t0. The song's breath and tune still go by how far open it is.
 //     react, tau, meter  the song, for its breath, its tune and its strong beats. surge: how much of the roll's speed comes and goes with the strong beats. All optional.
 //   placeStar(score, pattern, { start, end, M, ... }) does all of it in a composed film, for the director. freeStar is a pattern's drive, for one picked by hand.
 import { OFF as OFFS } from '../../pattern/layout.js';
-import { clamp, lerp, smoother, rng } from '../curves.js';
+import { clamp, lerp, smoother, rng, evalTrack } from '../curves.js';
 import { flag } from '../flags.js';
 import { flatten } from '../../pattern/genome.js';
 import { reactAt } from '../react.js';
@@ -177,7 +178,7 @@ function tableOf(m, tEnd) {
     const a = Math.max(K.t, N.t - 4 * bar);
     return lerp(K.lnR, N.lnR, surge(a, N.t, Math.max(a, t)));
   };
-  const lnR = t => lerp(Math.log(R0), held(t), x(t));
+  const lnR = m.schedule ? t => evalTrack(m.schedule, t) : t => lerp(Math.log(R0), held(t), x(t));
   const inWay = useKeys ? evenOnScreen(lnR, t0, b) : null, closing = close ? evenOnScreen(lnR, close.t, close.t + close.D) : null;
   const start = t => smoother((t - t0) / (0.25 * open));      // from a standing start, or the sheet would set off the instant it's on a ball
   let q = ONE, phi = 0, closeTo = null;

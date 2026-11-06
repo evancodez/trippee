@@ -10,11 +10,14 @@ import voids from './families/voids.js';
 import bodies from './families/bodies.js';
 import waves from './families/waves.js';
 import dials from './families/dials.js';
+import relays from './families/relays.js';
 import coins from './families/coins.js';
 import riley from './families/riley.js';
 import impossible from './families/impossible.js';
+import still from './families/still.js';
+import riot from './families/riot.js';
 
-const groups = { lines, dots, lattice, checks, rooms, poles, voids, bodies, waves, dials, coins, riley, impossible };
+const groups = { lines, dots, lattice, checks, rooms, poles, voids, bodies, waves, dials, coins, riley, impossible, still, relays, riot };
 const authored = Object.values(groups).flat();
 // The starter patterns stay only until their families have real ones.
 export const patterns = authored.length >= 12 ? authored : [...authored, ...first];

@@ -6,7 +6,7 @@
 //   sideways, shift+scroll   Duty: thinner or fatter lines, stopping short of solid
 //   alt+drag        Sheet    a lifted copy XOR-ed on top, with detents where the fringes lock into rosettes
 // and whatever's chosen on the effects bar (./effects.js) takes the place of Press and Push.
-import { OFF, SNAP } from '../pattern/layout.js';
+import { OFF, SNAP, FAMILIES } from '../pattern/layout.js';
 import { clamp, smoother } from '../score/curves.js';
 import { fillSlot } from '../score/frame.js';
 import { Spring } from './spring.js';
@@ -374,6 +374,12 @@ hand.knobValue = path => {
 };
 hand.natural = path => naturals()[OFF[path]];
 hand.liveValue = path => knobs.get(path)?.s.x ?? naturals()[OFF[path]];
+// What the "lines" knob can move on what's showing: freq multiplies straight lines, and a pattern with none (rings, spokes, a field) can only be seen from further away.
+hand.linesPath = () => {
+  const n = naturals();
+  for (let i = 0; i < FAMILIES; i++) if (n[OFF[`f${i}.on`]] >= 0.5 && Math.abs(n[OFF[`f${i}.d`]]) <= 1.01 && Math.hypot(n[OFF[`f${i}.x`]], n[OFF[`f${i}.y`]]) > 1e-3) return 'freq';
+  return 'scale';
+};
 
 // Go somewhere: what's showing becomes it, whatever mode this is, and it gets there on real seconds. With a song playing, the film carries on with this
 // pattern as its motif.
@@ -420,8 +426,9 @@ hand.mine = () => {
 hand.step = dir => {
   // from wherever it's already heading, so tapping N walks along the list
   const from = lastAsked ?? curPat ?? app.lastFrame.G.pattern;
-  const n = app.patterns.length, i = Math.max(0, app.patterns.indexOf(from));
-  const pat = app.patterns[((i + dir) % n + n) % n];
+  const list = app.stage.world?._pool?.length ? app.stage.world._pool : app.patterns;
+  const n = list.length, i = Math.max(0, list.indexOf(from));
+  const pat = list[((i + dir) % n + n) % n];
   hand.go(pat);
   lastAsked = pat;
 };
