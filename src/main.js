@@ -50,25 +50,28 @@ window.trippee = {
   seek(t) { app.manual = true; app.t = t; render(); },
   list: () => patterns.map(({ id, name, family }) => ({ id, name, family })),
   // Show one pattern straight away, with no way in: for looking at a pattern on its own.
-  load(id, { arcs = true } = {}) {
+  // With sweep: true it plays one whole gesture of `len` seconds, out of a solid and into the other solid.
+  load(id, { arcs = true, sweep = false, len = 26, inDur = 6, outDur = 6 } = {}) {
     const p = byId[id];
     if (!p) throw new Error('no pattern ' + id);
-    stage.score.gestures = [{ t0: 0, t1: 3600, arcEnd: 26, pattern: p, pol0: 0, pol1: 0, inDur: 1, outDur: 1, arcs: arcs ? undefined : [] }];
+    stage.score.gestures = [{ t0: 0, t1: sweep ? len : 3600, arcEnd: len, pattern: p, pol0: sweep ? 1 : 0, pol1: sweep ? -1 : 0, inDur, outDur, arcs: arcs ? undefined : [] }];
     stage.hold = true; app.t = 0; render();
   },
+  // Draws one pattern at the middle of its move, for looking at many at once
+  still(id, u = 0.5) { this.load(id); app.manual = true; app.t = 26 * u; render(); },
   capture() { render(); return canvas.toDataURL('image/png'); },
   metrics() { const f = app.lastFrame; return { t: app.t, pattern: f?.G?.pattern?.id, theta: f?.theta, w: canvas.width, h: canvas.height }; },
 };
 
-R.whenReady().then(() => {
+// Each of these owns its own files and exports init(app). A missing or failing one must not stop the picture.
+async function attach(path) {
+  try { const m = await import(path); await m.init?.(app); }
+  catch (e) { console.error(`${path} failed to start:`, e); }
+}
+
+R.whenReady().then(async () => {
   render();
+  await Promise.all(['./music/song.js', './tools/input.js', './ui/ui.js'].map(attach));
   window.trippee.ready = true;
   requestAnimationFrame(loop);
-});
-
-// A few keys until the real interface lands
-addEventListener('keydown', e => {
-  if (e.key === ' ') { app.paused = !app.paused; e.preventDefault(); }
-  if (e.key === 'ArrowRight' || e.key === 'n') stage.go(patterns[(patterns.indexOf(app.lastFrame.G.pattern) + 1) % patterns.length], app.t);
-  if (e.key === 'w') stage.wander(app.t);
 });
