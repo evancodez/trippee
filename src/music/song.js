@@ -3,6 +3,7 @@
 import { compose } from '../score/compose.js';
 import { ANALYSIS_VERSION, SR, analyse } from './analysis.js';
 import { rehearse } from './rehearse.js';
+import { flag } from '../score/flags.js';
 
 const VISUAL_LEAD = 0.025;      // the picture a touch ahead: an edge seen just before it's heard reads as on time
 const END_HOLD = 2.5;           // seconds the film's last picture holds after the song has finished
@@ -128,14 +129,17 @@ export function init(app) {
   };
   // Play it through once out of sight. A pattern that jumps sits this song out, and the film is composed again without it.
   const rehearseNow = async onProgress => {
-    for (let tries = 0; tries < 3; tries++) {
+    // The film that's shown is always one that's been rehearsed all the way through: the last try can't send it back to be composed again.
+    const guarded = flag('flashGuard'), tryN = guarded ? 5 : 3;
+    for (let tries = 0; tries < tryN; tries++) {
       let r;
-      try { r = await rehearse(score, Math.min(analysis.duration, 1200), onProgress); }
+      const last = guarded && tries === tryN - 1;
+      try { r = await rehearse(score, Math.min(analysis.duration, 1200), onProgress, { lastTry: last }); }
       catch (e) { console.warn('rehearsal skipped:', e); return; }
       song.rehearsal = r;
       const mine = typeof opts.pattern === 'string' ? opts.pattern : opts.pattern?.id;
       const fresh = r.bad.filter(id => id !== mine && !sitOut.has(id));
-      if (!fresh.length) return;
+      if (!fresh.length || last) return;
       console.warn('rehearsal: sitting out ' + JSON.stringify(r.jumps.slice(0, 6)));
       for (const id of fresh) sitOut.add(id);
       // the same family: one bad pattern shouldn't change what kind of film this is

@@ -523,10 +523,11 @@ export function compose(A, seed = 1, opts = {}) {
   const barIdxAt = t => { let lo = 0, hi = bars.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (bars[m] <= t) lo = m; else hi = m - 1; } return lo; };
 
   const gestures = [];
-  for (let k = 0; k < nG; k++) {
-    const s = spec[k], a = s.a, b = s.b, l0 = L[k], l1 = L[k + 1], len = b - a;
-    const srcG = s.replayOf !== null ? gestures[s.replayOf] : null;
-    const pat = s.pat;
+  // One gesture. `over` is the director asking for it again on another pattern, over the time it now has: a plain one, no replay of anything.
+  const gestureFor = (k, over) => {
+    const s = spec[k], a = over?.a ?? s.a, b = over?.b ?? s.b, l0 = L[k], l1 = L[k + 1], len = b - a;
+    const srcG = !over && s.replayOf !== null ? gestures[s.replayOf] : null;
+    const pat = over?.pattern ?? s.pat;
     // It has become the next pattern exactly on the boundary. Where the music falls away it takes longer over it; where it rises it's quicker.
     const morph = morphFor(a, b, clamp(len * (l1.kind === 'fall' || l1.kind === 'break' ? 0.5 : l1.kind === 'rise' ? 0.3 : 0.4), 7, 13), pat);
     // Its clock comes to rest in the transformation out of it (frame.js), so that's where its long move should end, or the last third of the ride would never be seen and the rest would be slow.
@@ -546,7 +547,7 @@ export function compose(A, seed = 1, opts = {}) {
       t0: a, t1: b, arcEnd: form ? a + seen : b, pattern: pat, arcs, kindIn: l0.kind, kindOut: l1.kind,
       morph,
       melMode: (() => { const f = (pat.g.fams || [])[0] || {}, ax = Math.abs(f.x || 0), ay = Math.abs(f.y || 0); return ay > ax * 2 ? 1 : ax > ay * 2 ? 2 : 0; })(),
-      replayOf: s.replayOf, change, label: s.seg.label, visit: s.seg.visit || 0,
+      replayOf: over ? null : s.replayOf, change, label: s.seg.label, visit: s.seg.visit || 0, k,
     };
     if (form) {
       // Where the song is going to arrive somewhere the camera goes in, and where it falls away the camera comes out. The rehearsal can still turn a flight round that goes badly.
@@ -560,7 +561,7 @@ export function compose(A, seed = 1, opts = {}) {
     // The rehearsal may yet narrow the part of the long move this gesture rides, or add to it, so it can ask what the gears would then be. x is how far through the gesture.
     const lam = lambdaOf(pat, aspect), first = barIdxAt(a);
     const hasFamilyFlow = pat.flow && Object.keys(pat.flow).some(key => /^f\d\.ph$/.test(key));
-    G.regear = ([lo, hi] = [0, 1], ridden = G.arcs) => {
+    G.regear = ([lo, hi] = [0, 1], ridden = G.arcs, slower = 1) => {       // slower: what the rehearsal found it had to slow this one by, because it flashed
       const arcsU = x => {
         const u = lerp(lo, hi, x), s0 = arcValue(ridden, 'scale', u, pat.g.scale ?? 1), f0 = arcValue(ridden, 'freq', u, pat.g.freq ?? 1);
         // A lump magnifies what flows through it: the edge in the middle of a bulge travels (1 + a) times as far per cycle.
@@ -573,7 +574,7 @@ export function compose(A, seed = 1, opts = {}) {
       let slow = eases && quietAt(a, false);
       // With nothing XOR-ed against them, a few bold lines change the whole frame's brightness as they go by, so one cycle of them is at least long enough not to read as a flash.
       const stripes = form && lookOf(pat) === 'lines';
-      const geared = (g, on) => { let N = on ? g * 2 : g; if (stripes) while (N / Math.max(rate(a), 0.5) < STRIPES_CYCLE) N *= 2; return N; };
+      const geared = (g, on) => { let N = on ? g * 2 : g; if (stripes) while (N / Math.max(rate(a), 0.5) < STRIPES_CYCLE) N *= 2; return N * slower; };
       let cur = hasFamilyFlow ? geared(gearFor(arcsU(0), rate(a), meter), slow) : meter * 2;
       // A drive may breathe on the clock (dots inflating, merging, flipping). That needs a slow clock, one gear, and, where the song
       // breathes in phrases, the phrase itself. At the beat it would strobe.
@@ -586,7 +587,7 @@ export function compose(A, seed = 1, opts = {}) {
         if (form || A.swellRegularity > 0.5) { const P = phrase / r >= slowest && phrase / r <= 14 ? phrase : phrase * 2 / r <= 14 ? phrase * 2 : phrase / 2 / r >= slowest ? phrase / 2 : 0; if (P) N = P; }
         let worst = 0;
         for (let u = 0; u <= 1; u += 0.1) worst = Math.max(worst, gearFor(arcsU(u), r, meter));
-        cur = Math.max(N, hasFamilyFlow ? worst : 0);
+        cur = Math.max(N, hasFamilyFlow ? worst : 0) * slower;
       }
       const tau0 = tau(a);
       // Its clock runs so that it's at its whitest on the breath
@@ -650,8 +651,9 @@ export function compose(A, seed = 1, opts = {}) {
       }
     }
 
-    gestures.push(G);
-  }
+    return G;
+  };
+  for (let k = 0; k < nG; k++) gestures.push(gestureFor(k));
   // After the last landing the film carries on, slowly, on its last pattern
   const finalPat = gestures.length ? gestures[gestures.length - 1].pattern : pool[0];
   gestures.push({ t0: tEnd, t1: tEnd + 3600, pattern: finalPat, arcs: [], phiTrack: [{ t: tau(tEnd), x: 0, v: 1 / 16 }], gears: [] });
@@ -693,8 +695,9 @@ export function compose(A, seed = 1, opts = {}) {
   }
   return direct({
     gestures, landings, stats, tau, rate, family, pool: pool.map(p => p.id), patterns, seed, aspect,
+    library, remake: (G, pattern) => gestureFor(G.k, { pattern, a: G.t0, b: G.t1 }),
     // Flow surges on the strong beats and glides between, so it stays locked and never jolts
-    phi: (t, G) => { const s = surged(t); return G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8; },
+    phi: (t, G) => { const s = surged(t), v = G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8; return G.phiScale ? v * G.phiScale : v; },       // phiScale: a hero the rehearsal found flashing runs on a slower clock
     react, time,
     song: { duration, bpm: A.bpm, hash: A.hash, meter, phraseBars: A.phraseBars },
   }, A, react.M);

@@ -74,6 +74,21 @@ const plain = async (test, name, script, o = {}) => {
   merge(test, r.code || f.length ? 'FAIL' : 'PASS', `${name}${r.code || f.length ? ' failed' : ' passed'}`, f.slice(0, 6).join(' | '));
   return r;
 };
+// The same for a test that runs in node, with no browser
+const node = async (test, name, script, { env = {}, minutes = 5 } = {}) => {
+  if (!existsSync(join(ROOT, script))) { merge(test, 'PENDING', `${name}: no ${script} yet`); return null; }
+  const r = await new Promise(res => {
+    process.stdout.write(`  ${name} ... `);
+    const p = spawn('node', [script], { cwd: ROOT, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let text = '';
+    p.stdout.on('data', d => { text += d; }); p.stderr.on('data', d => { text += d; });
+    const kill = setTimeout(() => { text += `\nKILLED after ${minutes} minutes\n`; p.kill('SIGTERM'); }, minutes * 60000);
+    p.on('close', code => { clearTimeout(kill); writeFileSync(join(LOGS, `${name}.log`), text); console.log(`exit ${code}`); res({ name, code, text }); });
+  });
+  const f = failLines(r.text);
+  merge(test, r.code || f.length ? 'FAIL' : 'PASS', `${name}${r.code || f.length ? ' failed' : ' passed'}`, f.slice(0, 6).join(' | '));
+  return r;
+};
 const jsonLines = t => t.split('\n').map(l => { const m = /(\{.*\})\s*$/.exec(l); if (!m) return null; try { return { line: l, o: JSON.parse(m[1]) }; } catch { return null; } }).filter(Boolean);
 
 const steps = {
@@ -171,7 +186,22 @@ const steps = {
     await plain('Other tests', 'sound', 'tests/sound.mjs', { minutes: 5 });
     await plain('Other tests', 'songend', 'tests/songend.mjs', { minutes: 10 });
     await plain('Other tests', 'v2-modes', 'tests/v2.mjs', { env: { STAGE: 'static,hand,music,clock,film' }, minutes: 15 });
-    await plain('Other tests', 'understand', 'tests/understand.mjs', { minutes: 5 });
+  },
+  // Each lane's own test, as its report says to run it. Those with a default export go through the lab; those that only read numbers run in node.
+  async lanes() {
+    await node('Lanes', 'understand', 'tests/understand.mjs', { minutes: 5 });
+    await node('Lanes', 'form', 'tests/form.mjs', { minutes: 5 });
+    await node('Lanes', 'shockpairs', 'tests/shockpairs.mjs', { minutes: 2 });
+    await plain('Lanes', 'slip', 'tests/slip.mjs', { minutes: 10 });
+    await plain('Lanes', 'coin', 'tests/coin.mjs', { minutes: 10 });
+    await plain('Lanes', 'star', 'tests/star.mjs', { env: { STAGE: 'ends,walk,chords' }, minutes: 10 });
+    await plain('Lanes', 'stop', 'tests/stop.mjs', { env: { SONG: 'media/mgmt.mp3' }, minutes: 15 });
+    await plain('Lanes', 'riley', 'tests/riley.mjs', { env: { MODE: 'flag' }, minutes: 5 });
+    await plain('Lanes', 'weight', 'tests/weight.mjs', { env: { SONG: 'media/ppp.mp3', STAGE: 'flash' }, minutes: 10 });
+    await plain('Lanes', 'shockpops', 'tests/shockpops.mjs', { env: { KIND: 'shock', N: QUICK ? '10' : '30' }, minutes: 15 });
+    await plain('Lanes', 'fallpops', 'tests/shockpops.mjs', { env: { KIND: 'fall', N: QUICK ? '10' : '30' }, minutes: 15 });
+    await plain('Lanes', 'clickpop', 'tests/clickpop.mjs', { env: { SONG: 'mgmt' }, minutes: 10 });
+    await plain('Lanes', 'repairs', 'tests/repairs.mjs', { env: { SONG: 'mgmt' }, minutes: 10 });
   },
 };
 
@@ -186,7 +216,7 @@ for (const name of Object.keys(steps)) {
 add('Console', consoleBad.length ? 'FAIL' : 'PASS', `${consoleBad.length} steps with page errors`, consoleBad.slice(0, 10).join('\n        '));
 
 // In the order of the table
-const ORDER = ['Pops', 'Console', 'Frame rate', 'One colour', 'Noise', 'Stasis', 'Jerk on pulses', 'Flash', 'Balance', 'Breath', 'Wave', 'Rest', 'Closure', 'Countdown reads', 'Purity', 'Beyond', 'Variety', 'Boot', 'Boot (first probe)', 'Flags off', 'Interaction'];
+const ORDER = ['Pops', 'Console', 'Frame rate', 'One colour', 'Noise', 'Stasis', 'Jerk on pulses', 'Flash', 'Balance', 'Breath', 'Wave', 'Rest', 'Closure', 'Countdown reads', 'Purity', 'Beyond', 'Variety', 'Boot', 'Boot (first probe)', 'Flags off', 'Interaction', 'Other tests', 'Lanes'];
 rows.sort((a, b) => { const i = ORDER.indexOf(a.test), j = ORDER.indexOf(b.test); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); });
 const counts = { PASS: 0, FAIL: 0, PENDING: 0 }; rows.forEach(r => counts[r.status]++);
 let rev = '?'; try { rev = execSync('git rev-parse --short HEAD', { cwd: ROOT, encoding: 'utf8' }).trim() + (execSync('git status --short src', { cwd: ROOT, encoding: 'utf8' }).trim() ? ' with uncommitted changes' : ''); } catch { /* no matter */ }

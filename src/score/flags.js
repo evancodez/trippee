@@ -10,9 +10,9 @@ export const flags = {
   // fields and worlds
   river: true, arcade: true, blaze: true, octagrid: true, metamorphosis: true, labyrinth: true,
   // the director
-  direct: true, countdown: true, lock: true,
+  direct: true, countdown: true, lock: true, heroRiley: true,
   // the film's rehearsal: patterns kept out of films, the good part of each long move, which way a flight goes
-  pool: true, range: true, flightWay: true,
+  pool: true, range: true, flightWay: true, flashGuard: true,
   // pattern music: tools you can hear, and reading colour by its nearest ink
   toolsound: true, readInks: true,
 };

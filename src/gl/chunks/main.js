@@ -76,12 +76,29 @@ export default `void main(){
   // A flight into one element of a pattern: the other pattern is what's inside that element, so there is nothing laid over anything. A GPU pays for
   // each call site on every pixel, so there is one prepare and one inkOf here, in loops. This program only ever draws flights, so the plain path is left out of it.
   bool bOuter=dv.w>2.5,inWhite=dv.w==1.||dv.w==3.;
-  vec2 pz=dv.xy+(p-dv.xy)/dv.z;
+  vec2 pz=dv.xy+(p-dv.xy)/dv.z,pA=p;
+  // The iris (src/score/xform/iris.js): A is wound on a tube, and flat inside it. B lies flat outside it. Each leans in to the tube where they meet. What's wound comes from further out, so one prepare each still does.
+  bool iris=dv.w>4.5,rolled=false,limb=false;
+  float irisB=0.;
+  if(iris){
+    vec2 d=p-dv.xy; vec4 xa=uF[F_XF2]; float q=length(d),Rt=xa.z,s=q-dv.z;
+    pz=p-d*xa.y*exp(-max(s-Rt,0.)/xa.x);
+    irisB=aaOf(s-Rt);
+    rolled=s>=-Rt;
+    pA=rolled?dv.xy+rot(uF[F_XF].y)*d/max(q,1e-4)*(dv.z+Rt*(PI-asin(clamp(s/Rt,-1.,1.)))):p+d*xa.w*exp((s+Rt)/xa.x);
+    float rf=rolled?1.:0.; limb=dFdx(rf)!=0.||dFdy(rf)!=0.;      // the tube's inner edge: the pixels across it aren't a real gradient
+  }
   float oB=uG[SLOT+I_matte].y; if(oB==2.) oB=0.;
   float thB=uG[SLOT+I_shape].z-gBeat*uF[F_WEIGHT].y;
   vec4 so=uF[7];
   float mm[3],cc[5];
-  for(int j=0;j<(so.w>0.?3:2);j++) mm[j]=prepare(j,j==1?SLOT:0,j==2?rot(so.z)*p+so.xy:(j==0)==bOuter?p:pz);
+  for(int j=0;j<(so.w>0.?3:2);j++){
+    bool brk=gBreak; if(j==0&&limb) gBreak=true;
+    mm[j]=prepare(j,j==1?SLOT:0,j==2?rot(so.z)*p+so.xy:(j==0)==bOuter?pA:pz);
+    gBreak=brk;
+  }
+  // Going round the edge of the tube the lines get too fine to draw, and they close up to solid, or they'd be a thin grey ring.
+  if(rolled) for(int i=0;i<FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.16,.42,gGn[i]);
   // The outer one first, each time: what it shows at this pixel decides how far the inner one has opened here. Then one threshold does for both sides of an edge.
   // In order: outer, inner, the same two on colour's second plate, and the hand's lifted sheet.
   for(int n=0;n<5;n++){
@@ -89,7 +106,7 @@ export default `void main(){
 #ifdef PLATES
     else if(n>=2&&!plates) continue;
     if(n==2){
-      for(int i=0;i<FAM;i++) gW[(bOuter?FAM:0)+i]*=uF[2].a;      // the outer pattern's plates are shut by the time its element fills the frame
+      if(!iris) for(int i=0;i<FAM;i++) gW[(bOuter?FAM:0)+i]*=uF[2].a;      // the outer pattern's plates are shut by the time its element fills the frame
       plateMove(2*FAM);
     }
 #else
@@ -98,18 +115,24 @@ export default `void main(){
     bool isOuter=(n&1)==0&&n<4;
     int j=n==4?2:isOuter==bOuter?1:0;
     float t=j==1?thB:th;
-    if(n<4&&!isOuter) t=mix(uF[${FRAME.spare}].x,t,inWhite?cc[n-1]:1.-cc[n-1]);
+    if(n<4&&!isOuter&&!iris) t=mix(uF[${FRAME.spare}].x,t,inWhite?cc[n-1]:1.-cc[n-1]);
     float v=mix(j==1?oB:o,inkOf(j,j*FAM,(j+1)*FAM,t),mm[j]);
     // What's closing up ends in hairlines thinner than a twentieth of a pixel, which through the XOR and the gamma would be a dim salt: this small stretch closes them.
     // And the frame the camera arrives the outer one is exactly its element's colour, whatever phase it stopped in, and the inner one exactly itself, so the next frame, on the plain path, changes nothing.
-    cc[n]=mix(clamp((v-.05)/.9,0.,1.),isOuter?(inWhite?1.:0.):v,uF[${FRAME.spare}].y);
+    cc[n]=iris&&n<4?v:mix(clamp((v-.05)/.9,0.,1.),isOuter?(inWhite?1.:0.):v,uF[${FRAME.spare}].y);
   }
   // Each sits in the other's phase: crossing the outer one's edge flips the inner one and changes how far it has opened, so the same lines run through both sides and
   // neither side is ever flat. At the end the frame is wholly inside the element, or the inner one has closed up to that element's colour, and one pattern is left alone.
-  c=cc[0]+cc[1]-2.*cc[0]*cc[1]; if(inWhite) c=1.-c;
+  c=iris?mix(cc[1],cc[0],irisB):cc[0]+cc[1]-2.*cc[0]*cc[1]; if(inWhite) c=1.-c;
   c2=c; cP=c;
 #ifdef PLATES
-  if(plates){
+  if(plates&&iris){
+    // Each flat sheet has its own plates. They're shut on the tube, where they'd only be noise.
+    cP=mix(rolled?cc[1]:cc[3],cc[2],irisB);
+    dP=abs(c-cP);
+    if(min(c+cP,2.-c-cP)>dP) dP=mix(rolled?0.:plateDis(0,FAM)*mm[0],plateDis(FAM,2*FAM)*mm[1],irisB);
+  }
+  else if(plates){
     cP=cc[2]+cc[3]-2.*cc[2]*cc[3]; if(inWhite) cP=1.-cP;
     dP=abs(c-cP);
     if(min(c+cP,2.-c-cP)>dP){

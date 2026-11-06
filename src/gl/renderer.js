@@ -26,8 +26,10 @@ function link(gl, vs, fs) {
 }
 
 export class Renderer {
-  constructor(canvas) {
+  // bare: it'll never be asked for the hand or colour, so those aren't built at all
+  constructor(canvas, { bare = false } = {}) {
     this.canvas = canvas;
+    this.order = bare ? ORDER.slice(0, 4) : ORDER;
     const gl = this.gl = canvas.getContext('webgl2', {
       antialias: false, alpha: false, depth: false, stencil: false,
       powerPreference: 'high-performance', preserveDrawingBuffer: false, desynchronized: false,
@@ -90,7 +92,7 @@ export class Renderer {
     }
     if (v === FLIGHT) { this.ready = true; this._resolveReady(); }
     // The next one, without holding anything up. With no way to build in the background, the rest wait until each is first asked for.
-    const next = ORDER.find(n => !this.progs[n]);
+    const next = this.order.find(n => !this.progs[n]);
     if (next === undefined) { this._pending = null; this._resolveAll(); return; }
     if (this.parallel || v === 0) { this._start(next); this._poll(); } else { this._pending = null; this._resolveAll(); }
   }

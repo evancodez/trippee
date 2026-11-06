@@ -1,21 +1,9 @@
 // A whole film at a glance, and whether it breathes. Steps it on a fixed clock with the rehearsal's own eyes, so it's quick and plays no sound.
 //   SONG=ppp node tools/lab.mjs tests/formfilm.mjs --out lab-out/form
 // Writes <song>.film.jpg, one frame every EVERY seconds with its time and pattern, and says the white autocorrelation at the breath, form on against form off.
-import { breathOf } from './judge.mjs';
+import { breathOf, breathFold } from './judge.mjs';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// Does the white rise and fall with the breaths? The picture's mean white, folded on the breath grid, against the same thing folded on grids of other periods. The judge's autocorrelation can't see this under
-// the big slow swings of each pattern's long move and each flight; a fold can, because only something locked to the grid survives it. Returns the range of the fold, where it peaks (0 is on the breath, as a share of a breath),
-// and p, the share of other periods that fold as well.
-export function breathFold({ fps, white }, grid, breath) {
-  const n = white.length, R = Math.round(breath * fps), pre = new Float64Array(n + 1);
-  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + white[i];
-  const y = white.map((v, i) => v - (pre[Math.min(n, i + R + 1)] - pre[Math.max(0, i - R)]) / (Math.min(n, i + R + 1) - Math.max(0, i - R)));
-  const fold = (t0, P) => { const B = 24, s = new Float64Array(B), c = new Float64Array(B); for (let i = 0; i < n; i++) { const ph = ((i / fps - t0) / P % 1 + 1) % 1, b = Math.min(B - 1, Math.floor(ph * B)); s[b] += y[i]; c[b]++; } const m = Array.from(s, (v, b) => v / Math.max(c[b], 1)); return { m, range: Math.max(...m) - Math.min(...m), peak: m.indexOf(Math.max(...m)) / B }; };
-  const t0 = grid[0], P = grid.length > 1 ? (grid[grid.length - 1] - grid[0]) / (grid.length - 1) : breath, real = fold(t0, P);
-  let more = 0, tries = 0;
-  for (let f = 0.7; f <= 1.45; f += 0.005) { if (Math.abs(f - 1) < 0.04) continue; tries++; if (fold(t0, P * f).range >= real.range) more++; }
-  return { range: +real.range.toFixed(3), peak: +real.peak.toFixed(2), p: +(more / tries).toFixed(3) };
-}
+export { breathFold };
 export default async ({ page, log, save }) => {
   const song = process.env.SONG || 'ppp', every = +(process.env.EVERY || 2);
   // FORM=0 SPREAD=0: the same film without them, to compare

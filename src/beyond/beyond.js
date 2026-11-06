@@ -155,8 +155,9 @@ export function init(app) {
   let shown = palettes[0].lin.slice(), fadeFrom = null, fade = 1;
 
   // A stop rests the picture's clock at a - DEC/2. That has to be in a gesture's body: rest in a transformation and the frame holds half way between two patterns for seconds.
-  const safeStop = (a, score) => {
-    if (a == null) return a;
+  // It also has to keep clear of the film's own stops (score.time.windows). While the film pays a rest back its clock runs at 1.5 with the song's tables at 1, so a colour stop holding the
+  // picture still there would run the tables backward at half speed. Colour's own catching up is faster than that, so only its slowing down, its hold and its start up count.
+  const clearOfMorphs = (a, score) => {
     const p = a - DEC / 2;
     for (const G of score?.gestures || []) {
       if (!G.morph) continue;
@@ -164,6 +165,21 @@ export function init(app) {
       if (p > m0 - 1.5 && p < G.t1 + 0.5) return Math.max(G.t0 + 2, m0 - 1.5) + DEC / 2;
     }
     return a;
+  };
+  const clearOfRests = (a, score) => {
+    for (const w of score?.time?.windows || []) if (a - DEC < w.paid && a + HOLD + RES > w.from) return w.from - HOLD - RES - 0.5;
+    return a;
+  };
+  const safeStop = (a, score) => {
+    if (a == null) return a;
+    if (!score?.time?.windows?.length) return clearOfMorphs(a, score);
+    // Each move goes earlier, so this settles unless there's no room at all. Then there's no stop in this song.
+    for (let i = 0; i < 6; i++) {
+      const b = clearOfRests(clearOfMorphs(a, score), score);
+      if (b === a) return a;
+      a = b;
+    }
+    return null;
   };
   const analysis = score => (score?.song && app.song?.analysis?.hash === score.song.hash ? app.song.analysis : null);
   const stopFor = (t, score) => {

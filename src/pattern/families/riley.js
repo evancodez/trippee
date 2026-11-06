@@ -38,8 +38,8 @@ export default [
     axes: [WIND, ZIG, ZOOM],
     lambda: 0.1 },
 
-  // The same in square rings: a stepped pit, whose walls begin to spin. Out of films for now: rising out of it with a song on, the next pattern jumps on the last frame of the flight (disclosure 57.22).
-  { id: 'riley.pit', name: 'Square Blaze', family: 'riley', pool: false,
+  // The same in square rings: a stepped pit, whose walls begin to spin.
+  { id: 'riley.pit', name: 'Square Blaze', family: 'riley', get pool() { return flag('blaze'); },
     g: { fams: [{ l1: 4.2 }], field: { kind: 3, a: 16, b: 0, k0: 0.36 }, 'p1.q': 1 },
     flow: { 'f0.ph': -1, 'field.ph': 1 },
     arcs: [

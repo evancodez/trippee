@@ -48,22 +48,30 @@ export function init(app) {
   }
 
   // A song waits while the picture plays. The film stays where it was and the wander takes the screen, on a clock of its own.
+  // Pressed in the middle of a transformation, that transformation finishes first (stage.settle), quickly, since starting another from half way through it would pop.
+  let standing = null;     // standing in, and still waiting for that
   function standIn() {
     const s = app.song, stage = app.stage;
     song = null;
     if (!s) return;
     const wasPlaying = !!s.playing;
     s.pause?.();
-    if (app.clock) {
+    if (!app.clock) return;
+    const clock = app.clock, me = standing = { wasPlaying, clock };
+    song = me;
+    s.aside = true;
+    stage.settle(app.pictureT(), () => {
+      if (standing !== me) return;      // let go again before it got this far
+      standing = null;
+      if (s.playing) { song = null; s.aside = false; off(); return; }      // and someone has pressed play on it meanwhile, so it wins
       const t = app.pictureT(), snap = stage.snapshot(t);
-      song = { wasPlaying, clock: app.clock };
-      s.aside = true;
-      stage.score = { gestures: [{ t0: t, t1: t + 16, arcEnd: t + 16, pattern: snap.G.pattern, arcs: [], morph: 12 }], phi: GHOST, song: null };
+      // The film's tables come along for a moment, so what the song was doing to the sheet dies away instead of stopping dead
+      stage.score = { gestures: [{ t0: t, t1: t + 16, arcEnd: t + 16, pattern: snap.G.pattern, arcs: [], morph: 12 }], phi: GHOST, song: null, react: stage.score.react, ambient: stage.score.ambient, songFades: t, time: Object.assign(tt => tt, { c: stage.score.time?.c }) };
       stage.hold = false;
       stage._extend(t);
       app.clock = null;
       stage.morphFrom(snap, t, 3);
-    }
+    });
   }
 
   function standDown() {
@@ -71,14 +79,19 @@ export function init(app) {
     const { wasPlaying, clock } = song, stage = app.stage, s = app.song;
     song = null;
     if (s) s.aside = false;
+    // It never got as far as leaving the film, so there's nothing to go back from
+    if (standing) { standing = null; if (wasPlaying) s?.play?.(); return; }
     if (!s?.analysis || s.resting) return;    // it was ejected or ran out meanwhile: the wander just carries on
-    const snap = stage.snapshot(app.pictureT());
-    stage.setScore(s.score);                  // the latest take, if there's been another
-    app.clock = clock;
-    const t = clock();
-    app.t = t;
-    stage.morphFrom(snap, app.pictureT(t), 6);
-    if (wasPlaying) s.play?.();
+    stage.settle(app.pictureT(), () => {
+      if (app.clock || active) return;        // a song has started some other way, or the picture's been asked to play again, and that wins
+      const snap = stage.snapshot(app.pictureT());
+      stage.setScore(s.score);                // the latest take, if there's been another
+      app.clock = clock;
+      const t = clock();
+      app.t = t;
+      stage.morphFrom(snap, app.pictureT(t), 6);
+      if (wasPlaying) s.play?.();
+    });
   }
 
   // The read line is never drawn: the music reads the picture, and the picture is left alone.
@@ -86,7 +99,7 @@ export function init(app) {
   function tick() {
     if (!active) return;
     // Someone has started a song by hand (dropped one, pressed play): it wins, and this steps aside.
-    if (app.song?.playing || app.clock) { song = null; if (app.song) app.song.aside = false; off(); return; }
+    if (!standing && (app.song?.playing || app.clock)) { song = null; if (app.song) app.song.aside = false; off(); return; }
     const t0 = performance.now();
     // About ten looks a second is plenty for a read line that moves a few columns a second.
     if (!reader.fence && t0 - lastRead > READ_MS) { lastRead = t0; reader.request(); }

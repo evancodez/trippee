@@ -22,6 +22,10 @@ changes what's showing. Nothing is ever empty: past a surface or matte the same 
 default). Floors (a plane or a slab) can't tip far enough to show their horizon. A gesture only rides the part of its long move that stays bold
 (`BOLD` in frame.js; a pattern with `fine: true` is exempt).
 
+**A film is watched for flashes before anyone sees it** (`guardFlashes` in `src/music/rehearse.js`, flag `flashGuard`). The rehearsal's last pass plays the whole film small at 10 fps and counts what `tests/judge.mjs` counts: opposing swings of 10% of full scale, none in a second for the whole frame, two per second per tile. Whatever goes over gets the least it needs, on that one gesture, and each change is kept only if it helps: what flows flows slower (`G.regear(range, arcs, slower)`, or `G.phiScale` on a hero), then the song lifts it less (`G.calm`); a glide becomes a flight (`G.noGlide`); a fall or a shock becomes a plain transformation; a flight turns round, then takes longer. `tests/flash.mjs` says where a film flashes and why, `AT=a-b` gives close frames with their numbers.
+
+The song's rings are per slot (`F_SPARE`.z, .w): a slot that's shut holds none, so what's showing can let go over the very start of a click's flight while what it's flying into stays closed.
+
 **Version 2 adds** the effects bar, static, the hand, colour and pattern music, all below in "The modes".
 
 This overrides section 2 of `DESIGN.md` wherever they differ. The rest of `DESIGN.md` (music, transition grammar, pattern

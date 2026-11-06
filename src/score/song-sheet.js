@@ -10,6 +10,8 @@ import { clamp, lerp, smoother } from './curves.js';
 import { fineness } from './slot.js';
 import { reactAt, chordLenses, pulseAt, melodyAt } from './react.js';
 import { flag } from './flags.js';
+import { handoverOn } from './morphclock.js';
+import { coinAmbient } from './moves/coin.js';
 
 const lensTmp = new Float32Array(12);
 
@@ -40,6 +42,8 @@ const RING_TENS = 0.42;   // the carrier of fat and thin lines at full tension
 const RING_MEL = 0.34;    // the tune's own rings, per 6 semitones
 const RING_V = 0.55;      // how fast the rings go out
 const RING_LET = 1, RING_BACK = 1.5;     // seconds they take to let go before a transformation, and to come back after one
+const SONG_FADE = 3, SONG_COMES = 0.3;   // seconds the song takes to leave a wander that's standing in; how far into a handover from no song it's arrived
+const RING_DROP = 0.12;   // how far into a click's flight what's showing has let go of them
 const MEL_STEP = 0.125, MEL_SPEED = 0.62;
 const SHARP = 3.5;        // lines that move twice as far don't look twice as busy, so a lead has to be more than twice what's under it to read as one
 
@@ -51,23 +55,46 @@ function pan(S, dx, dy) {
   S[OFF.tx] -= (c * dx + n * dy) / k; S[OFF.ty] -= (-n * dx + c * dy) / k;
 }
 
+// How much of the rings each slot has, as a share [slot A, slot B]. On a plain frame it's only A. They've let go before a gesture's own transformation, and come back after it.
+// A click's flight, which nobody saw coming, can't have let go first. So what's showing lets go over the very start of it, while it's barely moving, and what it's flying into, closed all that time and holding none
+// of it, takes them up again as it lands. That has to be per slot: a duty that isn't zero opens a slot that's meant to be shut.
+const plainRings = (G, t) => { const end = G.ringsEnd ?? (G.morph ? G.t1 - G.morph : null); return smoother((t - G.t0) / RING_BACK) * (end != null ? smoother((end - t) / RING_LET) : 1); };
+const ringShares = [0, 0];
 function ringsNow(st, score, edits, flight, dive) {
   const { x, G, t } = st;
+  ringShares[0] = ringShares[1] = 0;
   if (st.two) {
-    if (flight) return dive && st.from === score.handover?.G ? smoother((x - 0.75) / 0.25) : 0;
-    if (st.plan?.close?.length || st.plan?.open?.length) return 0;
-    return smoother(x / 0.1) * smoother((1 - x) / 0.1);
+    if (flight) {
+      const h = score.handover;
+      if (dive && st.from === h?.G) {
+        ringShares[1] = smoother((x - 0.75) / 0.25);
+        if (h.rings) ringShares[0] = (edits?.staticG ? 1 : plainRings(st.from, h.ts ?? t)) * (1 - smoother(x / RING_DROP));
+      }
+    } else if (!(st.plan?.close?.length || st.plan?.open?.length)) ringShares[0] = ringShares[1] = smoother(x / 0.1) * smoother((1 - x) / 0.1);
+    return ringShares;
   }
-  if (edits?.staticG) return 1;
-  return smoother((t - G.t0) / RING_BACK) * (G.morph ? smoother((G.t1 - G.morph - t) / RING_LET) : 1);
+  ringShares[0] = edits?.staticG ? 1 : plainRings(G, t);
+  return ringShares;
 }
 
 export function songSheet(st, score, edits) {
-  const Rc = score.react, amt = edits?.reactAmt ?? 1;
+  const Rc = score.react;
+  let amt = edits?.reactAmt ?? 1;
+  // The song leaving (a wander standing in for a film keeps its tables for a moment, score.songFades) or arriving where it wasn't (a handover from something with no song on it) comes and goes
+  // gradually: it's been pushing the whole frame about, and that can't stop or start between two frames.
+  if (score.songFades != null) amt *= 1 - smoother((st.t - score.songFades) / SONG_FADE);
+  const hd = score.handover, hOn = !!hd && handoverOn(hd, st.t), hx = hOn ? smoother((hd.wall ? (hd.e - (hd.e0 ?? 0)) / hd.D : (st.t - hd.t0) / (hd.t1 - hd.t0)) / SONG_COMES) : 1;
+  if (hOn && hd.rings === false) amt *= hx;
   if (!(Rc && amt > 0)) return;
   const { G, A, B, F, kind, x, solid, moveA, moveB } = st;
   const c = st.c ?? st.t, s = reactAt(Rc, c), big = 0.5 + 0.7 * s.energy;
-  const mPulse = (edits?.reactPulse ?? 1) * amt, mMel = (edits?.reactMelody ?? 1) * amt, mTone = (edits?.reactTone ?? 1) * amt, mHarm = (edits?.reactHarmony ?? 1) * amt, mLung = (edits?.reactLung ?? 1) * amt;
+  // One hero at a time, and everything else steps back for it. Eased at both ends (score.ambient, src/score/direct.js), and a coin takes the chords' pushing about off altogether, or it's a wobble on one pattern.
+  let ambient = score.ambient && !edits?.staticG ? score.ambient(st.t) : 1, chordRoom = ambient * coinAmbient(G, st.t);
+  // A click takes the film to another take, which has its own heroes. How far things had stepped back goes with what's showing, and comes round to the new take's as it flies.
+  if (hOn && hd.ambient != null) { chordRoom = lerp(hd.ambient * coinAmbient(hd.G, hd.ts ?? st.t), chordRoom, hx); ambient = lerp(hd.ambient, ambient, hx); }
+  // A gesture the rehearsal found flashing with the song on it takes less of it (src/music/rehearse.js), letting go of that at both ends so nothing steps.
+  const calm = G.calm ? lerp(1, G.calm, smoother((st.t - G.t0) / 1.5) * smoother((G.t1 - st.t) / 1.5)) : 1;
+  const mPulse = (edits?.reactPulse ?? 1) * amt * ambient * calm, mMel = (edits?.reactMelody ?? 1) * amt * ambient, mTone = (edits?.reactTone ?? 1) * amt * ambient, mHarm = (edits?.reactHarmony ?? 1) * amt * chordRoom, mLung = (edits?.reactLung ?? 1) * amt * ambient * calm;
   const flight = kind === 'dive' || kind === 'rise', dive = kind === 'dive';
   const knows = flag('understand') && !!Rc.M && !Rc.M.neutral;
   const weighs = flag('weight'), lensMap = knows && flag('lensMap'), lung = knows && flag('lung'), rings = knows && flag('tuneRings');
@@ -163,10 +190,11 @@ export function songSheet(st, score, edits) {
   // saw coming, can only drop them when it starts and bring them back as it lands, since it only ever flies in. A slide or a bend has them through its middle, unless it opens or closes a family.
   if (rings) {
     const M = Rc.M, one = M.bar < 1.2 ? 2 * M.bar : M.bar, lam = RING_V * one, down = M.bars?.length ? Rc.C(M.bars[0]) : 0;
-    const fade = ringsNow(st, score, edits, flight, dive);
-    const Tu = FRAME.tune * 4, Ts = FRAME.tens * 4;
-    F[Tu] = RING_TENS * mHarm * gHarm * fade; F[Tu + 1] = 1 / lam; F[Tu + 2] = (c - down) / one; F[Tu + 3] = 1 / (0.25 * RING_V);
+    const [fa, fb] = ringsNow(st, score, edits, flight, dive), any = fa > 0 || fb > 0 ? 1 : 0;
+    const Tu = FRAME.tune * 4, Ts = FRAME.tens * 4, Sp = FRAME.spare * 4;
+    F[Sp + 2] = fa; F[Sp + 3] = fb;
+    F[Tu] = RING_TENS * mHarm * gHarm * any; F[Tu + 1] = 1 / lam; F[Tu + 2] = (c - down) / one; F[Tu + 3] = 1 / (0.25 * RING_V);
     for (let k = 0; k < 16; k++) F[Ts + k] = clamp(readArr(Rc, Rc.tension, Math.max(0, c - k * 0.25)));
-    F[Fo] = fx; F[Fo + 1] = fy; F[Fo + 2] = RING_MEL * mMel * gTune * fade; F[Fo + 3] = 1 / (MEL_STEP * MEL_SPEED);
+    F[Fo] = fx; F[Fo + 1] = fy; F[Fo + 2] = RING_MEL * mMel * gTune * any; F[Fo + 3] = 1 / (MEL_STEP * MEL_SPEED);
   }
 }

@@ -55,17 +55,20 @@ export function matchFamilies(a, b) {
     fewExtras: close.length + open.length <= 2 && pair.some(p => p >= 0),
     // A field draws differently for different numbers, and they snap: gliding across them would be a cut.
     plain: !shaped(a) && !shaped(b) && sameBody && same('fold.n') && a[OFF['droste.lnS']] === 0 && b[OFF['droste.lnS']] === 0 && a[OFF['conf.amt']] === b[OFF['conf.amt']]
-      && same('field.kind') && same('field.a') && same('field.b'),
+      && same('field.kind') && same('field.a') && same('field.b')
+      // ...and so does how a sheet's cut into bands: gliding into a dial that's come apart would keep the old cuts to the last frame, and then the whole picture jumps.
+      && same('slip.kind') && same('slip.n'),
   };
 }
 
-// ctx: { R, aspect, D, rise, xform }. The same kind of thing: its numbers can simply glide. Otherwise lines can bend into lines if they're near
+// ctx: { R, aspect, D, rise, xform, noGlide }. The same kind of thing: its numbers can simply glide. Otherwise lines can bend into lines if they're near
 // enough in size. Otherwise it's a flight, which works between anything.
 export function makePlan(a, b, ctx) {
   const m = matchFamilies(a, b), c = { ...ctx, m };
   const want = ctx.xform && XFORMS[ctx.xform.id];
   if (want && flag(want.id)) { const p = want.plan(a, b, c); if (p) return p; }
-  return slide.plan(a, b, c) ?? bend.plan(a, b, c) ?? flight.plan(a, b, c);
+  // A rehearsal that's watched a slide flash rules out gliding between these two (ctx.noGlide), and then it's a flight.
+  return (ctx.noGlide ? null : slide.plan(a, b, c) ?? bend.plan(a, b, c)) ?? flight.plan(a, b, c);
 }
 
 // The same plan, one look per frame, so nothing stalls the film. Every look at the patterns is a draw read back, and a plan can want eight. Run this

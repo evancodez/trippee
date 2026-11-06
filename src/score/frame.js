@@ -44,7 +44,7 @@ function planFor(m, dtf, stop, phiOf, R, aspect, now) {
     // A handover can only ever fly in. Rising needs the next pattern at rest with its element where the plan found it, and a film's clock doesn't
     // stop for that: its element would have moved on, and the frame would sit inside whatever had moved there, one flat colour.
     const hurry = { now };
-    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? null : from.xform }, hurry) };
+    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? null : from.xform, noGlide: !handover && from.noGlide }, hurry) };
   }
   w.hurry.now = now;
   let step = w.steps.next();

@@ -124,7 +124,7 @@ float prepare(int K,int b,vec2 p){
   vec2 gT2=vec2(v2.x*dXx.y*P2.w-v2.y*dXx.x,v2.x*dXy.y*P2.w-v2.y*dXy.x)*i2;
   bool wrapped=uG[b+I_surf].y>.5;
   vec2 fq=lensView?vec2(1.,tn.x):vec2(tn.x);          // and the lines knob only changes what runs along it
-  float sl=moveSlip(b,X.xy,b1),fS=fieldS(b,X.xy);
+  float sl=moveSlip(b,X.xy,b1),fS=fieldS(b,X.xy),tuneShare=uF[F_SPARE][K==1?3:2];    // how much of the tune's rings this slot has: a slot that's shut has none, or they'd open it
   for(int i=0;i<FAM;i++){
     vec4 fa=uG[b+3*i],fb=uG[b+3*i+1],fc=uG[b+3*i+2];
     int k=K*FAM+i;
@@ -146,7 +146,7 @@ float prepare(int K,int b,vec2 p){
     sm+=gRing*clamp(length(g)*uF[8].y*.5,2.5,9.);           // a ring moves a line by the same distance however big it is, up to a point, and even broad shapes slip enough to show it
     gPh[k]=sm+fb.z*b1.z+fc.z*b2.z+fa.w+fa.y*tn.x*slipY+sl*uG[b+I_slipM][i];
     if(parity<0.){ gPh[k]+=.5; parity=1.; }                 // half a cycle on one family inverts the whole XOR
-    gGr[k]=g; gGn[k]=max(length(g),1e-5); gDu[k]=abs(fb.w)<.85?clamp(fb.w+gTune*DS[i],-.85,.85):fb.w;   // a closed family stays closed
+    gGr[k]=g; gGn[k]=max(length(g),1e-5); gDu[k]=abs(fb.w)<.85?clamp(fb.w+gTune*DS[i]*tuneShare,-.85,.85):fb.w;   // a closed family stays closed
   }
   gRnd[K]=uG[b+I_shape].x; gSum[K]=uG[b+I_shape].y;
   return cover;

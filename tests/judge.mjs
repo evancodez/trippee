@@ -39,7 +39,8 @@ export const TH = {
   stasisWin: 12, stasisEdges: 0.10, stasisTile: 8,
   jerk: 3, jerkFloor: 0.5,            // diff / rolling median; a median under the floor counts as the floor, so a nearly still picture doesn't divide by nothing
   flashWhole: 0, flashTile: 2,
-  restDiff: 0.05, restBack: 0.5, restDb: 12, restMax: 4,
+  restDiff: 0.05, restBack: 0.5, restDb: 9, restMax: 4,      // a real stop can be under 12 dB: mgmt's is 9.3, with the harmony and the drums at nothing and then a full re-entry
+  breathRange: 0.05, breathP: 0.1, breathPeak: 0.2, breathAttack: 0.5,    // the fold's range of white, the share of other periods that fold as well, how far from the breath it can peak, and its rise in seconds
   closure: 0.1,
   cost: 17.5,
 };
@@ -543,15 +544,20 @@ export default async ({ page, log, save, out, sleep }) => {
     }
   }
 
-  // ---- Breath: does the picture's white rise and fall at the breath's period?
+  // ---- Breath: does the picture visibly breathe on the phrase? The white folded on the breath grid, against the same thing folded on grids of other periods. An autocorrelation can't see this
+  // under the big swings of each pattern's long move and each flight, and a fold can, since only what's locked to the grid survives it.
   if (want('film') || film) {
-    const lagHint = info.M?.breath?.t?.length > 1 ? median(info.M.breath.t.slice(1).map((t, i) => t - info.M.breath.t[i])) : BREATH_HINT[song];
+    const grid = info.M?.breath?.t?.length > 1 ? info.M.breath.t : null;
+    const lagHint = grid ? median(grid.slice(1).map((t, i) => t - grid[i])) : BREATH_HINT[song];
     if (film && lagHint) {
-      const b = breathOf(film, lagHint, info.M?.breath?.t);
-      extra.breath = b;
-      const measured = !!info.M?.breath?.t?.length;
-      const good = b.peak && (!measured || b.attack == null || b.attack >= 0.5);
-      add(row('Breath', measured ? (good ? 'PASS' : 'FAIL') : 'PENDING', `r ${b.r} at ${r2(lagHint)} s`, `autocorrelation of white: ${b.peak ? 'a peak' : 'no peak'} at the lag${b.bestLag ? `, strongest at ${b.bestLag} s (r ${b.best})` : ''}${b.attack != null ? `, attacks ${b.attack} s` : ''}${measured ? '' : '; breath from the prototype, understand() has not landed'}`));
+      // Only where the film is listening: a transformation is its own move, and a body move (a coin, a countdown, a star) is the hero of its stretch, with everything else told to step back on purpose.
+      const BODY_MOVES = ['coin', 'slip', 'star'], heroAt = t => info.gestures.find(G => G.t0 <= t && t < G.t1)?.hero?.some(h => BODY_MOVES.includes(h));
+      const listening = rec?.kind?.length ? i => !rec.kind[i] && !heroAt(film.time[i]) : null;
+      const b = breathOf(film, lagHint, grid), f = breathFold(film, grid ?? [0], lagHint, listening);
+      extra.breath = { ...b, fold: f };
+      const measured = !!grid, off = Math.min(f.peak, 1 - f.peak);
+      const good = f.range >= TH.breathRange && f.p <= TH.breathP && off <= TH.breathPeak && (f.attack == null || f.attack >= TH.breathAttack);
+      add(row('Breath', measured ? (good ? 'PASS' : 'FAIL') : 'PENDING', `fold ${f.range} of white at ${r2(lagHint)} s, p ${f.p}`, `white folded on the breath grid over the ${f.share} of the film that's listening: range ${f.range} (want ${TH.breathRange}+), peaking ${r2(off)} of a breath from the breath (want ${TH.breathPeak} at most), other periods fold as well ${f.p} of the time (want ${TH.breathP} at most), rises in ${f.attack} s (want ${TH.breathAttack}+). Autocorrelation for the record: r ${b.r}${measured ? '' : '; breath from the prototype, understand() has not landed'}`));
     }
   }
 
@@ -698,6 +704,27 @@ export function breathOf(w, lag, breaths) {
   return { r: r2(bestNear), peak, best: r2(best), bestLag: r2(bestL / fps), attack };
 }
 
+// Does the white rise and fall with the breaths? The picture's mean white, folded on the breath grid, against the same thing folded on grids of other periods. The autocorrelation can't see this under
+// the big slow swings of each pattern's long move and each flight; a fold can, because only something locked to the grid survives it. Returns the range of the fold, where it peaks (0 is on the breath, as a share of a breath),
+// p, the share of other periods that fold as well, and how long the fold takes to rise from 10% to 90% on its way to that peak, in seconds.
+export function breathFold({ fps, white }, grid, breath, mask = null) {
+  const n = white.length, R = Math.round(breath * fps), pre = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + white[i];
+  const y = white.map((v, i) => v - (pre[Math.min(n, i + R + 1)] - pre[Math.max(0, i - R)]) / (Math.min(n, i + R + 1) - Math.max(0, i - R)));
+  const B = 24;
+  // Too little of the film to go on, and it's the whole film
+  let kept = 0; if (mask) for (let i = 0; i < n; i++) if (mask(i)) kept++;
+  const only = mask && kept >= 0.15 * n ? mask : null;
+  const fold = (t0, P) => { const s = new Float64Array(B), c = new Float64Array(B); for (let i = 0; i < n; i++) { if (only && !only(i)) continue; const ph = ((i / fps - t0) / P % 1 + 1) % 1, b = Math.min(B - 1, Math.floor(ph * B)); s[b] += y[i]; c[b]++; } const m = Array.from(s, (v, b) => v / Math.max(c[b], 1)); return { m, range: Math.max(...m) - Math.min(...m), peak: m.indexOf(Math.max(...m)) / B }; };
+  const t0 = grid[0], P = grid.length > 1 ? (grid[grid.length - 1] - grid[0]) / (grid.length - 1) : breath, real = fold(t0, P);
+  let more = 0, tries = 0;
+  for (let f = 0.7; f <= 1.45; f += 0.005) { if (Math.abs(f - 1) < 0.04) continue; tries++; if (fold(t0, P * f).range >= real.range) more++; }
+  const top = real.m.indexOf(Math.max(...real.m)), lo = Math.min(...real.m), at = k => real.m[((k % B) + B) % B];
+  let a = 0, c = 0;
+  for (let k = 1; k < B; k++) { const v = (at(top - k) - lo) / Math.max(real.range, 1e-6); if (v >= 0.9) c = k; if (v >= 0.1) a = k; else break; }
+  return { range: +real.range.toFixed(3), peak: +real.peak.toFixed(2), p: +(more / tries).toFixed(3), attack: +(((a - c) / B) * P).toFixed(2), share: +((only ? kept : n) / n).toFixed(2) };
+}
+
 export function waveOf({ inner, outer, times, c, pulses }) {
   const FPS = 60, idx = t => { let lo = 0, hi = times.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (times[m] < t) lo = m + 1; else hi = m; } return Math.abs(times[lo] - t) < 0.02 ? lo : -1; };
   const detrend = s => { const R = 90, o = new Float64Array(s.length); for (let i = 0; i < s.length; i++) { let v = 0, k = 0; for (let j = Math.max(0, i - R); j <= Math.min(s.length - 1, i + R); j += 6) { v += s[j]; k++; } o[i] = s[i] - v / k; } return o; };
@@ -709,9 +736,14 @@ export function waveOf({ inner, outer, times, c, pulses }) {
   const inP = peakOf(locked(A, pulses, iLo, iHi), iLo), outP = peakOf(locked(B, pulses, oLo, oHi), oLo);
   // the same measure with the beats wherever they like inside the section, 200 times
   let seed = 271828; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  const t0 = times[0], t1 = times[times.length - 1]; let beat = 0;
+  // Inside the sections the real beats came from, which aren't next to each other: the gap between them has nothing in it, so a beat falling there can't score, and that would flatter the real ones.
+  const secs = []; let s0 = times[0];
+  for (let i = 1; i <= times.length; i++) if (i === times.length || times[i] - times[i - 1] > 0.1) { secs.push([s0 + 2.5, times[i - 1] - 2.5]); s0 = times[i]; }
+  const room = secs.reduce((v, [a, b]) => v + Math.max(0, b - a), 0);
+  const fakeBeat = () => { let u = rnd() * room; for (const [a, b] of secs) { const w = Math.max(0, b - a); if (u <= w) return a + u; u -= w; } return secs[0][0]; };
+  let beat = 0;
   for (let p = 0; p < 200; p++) {
-    const fake = pulses.map(() => t0 + 2.5 + rnd() * (t1 - t0 - 5));
+    const fake = pulses.map(fakeBeat);
     if (peakOf(locked(A, fake, iLo, iHi), iLo).height >= inP.height) beat++;
   }
   const p = (beat + 1) / 201;

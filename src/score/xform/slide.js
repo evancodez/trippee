@@ -2,8 +2,10 @@
 import { OFF, FAMILIES, SLOT_FLOATS, SNAP } from '../../pattern/layout.js';
 import { lerp } from '../curves.js';
 import { biggestElement } from './flight.js';
+import { flag } from '../flags.js';
 
 const WHIP = 3;   // how far a slide's lines can stray from the steady path between the two sizes
+const GLIDE_LOOKS_OLD = [0.2, 0.35, 0.5, 0.65, 0.8, 0.9], GLIDE_LOOKS = [0.1, 0.2, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9];
 const GREY_MAX = 0.4;   // in a probe at 180 px high, what share can be edges and lines too fine to tell before a slide counts as going grey
 
 // A slide whose numbers pass through a place with nothing much in it would fill the frame with one colour on the way, and numbers crossing
@@ -25,7 +27,11 @@ function slideStaysBusy(a, b, plan, ctx) {
       if (Math.abs(Math.log(fine(slA, i)) - lerp(ka, kb, T)) > Math.log(WHIP)) return false;
     }
   }
-  for (const T of [0.2, 0.35, 0.5, 0.65, 0.8, 0.9]) {
+  // Looked at closely enough to see it swing: where a family's gradient passes near nothing its lines blow up to the size of the frame, and the smallest change then turns half the frame over.
+  // A slide that goes back and forth in brightness, or gets to one big shape on the way, is a flash and not a glide. tests/flash.mjs found these on lines.fall into checks.target.
+  const guard = flag('flashGuard'), looks = guard ? GLIDE_LOOKS : GLIDE_LOOKS_OLD;
+  let dir = 0, pivot = null, turns = 0;
+  for (const T of looks) {
     slA.set(a); slB.set(b);
     applySlide(slA, slB, plan, T);
     const { W, H, px } = ctx.R.probe(slA, ctx.aspect);
@@ -34,7 +40,15 @@ function slideStaysBusy(a, b, plan, ctx) {
     const white = sum / (W * H * 255);
     if (white < 0.12 || white > 0.88) return false;
     if (grey / (W * H) > GREY_MAX) return false;
-    if (biggestElement(ctx.R, slA, ctx.aspect, { W, H, px }).r > 0.8) return false;
+    if (biggestElement(ctx.R, slA, ctx.aspect, { W, H, px }).r > (guard ? 0.65 : 0.8)) return false;
+    if (guard) {
+      if (pivot === null) pivot = white;
+      if (dir >= 0 && white > pivot) { pivot = white; dir = 1; }
+      if (dir <= 0 && white < pivot) { pivot = white; dir = -1; }
+      if (dir === 1 && pivot - white >= 0.1) { turns++; dir = -1; pivot = white; }
+      else if (dir === -1 && white - pivot >= 0.1) { turns++; dir = 1; pivot = white; }
+      if (turns >= 2) return false;
+    }
   }
   return true;
 }
@@ -49,6 +63,8 @@ export function applySlide(A, B, plan, T) {
     const sign = plan.flip[j] ? -1 : 1;
     for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) lim2[OFF[`f${i}.${n}`]] = sign * B[OFF[`f${j}.${n}`]] + (n === 'ph' ? plan.offset[j] : 0);
     lim2[OFF[`f${i}.d`]] = B[OFF[`f${j}.d`]]; lim2[OFF[`f${i}.on`]] = 1;
+    // what each family takes of the slip and the field goes by its place, so it goes with the family
+    lim2[OFF[`slip.m${i}`]] = B[OFF[`slip.m${j}`]]; lim2[OFF[`field.k${i}`]] = B[OFF[`field.k${j}`]];
   }
   for (const i of plan.close) { for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) lim2[OFF[`f${i}.${n}`]] = A[OFF[`f${i}.${n}`]]; lim2[OFF[`f${i}.d`]] = -1; lim2[OFF[`f${i}.on`]] = 1; }
   // A new family needs a place of its own, and starts closed. A family with a huge duty is only a constant, nothing at all to the XOR, and the dots use one
@@ -62,6 +78,7 @@ export function applySlide(A, B, plan, T) {
     used.add(free);
     for (const n of NUMS) { A[OFF[`f${free}.${n}`]] = B[OFF[`f${j}.${n}`]]; lim2[OFF[`f${free}.${n}`]] = B[OFF[`f${j}.${n}`]]; }
     A[OFF[`f${free}.d`]] = closed; lim2[OFF[`f${free}.d`]] = B[OFF[`f${j}.d`]]; A[OFF[`f${free}.on`]] = 1; lim2[OFF[`f${free}.on`]] = 1;
+    A[OFF[`slip.m${free}`]] = lim2[OFF[`slip.m${free}`]] = B[OFF[`slip.m${j}`]]; A[OFF[`field.k${free}`]] = lim2[OFF[`field.k${free}`]] = B[OFF[`field.k${j}`]];
     return free;
   };
   const keep = [];

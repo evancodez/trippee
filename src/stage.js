@@ -14,6 +14,7 @@ const PICKED = 8;        // seconds, when someone picks a pattern
 const RUSH = 2.5;        // seconds at most for a transformation to finish when a pick comes in the middle of it
 const SETTLE = 1.5;      // ...and for anything else that needs it finished (a seek, another take, a song arriving)
 const DWELL = 10;        // seconds a picked pattern gets to itself in a film before the film's next transformation starts
+const HEAD_MIN = 2, HEAD_MORPH = 0.6;      // what's left of a gesture a pick cut short: under this many seconds it has no morph of its own, and otherwise this share of it at most
 
 export class Stage {
   constructor(seed = 7) {
@@ -166,7 +167,8 @@ export class Stage {
   _arrive({ pat, dur, hold }, t) {
     const from = this.current(t);
     if (from.pattern === pat) { this._stay(from, t, hold); return; }
-    const S = { ...from, plan: null, planFor: null, morph: 0 }, phi = this.score.phi;
+    // ringsEnd: when the song's rings would have let go, or they'd seem to come back for a moment as it leaves
+    const S = { ...from, plan: null, planFor: null, morph: 0, ringsEnd: from.morph ? from.t1 - from.morph : null }, phi = this.score.phi, rings = !!this.score.react, ambient = this.score.ambient?.(t) ?? 1;
     delete S.rush;
     this.onLeave?.(S);
     const fresh = (t0, t1) => ({ t0, t1, arcEnd: t0 + 44, period: hold ? 44 : 0, pattern: pat, morph: 0, melMode: S.melMode });
@@ -184,7 +186,7 @@ export class Stage {
       else { const G = fresh(t, t + 30); G.morph = this.rand.range(MORPH[0], MORPH[1]); G.arcEnd = t + 30; g.push(G); this._extend(t); }
     }
     // A picture standing still (paused, or in a rest) stays still while it's flown out of. Its clock starting up at full speed on a click would be a kick.
-    this.score.handover = { G: S, ts: t, phi, wall: true, e: 0, D: dur, plan: null, still: !this._moving };
+    this.score.handover = { G: S, ts: t, phi, wall: true, e: 0, D: dur, plan: null, still: !this._moving, rings, ambient };
   }
 
   // A pattern that's showing already stays, if that's what was asked for. A film just carries on.
@@ -211,7 +213,8 @@ export class Stage {
       melMode: from.melMode ?? 0,       // the way the tune runs through the sheet doesn't change in the middle of it: that would jump
     };
     delete G.moves; delete G.xform; delete G.over;
-    const head = g[i].t0 < t ? [{ ...g[i], t1: t, plan: null, planFor: null }] : [];
+    // What came before stays as it was, up to now. Its morph has to fit in what's left of it, or seeking back into it would start part way through a transformation.
+    const headLen = t - g[i].t0, head = headLen > 0 ? [{ ...g[i], t1: t, morph: headLen >= HEAD_MIN ? Math.min(g[i].morph || 0, HEAD_MORPH * headLen) : 0, plan: null, planFor: null, planning: null }] : [];
     g.splice(i, k - i + 1, ...head, G);
   }
 
@@ -271,7 +274,7 @@ export class Stage {
   }
 
   _handover(from, t, dur) {
-    this.score.handover = { G: { ...from, plan: null, planFor: null, morph: 0 }, ts: t, phi: this.score.phi, wall: true, e: 0, D: dur, plan: null };
+    this.score.handover = { G: { ...from, plan: null, planFor: null, morph: 0 }, ts: t, phi: this.score.phi, wall: true, e: 0, D: dur, plan: null, rings: !!this.score.react };
   }
 
   // A handover wants to finish before the film's next transformation starts, and with the film's gesture still the one it's going to.
@@ -294,11 +297,11 @@ export class Stage {
   // A song's film arriving is on the song's clock (clocked), so the film stays a pure function of its time. Anything by hand runs on real seconds.
   morphFrom(snap, t, dur = 6, { clocked = false } = {}) {
     if (!snap) return;
-    const S = { ...snap.G, plan: null, planFor: null, morph: 0 };
+    const S = { ...snap.G, plan: null, planFor: null, morph: 0 }, rings = !!snap.score.react && snap.score.songFades == null;
     delete S.rush;
     this.score.handover = clocked
-      ? { G: S, t0: t, t1: t + dur, dt: snap.t - t, phi: snap.score.phi, plan: null }
-      : { G: S, ts: snap.t, phi: snap.score.phi, wall: true, e: 0, D: dur, plan: null };
+      ? { G: S, t0: t, t1: t + dur, dt: snap.t - t, phi: snap.score.phi, plan: null, rings, ts: snap.t }
+      : { G: S, ts: snap.t, phi: snap.score.phi, wall: true, e: 0, D: dur, plan: null, rings };
     // the film's own next morph waits until this one is done
     this._clearRunway(t, dur);
     if (S.melMode != null) this.current(t).melMode = S.melMode;
