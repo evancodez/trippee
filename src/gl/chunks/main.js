@@ -62,7 +62,8 @@ void main(){
   vec4 ml=uF[F_MEL];
   if(ml.x!=0.){
     float r=length(p),x=ml.z<.5?r:(ml.z<1.5?abs(p.x):abs(p.y));
-    float fi=clamp(x*ml.y,0.,30.99); int mk=int(fi);
+    float fi=clamp(x*ml.y,0.,30.99); if(ml.w>.5) fi=clamp(x*x*x*ml.y,0.,30.99);     // ml.w: the tune in the present, hearing 2. Its age goes as x^3, so the middle of the frame is now and only the far edges are behind
+    int mk=int(fi);
     float mv=mix(uF[F_MELS+mk/4][mk%4],uF[F_MELS+(mk+1)/4][(mk+1)%4],fi-float(mk));
     vec2 dir=ml.z<.5?p/max(r,1e-3)*smoothstep(0.,.25,r):(ml.z<1.5?vec2(0.,1.):vec2(1.,0.));
     p+=dir*ml.x*mv;
@@ -264,11 +265,12 @@ void main(){
   if(uW[0].x<.5){
     int jo=bOuter?1:0;
     gFlip[jo]=!iris&&(cc[1]>.5)!=inWhite; gFlip[1-jo]=!iris&&(cc[0]>.5)!=inWhite;      // in the XOR, where the other pattern is white the sides of c are this one's, swapped
+    wAcross=fract(2.*length(p0-dv.xy));      // with no bands to go by, across rings round the focus
     float wc=wBand(jo*FAM,(jo+1)*FAM),wv=1.;      // the outer pattern's band here: each changes at its own edges, in its own time
     // A change of world: this world's inks drain from the film, or arrive in it, band by band. Past the end of either it's exactly the film's frame, and nothing's worked out.
-    if(uW[1].z!=0.){ wv=wShare(uW[0].z,uW[0].w,wc,p0,dv.xy); if(uW[1].z<0.) wv=1.-wv; }
+    if(uW[1].z!=0.){ wv=wFront(wShare(uW[0].z,uW[0].w,wc,p0,dv.xy)); if(uW[1].z<0.) wv=1.-wv; }
     if(wv>0.){
-      float ws=wShare(uW[1].w,.6,wc,p0,dv.xy);
+      float ws=wFront(wShare(uW[1].w,.6,wc,p0,dv.xy));
       vec3 wa=ws<1.?worldColor(0,FAM,c):vec3(0.),wb=ws>0.?worldColor(FAM,2*FAM,c):vec3(0.);
       col=mix(wFilm,mix(wa,wb,ws),wv);
     }

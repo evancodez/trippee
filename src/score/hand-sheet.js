@@ -38,20 +38,28 @@ export function handSheet(st, edits) {
   }
 
   if (edits.over) {
+    // A gesture's own transformation, with a knob turned in the middle of it. What's arriving turns by as much, so it's still as it was shown when it lands, and on the frame it lands the knob's number, which was for what's gone, means only that much.
+    const own = two && !edits.inHandover && kind !== 'rise', landed = !two && !edits.inHandover && edits.overG && edits.overG !== st.G, by = edits.overBy ??= {};
     for (const p in edits.over) {
       const o = pathOff(p), v = edits.over[p];
+      if (landed) { if (by[p] != null) { if (TIMES.has(p)) A[o] *= by[p]; else A[o] += by[p]; } continue; }
+      if (own) {
+        by[p] = TIMES.has(p) ? v / (A[o] || 1) : PLUS.has(p) ? v - A[o] : null;
+        if (by[p] != null) { if (TIMES.has(p)) B[o] *= by[p]; else B[o] += by[p]; }
+      }
       if (kind === 'dive') {
         // In a handover the knob belongs to the pattern opening up. In a gesture's own dive it belongs to the one being flown through, which stays put.
         if (edits.inHandover) B[o] = v;
-        else if (TIMES.has(p)) B[o] *= v / (A[o] || 1);
-        else if (PLUS.has(p)) B[o] += v - A[o];
       } else if (two && edits.inHandover) B[o] = v;
       else A[o] = v;
     }
   }
 
   const P = FRAME.press * 4;
-  F[P] = edits.pressX || 0; F[P + 1] = edits.pressY || 0; F[P + 2] = edits.press || 0; F[P + 3] = edits.pressR || 0.5;
+  // Hearing 5 may have the bass under there. The hand takes the ball over as it presses, and gives it back as it lets go.
+  if (F[P + 2] && !edits.press) { /* the bass's */ }
+  else if (F[P + 2]) { const k = smoother(edits.press / 0.3); F[P] = lerp(F[P], edits.pressX, k); F[P + 1] = lerp(F[P + 1], edits.pressY, k); F[P + 2] = lerp(F[P + 2], edits.press, k); F[P + 3] = lerp(F[P + 3], edits.pressR || 0.5, k); }
+  else { F[P] = edits.pressX || 0; F[P + 1] = edits.pressY || 0; F[P + 2] = edits.press || 0; F[P + 3] = edits.pressR || 0.5; }
   const S = FRAME.sheetOfs * 4;
   F[S] = edits.sheetX || 0; F[S + 1] = edits.sheetY || 0; F[S + 2] = edits.sheetRot || 0; F[S + 3] = edits.sheet || 0;
   if (edits.ripples) {

@@ -14,6 +14,7 @@ import { flag } from '../score/flags.js';
 import { fillSlot, noHorizon, withTravel } from '../score/slot.js';
 import { OFF, SLOT_FLOATS } from '../pattern/layout.js';
 import { clamp } from '../score/curves.js';
+import { XFORMS } from '../score/xform/index.js';
 
 const JUMP_H = 54, STEP = 0.2, JUMP = 0.3;     // a jump: 30% of full scale in a fifth of a second
 const LOOK_H = 360, SAMPLES = 12;              // 13 points, at a third of 1080p: enough to tell a 16 px line period at 1080p from a 45 px one
@@ -41,7 +42,11 @@ const FLIGHT_NOISE = 1.5, FLIGHT_COLOUR = 0.7;
 const FLIGHT_SHORTEST = 6, FLIGHT_TAKES = 0.7;      // and if both ways do, it goes through a bit quicker: down to this many seconds, and this much of what it was
 
 // Flashes. A little inside the judge's 25.5 of 255, 0 for the whole frame and 2 for a tile. Looked at 10 times a second, small: every other look is also the jump pass's.
-const FLASH_SWING = 22, FLASH_SWING_WHOLE = 19, FLASH_WHOLE = 0, FLASH_TILE = 2, FLASH_SUB = 2, FLASH_H = 36, FLASH_LONGEST = 600, FLASH_ROUNDS = 4, FLASH_SLOWEST = 8, FLASH_MORPH = 15, FLASH_CALM = 0.35, FLASH_MORPH_FPS = 30;
+const FLASH_SWING = 22, FLASH_SWING_WHOLE = 19, FLASH_WHOLE = 0, FLASH_TILE = 2, FLASH_SUB = 2, FLASH_SUB_FILM = 4, FLASH_H = 36, FLASH_H_FILM = 90, FLASH_LONGEST = 600, FLASH_ROUNDS = 4, FLASH_SLOWEST = 8, FLASH_MORPH = 15, FLASH_CALM = 0.35, FLASH_MORPH_FPS = 30;
+// The judge's own swing, and a little inside its second. A smaller swing isn't a stricter count, only another count: on a slow rise and a quick fall it finishes the rise sooner, so the two come out further than a second apart where the judge's are inside it. So a film's looked at both ways.
+const JUDGE_SWING = 25.5, JUDGE_WITHIN = 1.15;
+// How long a song's film takes to fly in, as song.js has it unless the flight needs longer: a first gesture's morph can't start before that, or stage._clearRunway cuts it short after it's been looked at.
+const FLASH_ARRIVAL = 7;
 // A world reads tighter and in three channels (docs/MODES.md section 7): at most 1 a second on a tile, and the same margin inside each channel's own swing. The film never comes here.
 const WORLD_TILE = 1, WORLD_SWING = { luma: 22, red: 17, rc: 22 }, WORLD_SWING_WHOLE = { luma: 19, red: 15, rc: 19 };
 const LIN = new Float32Array(256);
@@ -351,7 +356,8 @@ export { getRig, shot };    // for tests: the same eyes, at any moment of a film
 // Returns { jumps: [{ t, by, id }], bad: [pattern ids], rides: [what each gesture rides], ways: [each transformation], sitOut: [no good run], seconds }
 // stale: asked between looks. Once it says yes the rehearsal stops where it is, by throwing, because someone's made another film and this one will never be shown.
 // gentle: a film's playing in front of this one, so it takes less of each frame.
-export async function rehearse(score, until, onProgress = () => {}, { lastTry = false, stale = null, gentle = false } = {}) {
+// opening: the seconds a long arrival has just taken (stage._clearRunway). Only the film's first two gestures are looked at again, and only for flashes.
+export async function rehearse(score, until, onProgress = () => {}, { lastTry = false, stale = null, gentle = false, opening = 0 } = {}) {
   const t0 = performance.now();
   const R = await getRig();
   // A world's programs on this renderer too, all of them: as with the film's, anything not built yet would be judged as a different picture. If it fails to build it draws as the film, as it would on screen.
@@ -378,7 +384,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
   const nowT = () => globalThis.app?.pictureT?.() ?? globalThis.app?.t ?? 0;
   const firstSeen = G => { const k = gestures.indexOf(G); return k > 0 ? gestures[k - 1].t1 - (gestures[k - 1].morph || 0) : k === 0 ? G.t0 : -Infinity; };
   const mayChangeFor = G => () => !live() || firstSeen(G) > nowT() + 3;
-  if (flag('range')) {
+  if (flag('range') && !opening) {
     const W = Math.round(LOOK_H * aspect), H = LOOK_H, px = new Uint8Array(W * H * 4);
     // The film's own last gesture, which has no move of its own, can't go wrong by riding it. A gesture a director has fixed in time (G.fixedRange) keeps what it's been given.
     const todo = gestures.filter(G => G.t0 < until && !G.fixedRange && !(G.arcs && !G.arcs.length && !G.pattern.drive));
@@ -403,11 +409,13 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
   const rangeSeconds = (performance.now() - t0) / 1000;
 
   // With the flash guard on the same pass also keeps every frame's brightness and tiles, at a rate that can see a flash. A very long piece only gets looked at for jumps.
-  const guard = flag('flashGuard') && until <= FLASH_LONGEST, sub = guard ? FLASH_SUB : 1;
-  const H = guard ? FLASH_H : JUMP_H, W = Math.max(8, Math.round(H * aspect)), px = new Uint8Array(W * H * 4);
-  const n = Math.ceil(until / STEP) * sub, jumps = [];
+  const guard = flag('flashGuard') && until <= FLASH_LONGEST;
   const colour = guard && !!score.world && score.world.id !== 'mirror';     // the mirror world draws exactly the film, so its film must be exactly the film's, guard and all
-  const seen = guard ? new FlashSeen(n + 1, W, H, sub / STEP, colour) : null;
+  // At 36 rows a fine stretch reads a third of full scale brighter than it shows, and its swings aren't the ones on screen. At 90 the count comes out the judge's. And a bold ring going by every quarter second is more than ten looks a second can see: it reads as a slow drift, and the judge's sixty count it. A world and a hand cut stay as they were.
+  const sub = guard ? (colour || score.cut ? FLASH_SUB : FLASH_SUB_FILM) : 1;
+  const H = guard ? (colour || score.cut ? FLASH_H : FLASH_H_FILM) : JUMP_H, W = Math.max(8, Math.round(H * aspect)), px = new Uint8Array(W * H * 4);
+  const n = Math.ceil(until / STEP) * sub, jumps = [];
+  const seen = guard ? new FlashSeen(n + 1, W, H, sub / STEP, colour, !score.cut) : null;
   let prev = null;
   for (let i = 0; i <= n; i++) {
     const t = i * STEP / sub, f = shot(R, score, t, W, H, px, colour);
@@ -423,7 +431,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
     if (i % 25 === 0) onProgress(0.5 + (guard ? 0.4 : 0.5) * clamp(i / n));
     await breathe();
   }
-  const flash = guard && (!jumps.length || lastTry) ? await guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor }) : null;
+  const flash = guard && (!jumps.length || lastTry) ? await guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor, opening }) : null;
   ch.port1.close();
   const sitOut = [...new Set(rides.filter(r => r.sitsOut).map(r => r.id))];
   return { jumps, bad: [...new Set([...sitOut, ...jumps.map(j => j.id)])], rides, ways, flash, sitOut, rangeSeconds, seconds: (performance.now() - t0) / 1000 };
@@ -436,7 +444,9 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
 // becomes a flight, a flight goes the other way or takes longer over it. Each change is kept only if it helps, and the rest of the film is left exactly as it was.
 export class FlashSeen {
   // world: read true colour through three channels. Left off, this is what the film has always done, reading green.
-  constructor(n, W, H, fps, world = false) {
+  // judged: count at the judge's swing too. Off for a hand cut, whose film stays what it is.
+  constructor(n, W, H, fps, world = false, judged = false) {
+    this.judged = judged;
     this.n = n; this.W = W; this.H = H; this.fps = fps; this.mean = new Float32Array(n); this.tiles = new Float32Array(n * 16); this.who = new Int32Array(n).fill(-1); this.kind = new Array(n).fill(null);
     this.world = world;
     if (world) { this.red = new Float32Array(n * 17); this.rc = new Float32Array(n * 17); }     // 16 tiles, then the whole frame
@@ -482,7 +492,7 @@ export class FlashSeen {
   keep([a, b]) { return { mean: this.mean.slice(a, b), tiles: this.tiles.slice(a * 16, b * 16), who: this.who.slice(a, b), kind: this.kind.slice(a, b), ...(this.world ? { red: this.red.slice(a * 17, b * 17), rc: this.rc.slice(a * 17, b * 17) } : {}) }; }
   back([a, b], k) { this.mean.set(k.mean, a); this.tiles.set(k.tiles, a * 16); this.who.set(k.who, a); for (let i = a; i < b; i++) this.kind[i] = k.kind[i - a]; if (this.world) { this.red.set(k.red, a * 17); this.rc.set(k.rc, a * 17); } }
   // Where a series goes over its limit, as the frame of the last swing of each run of swings. The same count as tools/look.mjs, a little inside its 25.5.
-  overIn(get, limit, swing, out, a = 0, b = this.n) {
+  overIn(get, limit, swing, out, a = 0, b = this.n, within = 1) {
     const sw = []; let dir = 0, pivot = get(a);
     for (let i = a; i < b; i++) {
       const v = get(i);
@@ -491,7 +501,7 @@ export class FlashSeen {
       if (dir === 1 && pivot - v >= swing) { sw.push(i); dir = -1; pivot = v; }
       else if (dir === -1 && v - pivot >= swing) { sw.push(i); dir = 1; pivot = v; }
     }
-    for (let s = 0; s < sw.length; s++) { let e = s; while (e < sw.length && sw[e] - sw[s] < this.fps) e++; if (Math.floor((e - s) / 2) > limit) out.push(sw[e - 1]); }
+    for (let s = 0; s < sw.length; s++) { let e = s; while (e < sw.length && sw[e] - sw[s] < this.fps * within) e++; if (Math.floor((e - s) / 2) > limit) out.push(sw[e - 1]); }
   }
   over(a = 0, b = this.n) {
     const out = [];
@@ -507,17 +517,21 @@ export class FlashSeen {
     }
     this.overIn(i => this.mean[i], FLASH_WHOLE, FLASH_SWING_WHOLE, out, a, b);
     for (let k = 0; k < 16; k++) this.overIn(i => this.tiles[i * 16 + k], FLASH_TILE, FLASH_SWING, out, a, b);
+    if (this.judged) {
+      this.overIn(i => this.mean[i], FLASH_WHOLE, JUDGE_SWING, out, a, b, JUDGE_WITHIN);
+      for (let k = 0; k < 16; k++) this.overIn(i => this.tiles[i * 16 + k], FLASH_TILE, JUDGE_SWING, out, a, b, JUDGE_WITHIN);
+    }
     return out;
   }
 }
 const forget = G => { if (G) G.plan = G.planFor = G.planning = null; };
-async function guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor }) {
+async function guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor, opening = 0 }) {
   const g = score.gestures, t0 = performance.now(), fixes = [], stuck = new Set();
   const span = k => {    // the frames a change to gesture k can touch: from the morph into it to the end of the morph out of it
     const P = g[k - 1], from = P ? P.t1 - (P.morph || 0) : g[k].t0;
     return [Math.max(0, Math.floor((from - 2) * seen.fps)), Math.min(seen.n, Math.ceil((g[k].t1 + 2) * seen.fps) + 1)];
   };
-  const colour = seen.world;
+  const colour = seen.world, lands = score.cut || colour ? 0 : opening || FLASH_ARRIVAL;     // when the flight in lands: what's showing then can't start transforming sooner. A hand cut and a world stay as they were.
   const look = async ([a, b]) => { for (let i = a; i < b; i++) { const f = shot(R, score, i / seen.fps, W, H, px, colour); seen.take(i, px, f, g); await breathe(); } };
   // One change: make it, look again, keep it if there's less flashing in what it touched. Otherwise undo it and look again, so what's kept is what the film is.
   const tryIt = async (k, range, undo) => {
@@ -529,13 +543,13 @@ async function guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor })
     return false;
   };
   // A transformation moves far faster than a body, and its lines can go by faster than that look can see: they're watched again at three times the rate, each on its own.
-  for (let k = 0; k < g.length - 1; k++) {
+  for (let k = 0; k < g.length - 1 && !(opening && k > 1); k++) {
     const G = g[k];
     if (!G.morph || !mayChangeFor(G)()) continue;
     // Crossing at speed on a hit (land.js), bold shapes go by too quickly for that look to be sure of them: it looks twice as often, and twice as big.
     const close = G.peak?.q ? 2 : 1, fps = FLASH_MORPH_FPS * close, Wc = W * close, Hc = H * close, pc = close > 1 ? new Uint8Array(Wc * Hc * 4) : px;
     const watch = async () => {
-      const a = G.t1 - G.morph, n = Math.ceil(G.morph * fps), s = new FlashSeen(n, Wc, Hc, fps, colour);
+      const a = G.t1 - G.morph, n = Math.ceil(G.morph * fps), s = new FlashSeen(n, Wc, Hc, fps, colour, !score.cut);
       for (let i = 0; i < n; i++) { const f = shot(R, score, a + i / fps, Wc, Hc, pc, colour); s.take(i, pc, f, g); await breathe(); }
       return s;
     };
@@ -546,7 +560,7 @@ async function guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor })
     const tryIt = async (_, __, undo) => { const now = (await watch()).over().length; if (now < over) { over = now; return true; } undo(); return false; };
     let changed = false;
     for (let step = 0; step < 3 && over; step++) {
-      const did = await easeMorph(G, g[k + 1], kind, { g, k, span, tryIt, score });
+      const did = await easeMorph(G, g[k + 1], kind, { g, k, span, tryIt, score, lands });
       if (!did) break;
       changed = true; fixes.push({ t: +t.toFixed(2), id: G.pattern.id, kind, did });
     }
@@ -561,7 +575,9 @@ async function guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor })
     for (const { k, kind, t } of hit.values()) {
       const G = g[k], N = g[k + 1], key = `${k}:${kind ?? ''}`;
       if (stuck.has(key) || !G || !mayChangeFor(G)()) continue;
-      const again = await (kind ? easeMorph : easeBody)(G, N, kind, { g, k, span, tryIt, score });
+      const ctx = { g, k, span, tryIt, score, lands };
+      // A morph that can't be helped may still be flashing because of what's going on in the start of it: the song first, since there its flow is already coming to rest. The film only: a hand cut and a world stay as they were.
+      const again = await (kind ? easeMorph : easeBody)(G, N, kind, ctx) || (kind && !score.cut && !seen.world ? await calmer(G, ctx) || await slowerBody(G, ctx) : null);
       if (again) { tried++; fixes.push({ t: +t.toFixed(2), id: G.pattern.id, kind: kind ?? 'body', did: again }); }
       else stuck.add(key);
     }
@@ -575,7 +591,9 @@ async function easeBody(G, N, kind, ctx) {
   const did = await slowerBody(G, ctx);
   if (did) return did;
   // Going slower doesn't help, so what's left of it is the song lifting the whole sheet: on a few big shapes the phrase's breath and the strong beats can be most of a flash. This one breathes less.
-  const { k, span, tryIt } = ctx;
+  return calmer(G, ctx);
+}
+async function calmer(G, { k, span, tryIt }) {
   if (G.calm) return null;
   G.calm = FLASH_CALM;
   return await tryIt(k, span(k), () => { delete G.calm; }) ? 'calmer' : null;
@@ -596,7 +614,7 @@ async function slowerBody(G, { g, k, span, tryIt }) {
   return null;
 }
 // A transformation, some other way: a glide becomes a flight, a fall or a shock an ordinary one, a flight goes the other way, and then it takes longer over it.
-async function easeMorph(G, N, kind, { g, k, span, tryIt, score }) {
+async function easeMorph(G, N, kind, { g, k, span, tryIt, score, lands }) {
   const range = span(k), N2 = N ? span(k + 1) : range, wide = [range[0], Math.max(range[1], N2[1])];
   // Crossing at speed on a hit (land.js) is the first thing to give: at half the speed, still on the hit, and then at its own pace over the same time. Nothing's lost silently: score.refused is there only on a film that has it.
   if (G.peak?.q) {
@@ -609,7 +627,18 @@ async function easeMorph(G, N, kind, { g, k, span, tryIt, score }) {
       }
     }
   }
-  if (G.xform) {
+  // A world can say a transformation is what it is, and can't be taken away (motion.keep). What it has instead is what the transformation itself offers (xform.levers), and then taking longer. A lever: (G) => undo, or nothing if there's nothing to try.
+  const W = score?.world, own = G.xform ?? W?._xform, kept = own && W?.motion?.keep?.includes(own.id);
+  if (kept) {
+    for (const [name, lever] of Object.entries(XFORMS[own.id]?.levers ?? {})) {
+      if (G.leversTried?.has(name)) continue;
+      (G.leversTried ??= new Set()).add(name);
+      const undo = lever(G, N);
+      if (!undo) continue;
+      forget(G);
+      if (await tryIt(k, wide, () => { undo(); forget(G); })) return name;
+    }
+  } else if (G.xform) {
     const was = { xform: G.xform, carry: N?.carry };
     delete G.xform; if (N) delete N.carry; forget(G);
     if (await tryIt(k, wide, () => { G.xform = was.xform; if (N && was.carry) N.carry = was.carry; forget(G); })) {
@@ -618,17 +647,17 @@ async function easeMorph(G, N, kind, { g, k, span, tryIt, score }) {
     }
     return null;
   }
-  if (kind === 'slide' || kind === 'bend') {
+  if (!kept && (kind === 'slide' || kind === 'bend')) {
     G.noGlide = true; forget(G);
     if (await tryIt(k, wide, () => { delete G.noGlide; forget(G); })) return 'no glide';
     return null;
   }
-  if (!G.flashTurned) {
+  if (!G.flashTurned && !kept) {
     const was = G.rise;
     G.flashTurned = true; G.rise = kind !== 'rise'; forget(G);
     if (await tryIt(k, wide, () => { G.rise = was; forget(G); })) return `turned to ${G.rise ? 'rise' : 'dive'}`;
   }
-  const most = Math.min(FLASH_MORPH, 0.75 * (G.t1 - G.t0));
+  const most = Math.min(FLASH_MORPH, 0.75 * (G.t1 - G.t0), G.t0 < lands ? G.t1 - lands : Infinity);
   for (let m = G.morph * 1.35; m <= most + 1e-6 || G.morph < most; m = G.morph * 1.35) {
     const was = G.morph, longer = Math.min(m, most), peak = G.peak;
     if (longer <= was + 0.05) return null;

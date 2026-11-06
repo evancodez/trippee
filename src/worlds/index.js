@@ -20,9 +20,13 @@
 //   table: { h, fill(tex, ctx) }         uWT, RGBA16F, 256 wide, h high. tex.set(x, y, r, g, b, a). Return false when nothing changed. Pure.
 //   uniforms(U, ctx)                     each frame, pure: U.a and U.b are slot A's and B's 120 numbers, read as uW[4+K*30+n]. ctx: t, c, x, T, kind, G, from, to, plan, geo, A, B, F, tables, at(c) = the song's reactAt anywhere, change.
 //   tables(A, M)                         at compose: from the analysis and what understand() heard. It's ctx.tables.
-//   motion: { len: [a,b], morph: [a,b], slower, glide, rise, front, xforms: { name: { id, plan, enter, write } } }    front: true for xfU mode 3, a straight front along uW[3].w
+//   motion: { len: [a,b], morph: [a,b], slower, glide, rise, front, xform: 'name', keep: ['name'], xforms: { name: { id, plan, enter, write, levers } } }    front: true for xfU mode 3, a straight front along uW[3].w
+//     xform     what a gesture with no transformation of its own goes by, whoever made it: the film, the wander, a hand. A plan that can't (it returned null) still falls through to the usual order.
+//     keep      transformations a rehearsal that's watched a flash mustn't take away. It tries what the transformation offers, then taking longer. The judge's limits don't move, so a kept one has to pass as it stands.
+//     levers    { name: (G, N) => undo }, on a transformation: things a rehearsal may try inside it, in order, each kept only if there's less flashing. Whatever a lever sets on G is what enter and write read back (st.from). Undo puts it back. Return nothing if it has nothing to try.
 //   hear: { pulse, melody, tone, harmony, lung, threshold }    gains on the song, 1 by default. threshold: how much of the strong beats moves the threshold (gBeat is there either way).
-//   needs: ['wave']                      extras it waits for. direct(score, A, M): its own director.
+//   needs: ['wave']                      extras it waits for: they're in A.x by the time tables() runs. direct(score, A, M): its own director.
+//   fuller(slot)                         does this slot need the world's code that most of its patterns don't? That code goes in #ifdef WORLD_FULL in any hook, and is built into programs of its own. A program pays for its peak on every pixel, used or not.
 export const WORLDS = ['flower', 'dusk', 'flyer', 'pearl', 'acid', 'liquid', 'station', 'supergraphic', 'cut', 'polariscope'];
 // Test worlds. They load like any other, and are only in the strip with ?worlds=test.
 export const TEST = ['mirror', 'numbers'];

@@ -80,7 +80,11 @@ export default {
       out[num('scale')] = Math.exp(evalTrack(m.travel.scale, at));
       out[num('rot')] = evalTrack(m.travel.rot, at);
     }
-    if (m.lock) {       // Lock: only ever grows, and a whole cycle is nothing
+    if (m.whitney) {    // Whitney bars: band n has slipped n times this many cycles, so a whole number is the plain rays, a half is a dartboard, and everything between is spirals
+      const v = evalTrack(m.whitney, m.tau(t));
+      if (Math.abs(v - Math.round(v)) > 1e-4) { writeOn(out, m); out[num('slip.u')] = v; out[num('slip.ang')] = 0; }
+    }
+    else if (m.lock) {       // Lock: only ever grows, and a whole cycle is nothing
       const v = evalTrack(m.lock, m.tau(t));
       if (v > 0 && v < 1) { writeOn(out, m); out[num('slip.u')] = v; out[num('slip.ang')] = m.ang ?? 0; }
     }
@@ -107,6 +111,20 @@ export default {
     }
   },
 };
+
+// Hearing 9: Whitney bars. Rays on one bar line, a dartboard on the next, and spirals scattering between. A staircase in slip.u, C2, resting on each step, which only goes up. It starts and ends on a whole number, so it leaves the picture as it finds it.
+// Speed at the rim goes as bands x slip.u's speed x two edges a cycle, so a step takes as many bars as keep that under the limit.
+export const WHITNEY = { kind: 3, n: 1.6, rim: 2.05, crossings: 3.4, peak: 1.875 };
+export function whitneyMove({ t0, t1, tau, meter, bar, bars }) {
+  const { kind, n, rim, crossings, peak } = WHITNEY, bandsAtRim = n * (Math.log(rim) + 2);
+  const secondsLeast = (0.5 * peak * bandsAtRim * 2) / crossings, every = Math.max(1, Math.ceil(secondsLeast / bar - 1e-6));
+  const lines = bars.filter(b => b >= t0 && b <= t1);
+  const steps = lines.filter((_, i) => i % every === 0);
+  if (steps.length < 3) return null;
+  const even = steps.length % 2 ? steps : steps.slice(0, -1);       // whole cycles: an even number of half steps
+  const track = even.map((t, i) => ({ t: tau(t), x: i / 2, v: 0 }));
+  return { id: 'slip', kind, n, m: [1, 0, 0, 0], whitney: track, tau, from: even[0], to: even.at(-1), every, bandsAtRim };
+}
 
 // The time at which tau reaches this many beats. tau only ever grows.
 function timeOfBeat(tau, beat, t) {

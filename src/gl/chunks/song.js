@@ -8,9 +8,11 @@ export default `#define WT(i) uF[F_WT+(i)/4][(i)%4]
 #define MS(i) uF[F_MELS+(i)/4][(i)%4]
 float gBeat=0.,gTune=0.;
 float wAt(float s){ float f=clamp(s*8.+32.,0.,62.99); int i=int(f); return mix(WT(i),WT(i+1),f-float(i)); }
+float wAtFall(float s){ float f=clamp(s*16.+32.,0.,62.99); int i=int(f); return mix(WT(i),WT(i+1),f-float(i)); }
 void songField(vec2 p){ vec4 w=uF[F_WEIGHT],u=uF[F_TUNE],fo=uF[F_FOCUS]; if(w.x==0.&&w.y==0.&&u.x==0.&&fo.z==0.) return;
   float r=length(p-fo.xy);
-  if(w.z>0.){ float s=max(r-.28,0.)*1.52*w.z; gBeat=max(wAt(s),.6*wAt(-s))*(.6/max(r,.28)); }       // a ring gathers itself as it closes, as any wave going in does
+  if(w.w>0.){ float r2=r*r,s=.35*r2*r2; gBeat=max(wAtFall(s),.6*wAtFall(-s))*(.6/max(r,.5)); }       // hearing 6: it accelerates in and implodes on the hit. A branch of its own, so a film that doesn't hear this rounds exactly as it always did
+  else if(w.z>0.){ float s=max(r-.28,0.)*1.52*w.z; gBeat=max(wAt(s),.6*wAt(-s))*(.6/max(r,.28)); }       // a ring gathers itself as it closes, as any wave going in does
   if(u.x!=0.){ float f=clamp(r*u.w,0.,14.99); int k=int(f); gTune=u.x*mix(TS(k),TS(k+1),f-float(k))*sin(TAU*(r*u.y-u.z)); }
   if(fo.z!=0.){ float f=clamp(r*fo.w,0.,30.99); int k=int(f); gTune+=fo.z*mix(MS(k),MS(k+1),f-float(k)); }
   gTune*=smoothstep(.2,.6,r); }       // the focus itself belongs to the beat

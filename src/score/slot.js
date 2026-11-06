@@ -77,7 +77,7 @@ export function arcU(G, t) {
 // One slot's numbers at time t for gesture G
 export function fillSlot(out, G, t, pat, opts = {}) {
   out.set(base(pat));
-  const u = arcU(G, t);
+  const u = arcU(G, opts.uT ?? t);       // uT: the long move's own clock, where a film walks (hearing 1). Otherwise it's t.
   const phi = opts.phi ?? 0;
   // the pattern's own long moves, ridden across the gesture
   for (const a of G.arcs || pat.arcs || []) {
@@ -89,7 +89,7 @@ export function fillSlot(out, G, t, pat, opts = {}) {
   const flow = G.flow || pat.flow;
   if (flow) for (const p in flow) out[pathOff(p)] += flow[p] * phi;
   if (pat.drive) pat.drive(out, { u, t, phi, OFF, G });
-  if (G.moves) runMoves(out, { u, t, phi, OFF, G });
+  if (G.moves) runMoves(out, { u, t, phi, OFF, G, uT: opts.uT ?? t });
   // A fall lands at speed, and this pattern carries on at that speed and coasts to rest. It lands a little small so as to end up about the size it was rehearsed at.
   const c = G.carry;
   if (c && G.freezeU == null && Math.abs(G.t0 - c.t1) < 1e-3 && flag('fall')) {      // a gesture rewritten to start at some other moment (a pick) didn't arrive by a fall

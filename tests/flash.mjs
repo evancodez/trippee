@@ -36,7 +36,9 @@ export default async ({ page, log, save }) => {
   await page.eval(async ({ flags, set, seed }) => {
     const F = await import(new URL('src/score/flags.js', location.href).href);
     for (const f of flags) { const [k, v] = f.split('='); F.setFlag(k, +v !== 0); }
-    if (flags.length || seed) { const before = app.song.rehearsal; app.song.rebuild(seed ? { seed } : {}); for (let i = 0; i < 200 && app.song.rehearsal === before; i++) await new Promise(r => setTimeout(r, 100)); }
+    // Another seed the way another take is made (song.prepareTake): rehearsed out of sight, so the guard may change its first gesture too.
+    if (seed) (await app.song.prepareTake({ seed }))?.();
+    else if (flags.length) { const before = app.song.rehearsal; app.song.rebuild({}); for (let i = 0; i < 1500 && app.song.rehearsal === before; i++) await new Promise(r => setTimeout(r, 100)); }
     for (const f of set) { const [k, v] = f.split('='); app.edits[k] = +v; }
     app.song.pause(); app.ui.song.show(false); app.manual = true; app.governor.enabled = false; app.R.drawScale = 1; app.t = 0;
     const c = document.createElement('canvas'); c.width = 320; c.height = 180; const x = c.getContext('2d', { willReadFrequently: true });

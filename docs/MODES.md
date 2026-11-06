@@ -596,9 +596,9 @@ export default {
 
 ### A mode change
 
-`stage.settle`, then the another-take path: snapshot, set the world, `song.rebuild({ world })` or a fresh wander, `morphFrom(snap, t, 9, { world: from, noGlide: true })`. Always a dive, on real seconds. A song's clock never stops.
+`stage.settle`, then the another-take path: snapshot, set the world, `song.rebuild({ world })` or a fresh wander, `morphFrom(snap, t, 13, { world: from, noGlide: true })`. Always a dive, on real seconds. A song's clock never stops. Thirteen because a flight over bold shapes in nine reads up to 5 flashes a second on a tile, and in thirteen 1 to 3. No length tried reaches a world's limit of 1: see what's still open in the lane's report.
 
-- Over `x` 0 to .45 world A drains: `s=smoother((x'(1+w)-stagger)/w)`, stagger from distance to the dive's focus plus a hash of band number, each band in about 1.5 s.
+- Over `x` 0 to .45 world A drains: `s=smoother((x'(1+w)-stagger)/w)`, stagger from distance to the dive's focus plus a hash of band number, each band in about 1.5 s. A band's change runs across it from one edge to the other (`wFront`), so a pixel is always a whole ink or exactly the film and never a tint of the two. The same goes for a clicked flight, from the outer pattern's inks to the inner's.
 - At `x=.5` the frame is the film's flight, byte for byte, and the program changes.
 - Over .55 to 1 world B's inks arrive the same way.
 - From or to the film, only one half runs.
@@ -613,6 +613,17 @@ export default {
 - Recording: unchanged.
 
 **Display P3 is not in Stage 0.** Switching `drawingBufferColorSpace` on a live canvas may reallocate the buffer, and the recorder and flash measure assume sRGB. Worlds are designed in sRGB. P3 is a later try, and only if it passes the hash and shows no hitch.
+
+### What a world can tell the engine, since Flower Power
+
+- `motion.xform: 'bud'`: what a gesture with no transformation of its own goes by, whoever made it (the film, the wander, a click's film). There's no need to stamp `G.xform`.
+- `motion.keep: ['bud']`: a rehearsal that's watched a flash can't take this one away. It tries what it offers, `xforms.bud.levers: { name: (G, N) => undo }`, each kept only if there's less flashing, and then it takes longer, up to 15 s or .75 of the gesture.
+- `fuller(slot)` and `#ifdef WORLD_FULL`: code most of a world's patterns never draw, in programs of its own. A program pays for its peak on every pixel, whether a pixel goes that way or not. Not the film's `EXTRA`: on Flower Power that cost another 7 ms.
+- `tables(A, M)` can read `A.x` (`src/music/extras.js`) once `needs` names something: `app.song.extrasReady()` runs once per song, and a change of world waits on it. It's what a click will wait for, so a world asks only if it can't do without. If it fails the world comes on anyway.
+- A family in `ink.fams` never slips (Countdown, Lock, a dial's idle): `slip.kind` is taken off in `writeWorld`. A slip's whole cycles can't be seen in coverage but can in `floor(phase)`.
+- `table.fill` runs after `uniforms`, so what it reads from the slot is what will be drawn.
+- `tests/judge.mjs`'s Variety passes a film whose only kind is `motion.xform`: the world means it.
+- The library shows `W._pool` while a world has one, and a click on a tile is a real pick, by pattern and not by id, since a world's patterns aren't in `app.byId`. `hand.go` takes either.
 
 ### Control
 

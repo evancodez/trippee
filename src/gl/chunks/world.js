@@ -37,16 +37,21 @@ vec2 lineCells(int k0,int k1,vec4 weight){
 ivec2 lineRows(int k0,int k1){ vec2 n=lineCells(k0,k1,WEIGHTS); return ivec2(mod(n,WROWS)); }      // the row for the white side, the row for the black side
 #endif
 #ifdef FLIGHT
+float wAcross=.5,wSoft=.02;
 // The band of the run's first family with edges, white and black numbered apart, cut where inkBand cuts it: threshold and duty both.
 float wBand(int k0,int k1){
   float th=gTh[k0/FAM];
   for(int k=k0;k<k1;k++){
     if(!gOn[k]||abs(gDu[k])>=1.) continue;
     float x=gPh[k],d=gDu[k],v=tri(x)-d,t=abs(th)*(1.-smoothstep(.85,1.,abs(d)));
-    return (th>=0.?v>t:v>-t)?floor(x):floor(x+.5)+.5;
+    bool w=th>=0.?v>t:v>-t;
+    wAcross=fract(w?x:x+.5); wSoft=clamp(1.5*gGn[k],.004,.25);
+    return w?floor(x):floor(x+.5)+.5;
   }
   return 0.;
 }
+// A change of ink runs across a band, one edge to the other, so a pixel is one ink or the other and never a tint of the two. s: how far along this band's change is. wBand says where this pixel is across it.
+float wFront(float s){ float S=s*(1.+2.*wSoft)-wSoft; return smoothstep(wAcross-wSoft,wAcross+wSoft,S); }
 float wSmooth(float x){ x=clamp(x,0.,1.); return x*x*x*(x*(x*6.-15.)+10.); }
 float wHash(float n){ n=fract(n*.1031); n*=n+33.33; n*=n+n; return fract(n); }
 // How far along one band is, out of x: bands near the focus go first, with a hash of the band's number so that they don't go as one ring.

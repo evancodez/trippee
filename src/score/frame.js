@@ -35,20 +35,20 @@ const easeIn = (t, t1, stop) => (t >= t1 ? t : t1 - stop * (x => x - x * x / 2)(
 
 // Worked out once per transition, from both patterns at rest, which doesn't depend on when anyone asks: starting early only moves the cost.
 // A plan a transformation is waiting on finishes at once. One that's only coming up takes a step and may answer null.
-function planFor(m, dtf, stop, phiOf, R, aspect, now, ink) {
+function planFor(m, dtf, stop, phiOf, R, aspect, now, world) {
   const { from, to, t0, D, holder, phiFrom, handover } = m;
   if (holder.plan && holder.planFor === to) return holder.plan;
   let w = holder.planning;
   if (!w || w.to !== to || (!handover && w.t0 !== t0) || w.D !== D) {     // a handover's t0 only comes out the same to within rounding
     const tA0 = holder.still ? holder.ts : t0 + dtf + stop / 2, tB0 = t0 + D - stop / 2;
-    fillSlot(lim, from, tA0, from.pattern, { phi: phiFrom ? phiFrom(tA0, from) : phiOf(from, tA0) });
-    fillSlot(lim3, to, tB0, to.pattern, { phi: phiOf(to, tB0) });
+    fillSlot(lim, from, tA0, from.pattern, { phi: phiFrom ? phiFrom(tA0, from, tA0, 0) : phiOf(from, tA0, undefined, 0) });
+    fillSlot(lim3, to, tB0, to.pattern, { phi: phiOf(to, tB0, undefined, 0) });
     noHorizon(lim, aspect); noHorizon(lim3, aspect);
     lim[OFF.theta] = thetaOf(from, tA0); lim3[OFF.theta] = thetaOf(to, tB0);
     // A handover can only ever fly in. Rising needs the next pattern at rest with its element where the plan found it, and a film's clock doesn't
     // stop for that: its element would have moved on, and the frame would sit inside whatever had moved there, one flat colour.
     const hurry = { now };
-    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? null : from.xform, noGlide: handover ? holder.noGlide : from.noGlide, ink }, hurry) };
+    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? null : from.xform ?? world?._xform, noGlide: handover ? holder.noGlide : from.noGlide, ink: world?.ink }, hurry) };
   }
   w.hurry.now = now;
   let step = w.steps.next();
@@ -66,6 +66,15 @@ const PLAN_PATIENCE = 0.4;     // seconds of a handover by hand
 // following it or start to: wherever the song had pushed it to would be gone in one frame, and on a sheet of fine lines that's the whole picture
 // jumping. So the one being flown through lets go over the start of the flight, or takes up over the end, while it's still barely moving.
 const SONG_NUMS = ['freq', 'f0.ph', 'f1.ph', 'f2.ph', 'f3.ph', 'rot'];       // what the song writes into a slot
+// A knob held into a gesture's own transformation goes onto the gesture (leaving() in src/tools/input.js), and nothing may move as it does. Held, it was written over the song, and
+// the song worked from the pattern's own number: how fine the lines are says how far the tune slides them. So on the gesture too the song works from that number and the knob has the last word.
+const fromKnob = (S, g) => {
+  if (!g?.over || !g.overWas) return null;
+  const kept = [];
+  for (const p in g.overWas) if (g.over[p] != null) { const o = OFF[p]; kept.push(o, S[o]); S[o] = g.overWas[p]; }
+  return kept;
+};
+const backToKnob = (S, kept) => { if (kept) for (let i = 0; i < kept.length; i += 2) S[kept[i]] = kept[i + 1]; };
 function songInFlight(st, score, edits) {
   const { x, A, B, sa, sb, kind, solid, moveA, moveB } = st, dive = kind === 'dive';
   const wA = dive ? 1 - smoother(x / 0.35) : 1, wB = dive ? 1 : smoother((x - 0.65) / 0.35);
@@ -93,7 +102,9 @@ export function frame(score, t, R, edits) {
   const held = edits?.staticG;
   const G = held ?? g[i], N = held ? null : g[i + 1];
   const pat = G.pattern;
-  const phiOf = (gg, tt, sc = score) => (sc.phi ? sc.phi(tt, gg) : tt * 0.25);
+  // rho: how much of that clock's speed is left, as it slows into or picks up out of a transformation. A film that walks (hearing 1) needs it, and every other clock ignores it.
+  const phiOf = (gg, tt, sc = score, rho) => (sc.phi ? (rho == null ? sc.phi(tt, gg) : sc.phi(tt, gg, t, rho)) : tt * 0.25);
+  const walkT = score.walk ? (tt, rho = 1) => tt + rho * score.walk(t) : null;
   F.fill(0);
   F.set(score.colors?.paper ?? [0, 0, 0, 1], FRAME.paper * 4);
   F.set(score.colors?.ink ?? [1, 1, 1, 1], FRAME.ink * 4);
@@ -111,21 +122,22 @@ export function frame(score, t, R, edits) {
   if (m) {
     const { from, to, tf, t0, D, phiFrom } = m;
     const stop = Math.min(D * 0.4, 3.5), dtf = tf - t;
-    const pf = tt => (phiFrom ? phiFrom(tt, from) : phiOf(from, tt));
     const h = m.handover && m.holder.wall ? m.holder : null;
+    const rhoA = h?.still ? 0 : 1 - Math.min(1, (t - t0) / stop), rhoB = m.handover ? 1 : 1 - Math.min(1, (t0 + D - t) / stop);
+    const pf = tt => (phiFrom ? phiFrom(tt, from, t, rhoA) : phiOf(from, tt, score, rhoA));
     const tA = h?.still ? h.ts : easeOut(tf, t0 + dtf, stop);
     const tB = m.handover ? t : easeIn(t, t0 + D, stop);
     // A click's plan hasn't had a look ahead. Looking all at once would stall the picture the moment it's clicked, so what's showing carries on for the few frames it takes,
     // and the transformation starts from 0 when it's ready. One that's been waited on this long finishes at once.
-    st.plan = planFor(m, dtf, stop, phiOf, R, aspect, !(h && h.e < PLAN_PATIENCE), score.world?.ink);
+    st.plan = planFor(m, dtf, stop, phiOf, R, aspect, !(h && h.e < PLAN_PATIENCE), score.world);
     if (!st.plan) h.e0 = h.e;
-    fillSlot(A, from, tA, from.pattern, { phi: pf(tA) });
+    fillSlot(A, from, tA, from.pattern, { phi: pf(tA), uT: walkT && !m.handover ? walkT(tA, rhoA) : undefined });
     shown = st.from = from;
     if (st.plan) {
-      st.kind = st.plan.kind; st.x = m.x; st.to = to;
-      fillSlot(B, to, tB, to.pattern, { phi: phiOf(to, tB) });
+      st.kind = st.plan.kind; st.x = score.walkMorph && !m.handover ? score.walkMorph(m.x, t, D) : m.x; st.to = to;
+      fillSlot(B, to, tB, to.pattern, { phi: phiOf(to, st.plan.onClock ? t : tB, score, rhoB), uT: walkT ? walkT(tB, rhoB) : undefined });      // onClock: a transformation that keeps the film's clock running through it (a world's)
       st.sa = from.pattern.solid ?? 1; st.sb = to.pattern.solid ?? 1;
-      st.T = smoother(m.x);
+      st.T = smoother(st.x);
       st.thA = thetaOf(from, tA); st.thB = thetaOf(to, tB);
       xf = xformOf(st.kind);
       xf.enter(st);
@@ -135,15 +147,17 @@ export function frame(score, t, R, edits) {
       m = null;
     }
   } else {
-    fillSlot(A, G, t, pat, { phi });
+    fillSlot(A, G, t, pat, { phi, uT: walkT ? walkT(t) : undefined });
   }
   if (N && G.morph) {
     const t0 = G.t1 - G.morph;
-    if (t <= t0 && t > t0 - LOOK_AHEAD) planFor({ from: G, to: N, t0, D: G.morph, holder: G, handover: false, phiFrom: null }, 0, Math.min(G.morph * 0.4, 3.5), phiOf, R, aspect, false, score.world?.ink);
+    if (t <= t0 && t > t0 - LOOK_AHEAD) planFor({ from: G, to: N, t0, D: G.morph, holder: G, handover: false, phiFrom: null }, 0, Math.min(G.morph * 0.4, 3.5), phiOf, R, aspect, false, score.world);
   }
 
+  const keptA = fromKnob(A, st.from ?? G), keptB = st.two ? fromKnob(B, st.to) : null;
   if (score.react && (st.kind === 'dive' || st.kind === 'rise')) songInFlight(st, score, edits);
   else songSheet(st, score, edits);
+  backToKnob(A, keptA); backToKnob(B, keptB);
   // The tune's field takes its shape from the gesture, and a shape can't change while it's pushing anything: it dies away to the middle of the transformation and returns in the new one.
   if (m && score.react && (m.from.melMode ?? 0) !== (m.to.melMode ?? 0)) {
     const Ml = FRAME.mel * 4;

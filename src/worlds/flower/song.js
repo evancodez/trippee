@@ -4,16 +4,18 @@ import { surgedBeats } from '../../score/react.js';
 import { groundOf } from './inks.js';
 import { FLOW } from './patterns.js';
 
-const RING_MOST = 1.25;      // rings a second. The plan's limit is 1.5
+const RING_MOST = 1;         // rings a second. The plan's limit is 1.5, but where bands are as big as a tile each ring going by is a flash there, and a Bud's push comes on top. Any higher reads two a second on tiles all through the film.
 export const beatsPerRing = A => {
   const rate = (A.bpm || 120) / 60, opts = (A.meter || 4) === 3 ? [1, 3, 6, 12] : [1, 2, 4, 8];
   return opts.find(n => rate / n <= RING_MOST) ?? opts.at(-1);
 };
 
 // The film's clock. phi is cycles of the pattern's flow, so rings = phi * FLOW.
+// The rings go faster on the strong beats and slower between. Where bands are as big as a tile, each one that goes by is a flash there, and three swings of a tile in a second are the limit: so 1.5 rings a second at the fastest is two flashes a second, however briefly, and the sheet's own move adds to that. The surge takes them to RING_TOP at most, and on a song slow enough it's all there. SURGE_DEPTH is surgedBeats's.
+const RING_TOP = 1.15, SURGE_DEPTH = 0.42;
 export function flowClock(score, A) {
-  const N = beatsPerRing(A), tau = score.tau, R = score.react;
-  return t => surgedBeats(R, tau, t) / N / FLOW;
+  const N = beatsPerRing(A), tau = score.tau, R = score.react, share = Math.max(0, Math.min(1, (RING_TOP / ((A.bpm || 120) / 60 / N) - 1) / SURGE_DEPTH));
+  return t => { const b = tau(t); return (b + share * (surgedBeats(R, tau, t) - b)) / N / FLOW; };
 }
 
 const relMajor = c => (c & 1 ? ((c >> 1) + 3) % 12 : c >> 1);
@@ -40,6 +42,15 @@ export function hearSong(A, M) {
   const inks = on.map((o, i) => (o.q < 0 && i > 0 && !on.slice(0, i).some(x => x.q < 0) ? 7 : [0, 1, 2, 3, 1][i]));
   const inkOfPc = new Int8Array(12);
   for (let pc = 0; pc < 12; pc++) { let best = 0, gap = 99; on.forEach((o, i) => { const d = Math.abs(fifths(o.pc, pc)); if (d < gap) { gap = d; best = i; } }); inkOfPc[pc] = inks[best]; }
+  // How many inks a bar can carry: the notes sounding in it (A.x.voices, 2 to 6 at the use), and the ground is one of them. A thin bar wears the commonest few, and a full one all five. With no extras, all five.
+  const vox = A.x?.voices, edges = A.x?.barEdges;
+  const inksAt = t => {
+    if (!vox?.length || !edges) return 5;
+    let lo = 0, hi = vox.length - 1;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (edges[m] <= t) lo = m; else hi = m - 1; }
+    return Math.max(1, Math.min(5, Math.round(Math.max(2, Math.min(6, vox[lo]))) - 1));
+  };
+  const rankOf = k => { const r = inks.indexOf(k); return r < 0 ? 0 : r; };
   let t = 0, last = inkOfPc[centre];
   for (let i = 0; i < rings; i++) {
     while (t < end && tau(t) / N < i) t += 0.01;
@@ -49,7 +60,8 @@ export function hearSong(A, M) {
     let top = last, sum = 0;
     for (let k = 0; k < 8; k++) { sum += votes[k]; if (votes[k] > votes[top]) top = k; }
     if (votes[last] < KEEP * sum) last = top;
-    bloom[i] = last;
+    const room = inksAt(t);
+    bloom[i] = rankOf(last) < room ? last : inks[room - 1];
   }
   for (let b = 0; b < rings; b += BLOCK) {
     const share = new Map();

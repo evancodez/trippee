@@ -19,7 +19,7 @@ import { land } from './land.js';
 import { base, boldRange, fillSlot, fineness } from './slot.js';
 import { OFF, SLOT_FLOATS } from '../pattern/layout.js';
 import { MOVES } from './moves/index.js';
-import { countdown, lockMove, slipFor } from './moves/slip.js';
+import { countdown, lockMove, slipFor, whitneyMove } from './moves/slip.js';
 import { spliceCoin } from './moves/coin.js';
 import { placeStar, STAR_BODIES } from './moves/star.js';
 import { shockFit, wearShock, wearFall } from './xform/index.js';
@@ -51,6 +51,8 @@ const STAR_LEN = [28, 60], STAR_SIZE = [2.6, 4];  // seconds; cycles per picture
 const LOCK_BARS = 8, LOCK_FINE = 12, LOCK_COARSE = 0.7, LOCKS = 2, LOCK_MORPH = 6.5;       // ...and its lines stay between these sizes, or the cuts have nothing to read by
 const SNAPS = 2, RILEYS = 2;
 const SHOCK_APART = 40;     // seconds between shocks that aren't asked for by the song's form
+const LONG_HERO = 8;        // seconds
+const WHITNEYS = 2, WHITNEY_SECONDS = 8;
 const REPLAYS = 2;          // how many times a section's hero can come round again
 const IRIS_D = 12, IRIS_HIT = 0.61, IRIS_NEAR = 30, IRIS_FINE = 9, IRIS_NEXT = 7, IRIS_AFTER = 16;     // seconds it takes; how far along it turns inside out; how far from the climax its landing can be; how fine a sheet it can roll up, cycles per picture unit: it comes in as it goes; seconds the gesture after it wants if it's cut out of a long one
 const IRIS_BODIES = ['lattice.master', 'riley.octagrid', 'lines.river', 'pole.dipole', 'checks.twist', 'riley.rose', 'dots.inflate', 'riley.mosaic', 'waves.current', 'lattice.teeth'];     // what makes a good flower, for when what's there can't
@@ -563,9 +565,27 @@ export function direct(score, A, M) {
     if (w && G.t1 - w.paid >= 5.5 && !G.xform) { G.morph = G.t1 - w.paid; delete G.plan; delete G.planFor; delete G.planning; }
   }
 
+  // ------------------------------------------------------------- Hearing 9: Whitney bars, on the biggest plain stretch there's room for. Bars are what the song is counted in, and this shows them.
+  if (score.ears?.[9] && flag('slip') && score.remake && lib('dials.sunburst')) {
+    const E = A.E || A.loud, sizeOf = G => { let s = 0, c = 0; for (let t = G.t0; t < G.t1; t += 0.5) { s += E[Math.min(E.length - 1, Math.round(t * A.fps))] || 0; c++; } return c ? s / c : 0; };
+    const room = G => G.t1 - (G.morph || 0) - G.t0 - 2;
+    const spots = g.slice(1, lastG()).filter(G => isPlain(G) && G.replayOf == null && G.k != null && room(G) >= WHITNEY_SECONDS).sort((a, b) => sizeOf(b) - sizeOf(a));
+    let done = 0, last = -1e9;
+    for (const G of spots) {
+      if (done >= WHITNEYS || Math.abs(G.t0 - last) < 40) continue;
+      const i = g.indexOf(G), N = score.remake(G, lib('dials.sunburst')), tm = N.t1 - (N.morph || 0);
+      const m = whitneyMove({ t0: N.t0 + 2, t1: tm - 0.5, tau, meter, bar, bars: Array.from(A.bars ?? []) });
+      if (!m || !quiet(m.from, m.to)) continue;
+      g[i] = N; N.moves = [m]; N.hero = 'whitney';
+      put('whitney', N, (m.from + m.to) / 2, m.from, m.to, m.from, m.to, { gain: QUIET_SNAP });
+      done++; last = G.t0;
+    }
+  }
+
   // ------------------------------------------------------------- everything else steps back, one hero at a time, eased at both ends
   const fade = Math.max(bar, 0.8);
-  const wins = cast.map(h => ({ a: h.wa, b: h.wb, gain: h.gain })).filter(w => w.b > w.a).sort((x, y) => x.a - y.a);
+  // Hearing 2: a long hero doesn't turn the song down so far that it's stopped singing.
+  const wins = cast.map(h => ({ a: h.wa, b: h.wb, gain: score.ears?.[2] && h.wb - h.wa > LONG_HERO ? Math.max(h.gain, 0.5) : h.gain })).filter(w => w.b > w.a).sort((x, y) => x.a - y.a);
   score.ambient = t => {
     let k = 1;
     for (const w of wins) {

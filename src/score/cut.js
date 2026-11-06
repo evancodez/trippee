@@ -229,6 +229,7 @@ export function applyCut(score, cut, A, M) {
   last.t1 = tEnd; last.morph = 0;
 
   // ------------------------------------------------------------- now the times are settled: where each one's clock comes to rest, and what it wears
+  const named = new Set();      // what a shot wears by name. The last shot's goes on past the song's end with it: its lanes hold, and without them the sheet would go back to the pattern's own numbers on one frame
   const cast = [], steps = [], comes = (G, kind, t, a, b, gain = 1, id = G.pattern.id, mirror = false) => cast.push({ kind, at: +t.toFixed(2), t0: +a.toFixed(2), t1: +b.toFixed(2), id, mirror, gain });
   made.forEach((G, i) => {
     const s = shots[i], end = G.morph ? G.t1 - G.morph : G.t1;
@@ -288,7 +289,7 @@ export function applyCut(score, cut, A, M) {
       for (const k in o) if (k !== 'times') m[k] = isLane(o[k]) ? keysAt(o[k]) : o[k];
       for (const k in o.times ?? {}) { const v = o.times[k]; m[k] = Array.isArray(v) ? v.map(at) : at(v); }
       const done = mv.cue ? mv.cue(m, { score, A, M, G, shot: s, at, bar, beat, meter, tau }) : m;
-      if (done) G.moves.push(done); else refuse(s.at, `move ${o.id}`, 'it says no here');
+      if (done) { G.moves.push(done); named.add(done); } else refuse(s.at, `move ${o.id}`, 'it says no here');
     }
     // A hit in a lane is one too
     for (const [path, keys] of Object.entries(s.lanes ?? {})) for (const k of keys) if (k[2] === 'hit') hits.push({ t: k[0], picture: +at(k[0]).toFixed(3), via: 'lane', id: s.id, path, depth: 'turn', shape: 'cross', why: '' });
@@ -296,7 +297,7 @@ export function applyCut(score, cut, A, M) {
 
   // ------------------------------------------------------------- the film
   // After the song the last shot carries on as it is: the same numbers, the same clock.
-  Object.assign(tail, { pattern: last.pattern, arcs: last.arcs, flow: last.flow, moves: last.moves.filter(m => m.id === 'cue'), phiTrack: last.phiTrack, t0: tEnd, arcEnd: tEnd + 1e-3, fixedRange: true, range: [0, 1], melMode: 0 });
+  Object.assign(tail, { pattern: last.pattern, arcs: last.arcs, flow: last.flow, moves: last.moves.filter(m => m.id === 'cue' || named.has(m)), phiTrack: last.phiTrack, t0: tEnd, arcEnd: tEnd + 1e-3, fixedRange: true, range: [0, 1], melMode: 0 });
   g.length = 0; g.push(...made, tail);
 
   const song = made.map((G, i) => ({ t: G.t0, a: shots[i].ambient ? keysAt(shots[i].ambient) : null, p: shots[i].pulse ? keysAt(shots[i].pulse) : null }));

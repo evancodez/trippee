@@ -5,7 +5,7 @@ import { Stage } from './stage.js';
 import { Governor } from './gl/governor.js';
 import { patterns, byId, families } from './pattern/library.js';
 
-export const VERSION = 'v2.5';
+export const VERSION = 'v2.5-wip';
 const canvas = document.getElementById('c');
 const R = new Renderer(canvas);
 // A different wander each visit, from a count rather than the clock, so a given seed always gives the same picture.

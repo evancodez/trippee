@@ -5,8 +5,8 @@ import { evalTrack } from '../curves.js';
 export default {
   id: 'cue',
   needs: () => true,
-  write(out, { u, t, G, m }) {
-    const at = G.freezeU != null ? G.t0 + u * ((G.arcEnd ?? G.t1) - G.t0) : t;
+  write(out, { u, t, uT, G, m }) {
+    const at = G.freezeU != null ? G.t0 + u * ((G.arcEnd ?? G.t1) - G.t0) : uT ?? t;      // uT: a cut's long move walks with everything else (hearing 1)
     for (const L of m.lanes) { const v = evalTrack(L.track, at); out[L.off] = L.log ? Math.exp(v) : v; }
   },
 };

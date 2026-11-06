@@ -131,6 +131,7 @@ export function init(app) {
   };
 
   let takeToken = 0;
+  let extrasOf = null;      // what a world that needs the extras is waiting on, for this song. Nothing's imported until one asks.
   const composeNow = (o, keepFamily) => {
     opts = { ...opts, ...o };
     const aspect = app.canvas.width && app.canvas.height ? app.canvas.width / app.canvas.height : 16 / 9;
@@ -144,12 +145,14 @@ export function init(app) {
     return score;
   };
   // Play it through once out of sight. A pattern that jumps sits this song out, and the film is composed again without it.
-  const rehearseNow = async (onProgress, stale = null, gentle = false) => {
+  // arriving: this film is about to fly in. What that does to its opening (stage._clearRunway) is done first, so what's rehearsed is what's shown.
+  const rehearseNow = async (onProgress, stale = null, gentle = false, arriving = false) => {
     // The film that's shown is always one that's been rehearsed all the way through: the last try can't send it back to be composed again.
     const guarded = flag('flashGuard'), tryN = guarded ? 5 : 3;
     for (let tries = 0; tries < tryN; tries++) {
       let r;
       const last = guarded && tries === tryN - 1;
+      if (arriving && guarded && !score.world) app.stage._clearRunway(0, ARRIVE, score);
       try { r = await rehearse(score, Math.min(analysis.duration, 1200), onProgress, { lastTry: last, stale, gentle }); }
       catch (e) { if (e.message !== 'stale') console.warn('rehearsal skipped:', e); return; }
       song.rehearsal = r;
@@ -196,10 +199,10 @@ export function init(app) {
     const R = await getRig(), H = FLIGHT_H, aspect = sc.aspect ?? (app.canvas.width / app.canvas.height || 16 / 9), W = Math.max(8, Math.round(H * aspect)), px = new Uint8Array(W * H * 4);
     let best = dur, least = Infinity, breath = performance.now();
     for (let D = dur; ; D = Math.min(Math.round(D * 1.4), FLIGHT_MOST)) {
-      const look = { ...sc, handover: app.stage.flightFrom(snap, t, D, true) };
+      const look = { ...sc, flownPast: null, handover: app.stage.flightFrom(snap, t, D, true) };
       if (sc.runway) sc.runway(t, D);
       else { look.gestures = sc.gestures.map(G => ({ ...G, plan: null, planFor: null, planning: null })); app.stage._clearRunway(t, D, look); }
-      const n = Math.ceil(D * FLIGHT_FPS), seen = new FlashSeen(n, W, H, FLIGHT_FPS);
+      const n = Math.ceil(D * FLIGHT_FPS), seen = new FlashSeen(n, W, H, FLIGHT_FPS, false, !sc.cut);
       for (let i = 0; i < n; i++) {
         const f = shot(R, look, t + i / FLIGHT_FPS, W, H, px);
         seen.take(i, px, f, look.gestures);
@@ -215,6 +218,9 @@ export function init(app) {
   // What the song's doing to the sheet is a function of its time. A jump back in the music is a cut, and the whole frame can't take that between two frames: it lets go first, quickly, and comes back over the flight.
   let hush = null;
   const hushTo = (to, secs, then) => { hush = { t0: performance.now(), secs, from: app.edits.reactAmt ?? 1, to, then }; };
+  const unhushed = () => (hush ? hush.to || hush.from : app.edits.reactAmt ?? 1);      // what it comes back to, whichever way it's going just now
+  let jumpTo = null, jumpAt = 0;
+  const JUMP_STUCK = 8000;     // ms: longer than settling and letting go can take. One move running straight into another has been seen at 3.5 s
   app.onFrame.push(() => {
     if (!hush) return;
     const h = hush, u = Math.min(1, (performance.now() - h.t0) / (h.secs * 1000));
@@ -292,11 +298,14 @@ export function init(app) {
       stopSource();
       endedAt = 0; resting = false;
       buffer = decoded; duration = decoded.duration; offset = 0; playing = false; analysis = A;
+      extrasOf = null;
       song.analysis = A; song.hash = hash;
       opts = { seed, family, pattern };
+      if (app.stage.world?.needs?.length) await song.extrasReady().catch(e => console.warn('the extras could not be heard:', e));      // a world that's on and hears them
+      if (token !== loadToken) return null;
       composeNow(opts);
       app.governor?.quiet(3);    // the rehearsal holds up the frame loop for a moment; that's not the pixels' fault
-      await rehearseNow(p => onProgress(0.98 + 0.02 * p));
+      await rehearseNow(p => onProgress(0.98 + 0.02 * p), null, false, true);
       if (token !== loadToken) return null;
       const cut = await cutFor(hash).catch(e => { console.warn('the hand cut could not be loaded:', e); return null; });
       if (token !== loadToken) return null;
@@ -305,8 +314,16 @@ export function init(app) {
       // Something on its way somewhere gets there first. A film has to come out of one pattern, or it would pop.
       if (!app.manual && app.stage.morphing(app.pictureT())) await new Promise(res => app.stage.settle(app.pictureT(), res, 2.5));
       if (token !== loadToken) return null;
+      const opening = score.gestures[0], before = [opening.t1, opening.morph];
       song.arrival = await flightLength(app.stage.snapshot(app.pictureT()), score, 0, ARRIVE, () => token !== loadToken);
       if (token !== loadToken) return null;
+      // A longer flight takes what it needs from the film's opening: a first gesture goes, or its morph is cut short. The film that's been rehearsed isn't the one that would be shown, so that much is looked at again.
+      app.stage._clearRunway(0, song.arrival, score);
+      if (flag('flashGuard') && (opening.t1 !== before[0] || opening.morph !== before[1])) {
+        const looked = await rehearse(score, Math.min(score.gestures[1]?.t1 ?? opening.t1, analysis.duration), () => {}, { lastTry: true, opening: song.arrival, stale: () => token !== loadToken }).catch(e => { if (e.message !== 'stale') console.warn('rehearsal skipped:', e); return null; });
+        if (token !== loadToken) return null;
+        if (song.rehearsal?.flash && looked?.flash) song.rehearsal.flash.opening = looked.flash;
+      }
       const snap = app.stage.snapshot(app.pictureT());
       app.stage.setScore(score);
       app.clock = clock;
@@ -346,6 +363,22 @@ export function init(app) {
       else tEst = offset;
       if (app.manual) { app.t = offset; }
     },
+    // A seek by hand, in the middle of the film: a jump in the music. The song lets go of the sheet first and comes back over the flight, as D does. The last click wins.
+    jump(t) {
+      if (resting || !score) { app.ui.hand.veil(() => song.seek(t)); return; }
+      const going = jumpTo !== null && performance.now() - jumpAt < JUMP_STUCK;
+      jumpTo = t;
+      if (going) return;
+      jumpAt = performance.now();      // not for a click that only changes where: if one is stuck, clicks at it mustn't keep it alive
+      const level = unhushed(), token = loadToken;
+      app.stage.settle(app.pictureT(), () => hushTo(0, HUSH, () => {
+        const at = jumpTo;
+        jumpTo = null;
+        if (at === null) { hushTo(level, HUSH_BACK); return; }      // somebody else has taken it: back, not left silent
+        if (token !== loadToken) { app.edits.reactAmt = level; return; }
+        app.ui.hand.veil(() => { song.seek(at); hushTo(level, HUSH_BACK); });
+      }));
+    },
     time() { return heard(); },
     contextState() { return ctx?.state ?? 'none'; },
     // A live copy of the song's sound, for recording. Nothing until there's a song, and a recording wants no silent track.
@@ -369,6 +402,9 @@ export function init(app) {
       if (stale()) return null;
       return () => { if (films) { films.auto = score; toAuto(); } if (!resting && !song.aside) app.stage.setScore(score); return score; };
     },
+
+    // What the worlds hear that the film doesn't (src/music/extras.js), once per song. It's in analysis.x from then on. Nothing of it is here until a world asks: stage.setWorld waits on it for a world's `needs`.
+    extrasReady() { return extrasOf ??= import('./extras.js').then(({ listenExtras }) => listenExtras(buffer, analysis, song.hash)).then(X => (analysis.x = X)); },
 
     // The same song, another film, right now. The clock doesn't stop.
     // quiet: no rehearsal behind it, for a pick, which happens right there in the middle of the picture.
@@ -476,7 +512,7 @@ export function init(app) {
           if (stale() || (f === showing && !b)) { flipping = false; return; }
           c.lastFlight = dur;
           if (resting) { flipping = false; swap(f); if (b) song.seek(passage); return; }
-          const amt = app.edits.reactAmt ?? 1;
+          const amt = unhushed();
           const fly = () => {
             flipping = false;
             app.ui.hand.veil(() => {

@@ -290,7 +290,7 @@ export async function enterWorld(page, id, log = () => {}) {
     const T = window.trippee, stage = app.stage, song = app.song, wait = ms => new Promise(r => setTimeout(r, ms));
     if (!stage.setWorld) throw new Error('no stage.setWorld yet');
     const before = song?.rehearsal;
-    let began = null; stage.setWorld(id).then(v => { began = v; }, e => { began = String(e); });
+    let began = null; stage.setWorld(id, { dur: 1 }).then(v => { began = v; }, e => { began = String(e); });      // the flight's nulled below, and a long one would clear a runway through the film's first morph
     // settle() and a stage's morphs run on frames, and a test's frames are stepped by hand
     for (let i = 0; i < 2400 && began === null; i++) { T.step(1 / 60); await wait(5); }
     if (began !== true) throw new Error(`stage.setWorld(${id}) gave ${began}`);

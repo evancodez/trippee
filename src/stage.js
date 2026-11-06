@@ -147,7 +147,7 @@ export class Stage {
   _land(H, t) {
     delete H.rush; this._rushed = null;
     if (H === this.score.handover) { this.score.handover = null; return; }
-    const g = this.score.gestures, N = g[g.indexOf(H) + 1], by = clockOfTo(H, t) - t;
+    const g = this.score.gestures, N = g[g.indexOf(H) + 1], by = H.plan?.onClock ? 0 : clockOfTo(H, t) - t;
     H.t1 = t; N.t0 = t;
     if (by) {
       N.phiShift = (N.phiShift || 0) + by;
@@ -184,7 +184,7 @@ export class Stage {
     const from = this.current(t);
     if (from.pattern === pat) { this._stay(from, t, hold); return; }
     // ringsEnd: when the song's rings would have let go, or they'd seem to come back for a moment as it leaves
-    const S = { ...from, plan: null, planFor: null, morph: 0, ringsEnd: from.morph ? from.t1 - from.morph : null }, phi = this.score.phi, rings = !!this.score.react, ambient = this.score.ambient?.(t) ?? 1;
+    const S = { ...from, plan: null, planFor: null, morph: 0, ringsEnd: from.morph ? from.t1 - from.morph : null }, phi = this.score.phi, rings = !!this.score.react, ambient = this.staticG ? 1 : this.score.ambient?.(t) ?? 1;     // static takes no notice of the film's heroes, so what's showing hasn't stepped back for one
     delete S.rush;
     this.onLeave?.(S);
     const fresh = (t0, t1) => ({ t0, t1, arcEnd: t0 + 44, period: hold ? 44 : 0, pattern: pat, morph: 0, melMode: S.melMode });
@@ -298,17 +298,30 @@ export class Stage {
   }
 
   _handover(from, t, dur) {
-    this.score.handover = { G: { ...from, plan: null, planFor: null, morph: 0 }, ts: t, phi: this.score.phi, wall: true, e: 0, D: dur, plan: null, rings: !!this.score.react };
+    this.score.handover = { G: { ...from, plan: null, planFor: null, morph: 0 }, ts: t, phi: this.score.phi, wall: true, e: 0, D: dur, plan: null, rings: !!this.score.react, ambient: 1 };     // only out of static, which takes no notice of the film's heroes: it comes round to them as it flies
   }
 
   // A handover wants to finish before the film's next transformation starts, and with the film's gesture still the one it's going to.
   // sc: another film's copy, being looked at. And a film that has to stay itself, because it's one of two being compared, clears its own (sc.runway).
+  // Two plain gestures just become one. What the director or a cut has put on a gesture isn't so easily given up: a hero, a move or a worn transformation on two gestures that have become one would be gone, or
+  // on the wrong pair. So those stay where they are, and if one's transformation is due before this lands, the flight goes straight to where that was going. That's only for this passage: it's all put back at the next flight.
   _clearRunway(t, dur, sc = this.score) {
     if (this.staticG) return;
     if (sc.runway) { sc.runway(t, dur); return; }
-    const g = sc.gestures, i = sc === this.score ? g.indexOf(this.current(t)) : Math.max(0, g.findLastIndex(x => x.t0 <= t)), cur = g[i];
-    while (g[i + 1] && cur.t1 < t + dur + 6) { const n = g[i + 1]; cur.t1 = n.t1; cur.morph = n.morph; g.splice(i + 1, 1); delete cur.plan; }
-    if (cur.morph && cur.t1 - cur.morph < t + dur) { cur.morph = Math.max(0, cur.t1 - (t + dur)); delete cur.plan; }
+    if (sc.flownPast) { for (const [G, was] of sc.flownPast) { Object.assign(G, was); delete G.plan; delete G.planFor; delete G.planning; } sc.flownPast = null; }
+    const g = sc.gestures, end = t + dur, worn = G => G.hero || G.moves?.length || G.xform || G.carry;
+    let i = sc === this.score ? g.indexOf(this.current(t)) : Math.max(0, g.findLastIndex(x => x.t0 <= t));
+    while (g[i + 1] && g[i].t1 < end + 6) {
+      const cur = g[i], n = g[i + 1];
+      if (!worn(cur) && !worn(n)) { cur.t1 = n.t1; cur.morph = n.morph; g.splice(i + 1, 1); delete cur.plan; continue; }
+      if (cur.t1 - (cur.morph || 0) >= end) break;
+      (sc.flownPast ??= []).push([cur, { t1: cur.t1, morph: cur.morph }], [n, { t0: n.t0 }]);
+      cur.t1 = t; cur.morph = 0; n.t0 = t;
+      for (const x of [cur, n]) { delete x.plan; delete x.planFor; delete x.planning; }
+      i++;
+    }
+    const cur = g[i];
+    if (cur.morph && cur.t1 - cur.morph < end) { cur.morph = Math.max(0, cur.t1 - end); delete cur.plan; }
   }
 
   // What's showing now, so that it can bend into whatever comes next (a song's film, another take, a seek). Nothing cuts. Asked for in the middle of a
@@ -337,7 +350,7 @@ export class Stage {
   flightFrom(snap, t, dur, clocked) {
     // ringsEnd and ambient: where what's showing had got to with the song, so that it carries on from there and only comes round to the next film's as it flies. One film's heroes aren't another's.
     const S = { ...snap.G, plan: null, planFor: null, morph: 0, ringsEnd: snap.G.morph ? snap.G.t1 - snap.G.morph : snap.G.ringsEnd ?? null }, rings = !!snap.score.react && snap.score.songFades == null;
-    const ambient = rings ? snap.score.ambient?.(snap.t) : undefined, pulse = rings ? snap.score.pulseLane?.(snap.t) ?? 1 : undefined;     // pulse: a hand cut can hold the beat back, and one film of a song may while the other doesn't
+    const ambient = rings ? (this.staticG ? 1 : snap.score.ambient?.(snap.t)) : undefined, pulse = rings ? snap.score.pulseLane?.(snap.t) ?? 1 : undefined;     // pulse: a hand cut can hold the beat back, and one film of a song may while the other doesn't
     delete S.rush;
     return clocked
       ? { G: S, t0: t, t1: t + dur, dt: snap.t - t, phi: snap.score.phi, plan: null, rings, ts: snap.t, ambient, pulse }

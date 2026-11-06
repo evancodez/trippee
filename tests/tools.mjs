@@ -1,12 +1,13 @@
 // Every tool works in every mode: real input, then at one t a capture with the tool on and its edit nulled again. Pass: the tile where it was used differs.
-//   node tools/lab.mjs tests/tools.mjs --out lab-out/h     ONLY=wander,held,... modes. TOOLS=ripple,zoom,... tools. COLOUR=off,on.
+//   node tools/lab.mjs tests/tools.mjs --out lab-out/h     ONLY=wander,held,... modes. TOOLS=ripple,zoom,... tools. COLOUR=off,on. WORLD=flower: all of it inside a world, on its own patterns, colour off.
 const CX = 760, CY = 330;           // where the tools are used, in CSS pixels at 1280x720
 const NEED = 1.5;                   // mean difference in the tile, /255
 
 export default async ({ page, log, save, sleep }) => {
   const only = process.env.ONLY?.split(',');
   const tools = (process.env.TOOLS || 'ripple,hand,twist,pinch,bulge,comb,zoom,weight,sheet,knob').split(',');
-  const colours = (process.env.COLOUR || 'off,on').split(',');
+  const WORLD = process.env.WORLD || null;
+  const colours = WORLD ? ['off'] : (process.env.COLOUR || 'off,on').split(',');
   const ALT = 1, SHIFT = 8;
   const mouse = (type, x, y, o = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, button: o.button ?? 'none', buttons: o.buttons ?? 0, clickCount: o.clickCount ?? 0, modifiers: o.modifiers ?? 0, deltaX: o.deltaX ?? 0, deltaY: o.deltaY ?? 0, pointerType: 'mouse' });
   const move = (x, y, o) => mouse('mouseMoved', x, y, o);
@@ -52,7 +53,8 @@ export default async ({ page, log, save, sleep }) => {
       zoom: E => { E.journey = 0; E.jx = 0; E.jy = 0; E.spin = 0; },
       weight: E => { E.duty = 0; },
       sheet: E => { E.sheet = 0; },
-      knob: E => { E.over = {}; },
+      // Turned just before a gesture's own transformation, a knob has gone into the gesture (leaving() in src/tools/input.js), and that's where to take it off. With a film ended this falls right on the tool: the wander it rests into starts transforming after 4 s.
+      knob: E => { E.over = {}; const f = app.lastFrame, G = f.from ?? f.G, was = G.over; G.over = null; return () => { G.over = was; }; },
     };
   });
 
@@ -97,7 +99,9 @@ export default async ({ page, log, save, sleep }) => {
     // well away from the wander's next morph, unless a mode wants one
     await page.eval(() => { const s = app.stage, t = app.pictureT(), c = s.current(t); if (c.morph && c.t1 - c.morph < t + 60 && t <= c.t1 - c.morph) { const N = s.score.gestures[s.score.gestures.indexOf(c) + 1]; c.t1 = t + 60 + c.morph; if (N) N.t0 = c.t1; } });
   };
-  const pat = id => page.eval(`app.hand.go(${JSON.stringify(id)},{dur:3})`).then(() => sleep(3400));
+  if (WORLD) { await page.eval(async id => { await app.stage.setWorld(id); }, WORLD); for (let i = 0; i < 200; i++) { if (await page.eval('!app.stage.score.handover?.change')) break; await sleep(100); } }
+  const inWorld = id => (WORLD ? `(${JSON.stringify(id)}.length%app.stage.world._pool.length)` : '');
+  const pat = id => page.eval(WORLD ? `app.hand.go(app.stage.world._pool[${inWorld(id)}],{dur:3})` : `app.hand.go(${JSON.stringify(id)},{dur:3})`).then(() => sleep(3400));
   const song = async () => {
     await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true})`);
     for (let i = 0; i < 900; i++) { if (await page.eval('app.song.playing')) break; await sleep(100); }

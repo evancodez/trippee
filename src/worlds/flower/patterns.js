@@ -7,6 +7,9 @@ export const FLOW = 6;         // lines per cycle of the film's clock: with no s
 const eps = 0.26;
 export const base = (k, e = eps, swell = 0) => -k * (Math.log(e) + swell * e);     // so that a flower's centre sits at phase 0 before the flow: every flower gives birth to the same line at the same moment
 
+// Where the two with no flower to centre on sit: about where those with one do (base() comes to 2.6 to 3.3), or a Bud into one of them sends several extra rings past on top of the flow, over the whole frame.
+const PH = 3;
+
 const pole = (x, y, q, ay) => ({ x, y, q, ay });
 const blob = (x, y, r, a) => ({ [`x`]: x, [`y`]: y, r, a });
 function flower({ id, name, k = 2.6, n = 6, a = 0.5, kappa = 0, beta = 1.8, fat = 0.55, e = eps, poles, orbit = 0.26, arcs = [], over = {}, whip = 0, flame = 0, lobes = 0, ph = null, swell = 0.7, fade = 0.13, curl = 0, flow = null }) {
@@ -49,8 +52,8 @@ export const pool = [
     arcs: [{ path: 'rot', from: -0.22, to: 0.22 }, { path: 'scale', from: 1.02, to: 1.32, log: true }, { path: 'tx', from: -0.14, to: 0.14 }],
   }),
   flower({
-    id: 'flower.bloom', name: 'Big Bloom', n: 5, a: 0.85, fat: 0.42, k: 2.8, beta: 1.6,
-    poles: [[-0.55, 0.05, 1.25, 0.2], [1.5, 0.72, 0.5, 1.2], [1.25, -0.8, 0.38, 2.6]],
+    id: 'flower.bloom', name: 'Big Bloom', n: 5, a: 0.85, fat: 0.42, k: 3.5, beta: 1.6,      // one flower fills the frame: with fewer rings than this, each one passing is the whole frame's chroma going up and down
+    poles: [[-0.55, 0.05, 1.05, 0.2], [1.5, 0.72, 0.5, 1.2], [1.25, -0.8, 0.38, 2.6]],
     arcs: [{ path: 'rot', from: 0.2, to: -0.25 }, { path: 'scale', from: 1.3, to: 1.0, log: true }, { path: 'ty', from: 0.1, to: -0.1 }],
   }),
   flower({
@@ -64,13 +67,13 @@ export const pool = [
     arcs: [{ path: 'rot', from: 0.2, to: -0.2 }, { path: 'scale', from: 1.2, to: 1.0, log: true }],
   }),
   flower({
-    id: 'flower.whiplash', name: 'Whiplash', n: 6, a: 0, whip: 1, k: 1.9, beta: 2, e: 0.3, curl: 2.1, ph: 4.7,
+    id: 'flower.whiplash', name: 'Whiplash', n: 6, a: 0, whip: 1, k: 1.9, beta: 2, e: 0.3, curl: 2.1, ph: PH,
     poles: [[-1.15, 0.5, 0.8, 0], [1.0, 0.55, -0.8, 0], [-0.4, -0.6, -0.7, 0], [1.35, -0.55, 0.75, 0]],
     orbit: 0.3,
     arcs: [{ path: 'rot', from: -0.2, to: 0.2 }, { path: 'scale', from: 1.0, to: 1.2, log: true }],
   }),
   flower({
-    id: 'flower.flames', name: 'Flames', n: 1, a: 2.8, kappa: 0.7, fat: 1.1, k: 1.9, flame: 1, lobes: 3.4, ph: 2.1,
+    id: 'flower.flames', name: 'Flames', n: 1, a: 2.8, kappa: 0.7, fat: 1.1, k: 1.9, flame: 1, lobes: 3.4, ph: PH,
     poles: [[-1.0, 0, 0.6, 0], [1.0, 0, 0.6, 0]],
     orbit: 0,
     arcs: [{ path: 'rot', from: -0.05, to: 0.05 }],

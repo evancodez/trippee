@@ -16,8 +16,9 @@ import { load } from './index.js';
 const HOOKS = { field: 'WORLD_FIELD', surface: 'WORLD_SURFACE', phase: 'WORLD_PHASE', warp: 'WORLD_WARP', preInk: 'WORLD_PREINK', T: 'WORLD_T' };
 const FILM_COLOR = 'vec3 worldColor(int k0,int k1,float c){ return film(c); }\n';
 const COVER = 16;       // a program bit of its own: the sound's coverage draw
-const CHANGE_S = 9;     // seconds, a change of world
-const STAGGER = 0.6;    // how wide one band's share of a change is, against the whole half. Over half of 9 seconds, about a second and a half
+const FULL = 32;        // and another: a world's own code that most of its patterns never draw, in #ifdef WORLD_FULL. A program pays for its peak on every pixel, whichever way a pixel goes, so that code costs what isn't using it unless it's elsewhere. W.fuller(slot) says who needs it.
+const CHANGE_S = 13;    // seconds, a change of world. A flight over bold shapes in less reads up to 5 flashes a second on a tile, and at this length 1 to 3. Nothing shorter gets near a world's limit, and longer didn't get to it either (16 reads 1 to 3).
+const STAGGER = 0.6;    // how wide one band's share of a change is, against the whole half. Over half of 13 seconds, about two
 
 // ---------------------------------------------------------------- the world's own source
 export function worldSource(W, v) {
@@ -32,7 +33,8 @@ export function worldSource(W, v) {
   if (W.hear?.threshold != null) defs += '#define WORLD_SHARE\n';
   if (W.motion?.front) defs += '#define WORLD_FRONT\n';       // a straight front (xfU mode 3), for a world that says it has one
   if (v & COVER) defs += '#define WORLD_COVER\n';
-  let s = sourceOf(v & ~COVER).replace('\n', () => `\n${defs}`);
+  if (v & FULL) defs += '#define WORLD_FULL\n';
+  let s = sourceOf(v & ~(COVER | FULL)).replace('\n', () => `\n${defs}`);
   const put = (mark, text) => { s = s.replace(`//@world:${mark}\n`, () => `${text ?? ''}\n`); };
   put('defs', MACROS + (g.defs ?? '')); put('field', g.field); put('surface', g.surface); put('phase', g.phase);
   put('helpers', helpers + (g.warp ?? '') + (g.preInk ?? '') + (g.T ?? '') + (g.color ?? FILM_COLOR));
@@ -80,7 +82,7 @@ let worldsSeen = 0;
 class WorldPrograms {
   constructor(R, W) {
     this.R = R; this.W = W; this.gl = R.gl;
-    this.base = 16 * ++worldsSeen;     // R.variant: each has its own number, so its own governor tier. A world only slows itself.
+    this.base = 64 * ++worldsSeen;     // R.variant: each has its own number, so its own governor tier. A world only slows itself.
     this.progs = {};
     this.block = new Float32Array(256);
     this.U = { e: this.block.subarray(0, 16), a: this.block.subarray(16, 136), b: this.block.subarray(136, 256), all: this.block };
@@ -96,6 +98,7 @@ class WorldPrograms {
     this.table = new Table(gl, W.table?.h ?? 1);
     this.trace = W.pass ? new Trace(R) : null;
     this.order = R.order.filter(v => !(v & PLATES));
+    if (W.fuller) this.order = [0, FLIGHT, FULL, FULL | FLIGHT, ...this.order.slice(2), ...this.order.slice(2).map(v => v | FULL)];
     this.ready = false; this.failed = null;
     this.whenReady = new Promise(res => { this._ready = res; });
     this.whenAll = new Promise(res => { this._all = res; });
@@ -109,7 +112,7 @@ class WorldPrograms {
     const v = this.order.find(n => !this.progs[n]);
     if (v === undefined) { this._all(this); return; }
     this._build(v, () => {
-      if (v === FLIGHT) { this.ready = true; this._ready(this); }
+      if (v === (this.W.fuller && this.R.parallel ? FULL | FLIGHT : FLIGHT)) { this.ready = true; this._ready(this); }
       if (this.R.parallel || v === 0) this._next(); else this._all(this);
     });
   }
@@ -152,7 +155,7 @@ class WorldPrograms {
     const R = this.R, gl = this.gl;
     // Plain and flight always. The fuller two if the world's own patterns wear something only they have.
     const fuller = (this.W._pool ?? []).some(p => { const S = base(p); return R._extra(S); });
-    const list = [0, FLIGHT, ...(fuller ? [EXTRA, EXTRA | FLIGHT] : [])].filter(v => this.progs[v] && !this.warmed.has(v));
+    const list = [0, FLIGHT, ...(fuller ? [EXTRA, EXTRA | FLIGHT] : []), ...(this.W.fuller ? [FULL, FULL | FLIGHT] : [])].filter(v => this.progs[v] && !this.warmed.has(v));
     if (!list.length) return Promise.resolve();
     return new Promise(res => {
       const before = R.warm;
@@ -177,11 +180,17 @@ class WorldPrograms {
     });
   }
 
+  // What a frame needs: what the film would, without colour's plates, and whatever the world says only its fuller programs have (W.fuller).
+  variantOf(F) {
+    const R = this.R, f = this.W.fuller;
+    return (R._variantOf(F) & ~PLATES) | (f && (f(R.slotA) || f(R.slotB)) ? FULL : 0);
+  }
+
   // The smallest program with what this frame needs. Never colour's plates: a world has its own colour.
   program(F) {
-    const R = this.R, v = R._variantOf(F) & ~PLATES;
+    const R = this.R, v = this.variantOf(F);
     if (!this.progs[v] && !R.parallel) { this.order = [v, ...this.order.filter(n => n !== v)]; this._next(); }
-    const got = this.progs[v] ? v : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
+    const got = this.progs[v] ? v : this.progs[v & (FLIGHT | EXTRA | FULL)] ? v & (FLIGHT | EXTRA | FULL) : this.progs[v & (FLIGHT | FULL)] ? v & (FLIGHT | FULL) : v & FLIGHT;
     R.variant = this.base + got;
     return this.progs[got];
   }
@@ -199,9 +208,9 @@ class WorldPrograms {
 
   // The planner's look: a slot on its own, in this world's fields, as coverage.
   forProbe() {
-    const R = this.R, v = R._variantOf(R.frame) & ~PLATES;
+    const R = this.R, v = this.variantOf(R.frame);
     this.block[0] = 1; this.upload(); this.block[0] = 0;
-    return this.progs[v] ?? this.progs[v & (FLIGHT | EXTRA)] ?? this.progs[0];
+    return this.progs[v] ?? this.progs[v & (FLIGHT | EXTRA | FULL)] ?? this.progs[v & FULL] ?? this.progs[0];
   }
 
   // The frame just drawn, again, small and as coverage, into fbo: what the sound reads. Everything that reads the picture reads it black and white, whatever it's wearing.
@@ -219,12 +228,22 @@ class WorldPrograms {
     F[res] = w; F[res + 1] = h; F[res + 2] = w / h;
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.viewport(0, 0, w, h);
-    const v = R._variantOf(F) & ~PLATES;
+    const v = this.variantOf(F);
     this.coverProgram(v);
-    gl.useProgram(this.progs[v | COVER] ?? this.program(F));
+    // The sound's programs for what this world might do next as well, while nothing's happening. The GPU builds a pipeline at its first draw and stops everything to do it: that's a hitch when the music starts, and not on the first frame of a click's flight.
+    const next = this.W.fuller ? [0, FLIGHT, FULL, FULL | FLIGHT] : [v & ~FLIGHT, v | FLIGHT];
+    for (const n of next) this.coverProgram(n);
     this.block[0] = 1; this.block[4] = Math.min(1, 2 * w / full); this.upload(); this.block[0] = 0;
     gl.bindBuffer(gl.UNIFORM_BUFFER, R.ubo);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, R.block);
+    for (const n of next) {
+      const cv = n | COVER;
+      if (!this.progs[cv] || this.warmed.has(cv)) continue;
+      gl.useProgram(this.progs[cv]);
+      gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.disable(gl.SCISSOR_TEST);
+      this.warmed.add(cv);
+    }
+    gl.useProgram(this.progs[v | COVER] ?? this.program(F));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     F[res] = saved[0]; F[res + 1] = saved[1]; F[res + 2] = saved[2];
   }
@@ -245,6 +264,7 @@ export function adopt(W) {
   const borrowed = (W.borrow ?? []).map(id => byId[id]).filter(Boolean);
   W._pool = [...(W.pool ?? []), ...borrowed];
   for (const x of Object.values(W.motion?.xforms ?? {})) XFORMS[x.id] = x;
+  W._xform = W.motion?.xform ? { id: W.motion.xform } : null;      // what a gesture with no transformation of its own goes by
   const ink = W.ink;
   if (ink) {
     ink.weights ??= [1, 2, 3, 5];
@@ -291,6 +311,8 @@ function writeWorld(st, score, R, edits) {
   E[14] = geo;
   const ink = W.ink;
   if (ink) {
+    // A slip runs each band a whole number of cycles and lets go of them where coverage can't see it. floor(phase) can: every line in the band would change ink at once, with none of them moving. So a family that carries numbers doesn't slip, whichever director or dial asked it to. A hand on the slot here catches them all, and the rehearsal goes through here too.
+    for (const S of [A, B]) if (S[OFF['slip.kind']] > 0.5 && ink.fams.some(i => S[OFF[`slip.m${i}`]] !== 0)) S[OFF['slip.kind']] = 0;
     for (let i = 0; i < FAMILIES; i++) E[8 + i] = ink.fams.includes(i) ? (ink.weights[ink.fams.indexOf(i)] ?? 1) : 0;
     E[12] = ink.R;
     // A slide or a bend ends with its phases a whole number of cycles from the plain path's. Where the rows are a slow ladder (ink.roll) that's taken up by the row, easing, and it lands exactly.
@@ -304,8 +326,8 @@ function writeWorld(st, score, R, edits) {
   if (W.uniforms || W.table || wp.trace) {
     const ctx = { t: st.t, c: st.c, x: st.x, T: st.T, kind: st.kind, G: st.G, from: st.from, to: st.to, plan: st.plan, geo, score, A, B, F, R, edits, tables: score.tables,
       at: c => (score.react ? reactAt(score.react, c) : null), change: ch };
-    if (W.table && W.table.fill(wp.table, ctx) !== false) wp.tableDirty = true;
     W.uniforms?.(U, ctx);
+    if (W.table && W.table.fill(wp.table, ctx) !== false) wp.tableDirty = true;      // after uniforms, or a table that goes by what's in the slot reads a number uniforms is about to change
     if (wp.trace) wp.trace.run(ctx);
   }
 }
@@ -324,7 +346,8 @@ export async function changeWorld(stage, id, opts = {}) {
     const wp = await prepare(R, to);
     if (wp.failed) return false;
     if (!app.manual) await wp.warm();
-    if (to.needs?.length && app.song?.analysis && app.song.extrasReady) await app.song.extrasReady(to.needs);
+    // Heard once per song. A world that can't have them comes on anyway, as it would with no song: the click still happens.
+    if (to.needs?.length && app.song?.analysis && app.song.extrasReady) await app.song.extrasReady(to.needs).catch(e => console.warn('the extras could not be heard:', e));
   }
   if (me !== ticket) return false;
   // Colour shuts first: the plates can't be in the middle of a flight when the program changes. Quickly, since this is the second thing to happen.
@@ -367,6 +390,7 @@ function change(stage, to, opts) {
   stage.score = stage.score;      // stamped
   stage.morphFrom(snap, T, opts.dur ?? CHANGE_S, { world: from, noGlide: true });
 }
+
 
 // b, in a world: the film first, and colour once it's there. Colour's own key doesn't know about worlds, and shouldn't have to.
 let guarded = false;

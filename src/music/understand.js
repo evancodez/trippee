@@ -215,7 +215,7 @@ function findArrivals(A, bar) {
 // so they compete fairly; drums pay DRUM_TAX for it, because the eye takes drums as louder than the ear does: a pulse moves the whole sheet at once.
 const LEAD = 1, SECOND = 0.45, OTHERS = 0.2, DRUMS_MIN = 0.35, SWITCH_MARGIN = 0.08, DWELL = 2, CUT_IN = 0.25, DRUM_TAX = 0.7;
 export const STREAMS = ['drums', 'tune', 'tone', 'harm'];
-function findConductor(A, ch, N, breath) {
+function findConductor(A, ch, N, breath, ears = {}) {
   const fps = A.fps, L = breath.loop, tb = A.beats, m = breath.beats, last = A.duration;
   const at = (arr, t) => arr[clamp(Math.round(t * fps), 0, arr.length - 1)];
   const bins = (arr, k) => {
@@ -249,7 +249,14 @@ function findConductor(A, ch, N, breath) {
     for (const k of STREAMS) { let s = 0; for (let b = b0; b < b1; b++) s += Math.min(1.5, S[k][b] / hi[k]); sc[k] = s / Math.max(b1 - b0, 1); }
     sc.drums *= DRUM_TAX;
     // A tune nobody's playing can't lead
-    { let v = 0, c = 0; for (let b = b0; b < b1; b++) for (let k = 0; k < 4; k++) { v += V[b * 4 + k] > 0.35 ? 1 : 0; c++; } sc.tune *= clamp(v / Math.max(c, 1) / 0.35); }
+    { let v = 0, c = 0; for (let b = b0; b < b1; b++) for (let k = 0; k < 4; k++) { v += V[b * 4 + k] > 0.35 ? 1 : 0; c++; } sc.tune *= clamp(v / Math.max(c, 1) / 0.35);
+      // Hearing 2: a chorus sung the same way twice has nothing new in it, and it's still what everyone's listening to. So a tune scores for being there and for going somewhere, as well as for being new.
+      if (ears[2]) {
+        const pitches = []; for (let b = b0; b < b1; b++) for (let k = 0; k < 4; k++) if (V[b * 4 + k] > 0.35) pitches.push(Pit[b * 4 + k]);
+        const there = clamp(v / Math.max(c, 1) / 0.5), goes = pitches.length ? clamp((pct(pitches, 0.9) - pct(pitches, 0.1)) / 7) : 0;
+        sc.tune = Math.max(sc.tune, 0.45 * sc.tune + there * (0.35 + 0.4 * goes));
+      }
+    }
     const order = STREAMS.slice().sort((x, y) => sc[y] - sc[x]);
     const margin = sc[order[0]] - sc[cur ?? order[1]];
     // A lead gets a phrase to say what it's saying. Only something plainly bigger can cut in after one breath.
@@ -276,17 +283,38 @@ function gainsFrom(conductor, bar) {
   };
 }
 
+// ---------------------------------------------------------------- hearing 11: the song's rarest chords, where it had settled into repeating itself
+// How surprising a chord is: -log P(this chord | the last), counted over the whole song. It only counts after four bars that said the same as the four before them, since a chord can't surprise anyone in the middle of a wander.
+const SURPRISES = 6, SURPRISE_APART = 20, SURPRISE_SAME = 0.75;
+function findSurprises(ch, runs, A, m) {
+  const N = ch.length, count = new Float32Array(24), pair = new Float32Array(24 * 24), W = 4 * m;
+  for (let i = 1; i < runs.length; i++) { count[runs[i - 1].c]++; pair[runs[i - 1].c * 24 + runs[i].c]++; }
+  const out = [];
+  for (let i = 1; i < runs.length; i++) {
+    const b = runs[i].b0;
+    if (b < 2 * W || b >= N) continue;
+    let same = 0; for (let k = 1; k <= W; k++) if (ch[b - k] === ch[b - k - W]) same++;
+    if (same / W < SURPRISE_SAME) continue;
+    const a = runs[i - 1].c, c = runs[i].c, s = -Math.log((pair[a * 24 + c] + 0.5) / (count[a] + 12));
+    out.push({ t: A.beats[b], c, s: +s.toFixed(3) });
+  }
+  out.sort((x, y) => y.s - x.s);
+  const kept = [];
+  for (const o of out) { if (kept.length >= SURPRISES) break; if (kept.every(k => Math.abs(k.t - o.t) >= SURPRISE_APART)) kept.push(o); }
+  return kept.sort((x, y) => x.t - y.t);
+}
+
 // ---------------------------------------------------------------- all of it. compose and react can both ask: it's worked out once per song and per set of flags.
 const memo = new WeakMap();
 const flagKey = () => `${flag('understand')}${flag('rests')}${flag('conductor')}`;
-export function understand(A) {
-  const key = flagKey(), hit = memo.get(A);
+export function understand(A, ears = {}) {
+  const key = flagKey() + !!ears[2] + !!ears[11], hit = memo.get(A);
   if (hit && hit.key === key) return hit.M;
-  const M = work(A);
+  const M = work(A, ears);
   memo.set(A, { key, M });
   return M;
 }
-function work(A) {
+function work(A, ears) {
   const N = A?.beats?.length || 0;
   if (!flag('understand') || N < 16 || !A.chord?.length || !A.chroma?.length) return neutral(A);
   const meter = A.meter || 4, bs = (A.beats[N - 1] - A.beats[0]) / Math.max(N - 1, 1) || 60 / (A.bpm || 120), bar = bs * meter;
@@ -326,11 +354,11 @@ function work(A) {
     for (let i = 0; i < arrival.length; i++) if (arrival[i] >= min && (arrival[i] >= (arrival[i - 1] ?? 0)) && arrival[i] > (arrival[i + 1] ?? 0)) out.push({ bar: i, t: bars[i], a: arrival[i], s: arrivalS[i] });
     return out.sort((x, y) => y.a - x.a);
   };
-  const conductor = flag('conductor') && A.perc && A.bright && A.voiced ? findConductor(A, ch, N, breath) : [];
+  const conductor = flag('conductor') && A.perc && A.bright && A.voiced ? findConductor(A, ch, N, breath, ears) : [];
   return {
     neutral: false, home, key, runs: runs.map(({ t0, t1, c }) => ({ t0, t1, c })), place, tension,
     breath, lungs, rests, C, T, restAt, restNear, arrival, arrivalS, arrivalAt, arrivals,
-    conductor, gains: gainsFrom(conductor, bar),
+    conductor, gains: gainsFrom(conductor, bar), surprises: ears[11] ? findSurprises(ch, runs, A, meter) : [],
     beats: A.beats, bars, meter, beat: bs, bar, duration: A.duration,
   };
 }

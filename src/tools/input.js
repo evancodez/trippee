@@ -304,9 +304,11 @@ function naturals() {
 // then hold it still. From there on the knobs and the line weight are free for whatever comes next.
 function leaving(G) {
   if (J.s.x || J.jx || J.jy) { J.target = 0; J.clearing = true; }
-  const over = {};
-  for (const [path, k] of knobs) over[path] = k.s.x;
-  if (Object.keys(over).length) G.over = { ...G.over, ...over };
+  const over = {}, was = {};
+  // ...and what the pattern's own number was, which is what the song has been working from all this time (frame.js).
+  if (knobs.size) fillSlot(scratch, G, app.t, G.pattern, { phi: app.lastFrame?.phi });
+  for (const [path, k] of knobs) { over[path] = k.s.x; if (G.over?.[path] == null) was[path] = scratch[OFF[path]]; }
+  if (Object.keys(over).length) { G.over = { ...G.over, ...over }; G.overWas = { ...G.overWas, ...was }; }
   knobs.clear();
   edits.over = {};
   const d = edits.duty || 0;
@@ -333,10 +335,17 @@ function tick(t) {
       hand.corridor = false;
     } else if (changed) {
       curPat = G.pattern; J.target = 0; J.clearing = true; D.target = 0;
-      for (const k of knobs.values()) k.release = true;
+      // From what's just been drawn, if it's come in on the knob's say, or it's nothing to do with what's here now.
+      for (const [path, k] of knobs) {
+        if (!edits.inHandover && edits.overBy?.[path] == null) { knobs.delete(path); delete edits.over?.[path]; continue; }
+        if (!edits.inHandover) k.s.set(A[OFF[path]]);
+        k.release = true;
+      }
+      edits.overBy = null;
       hand.emit('pattern', G.pattern);
     }
   }
+  edits.overG = G;
   // A gesture's own transformation is coming, and what the hand has done stays with the gesture. In a flight, and on the way to one, the zoom keeps inside what
   // the flight has room for (a view right out would see past the element it's flying into).
   const left = G.morph && !f.N && !stage.staticG ? G.t1 - G.morph - app.pictureT(t) : Infinity;
@@ -377,6 +386,7 @@ hand.liveValue = path => knobs.get(path)?.s.x ?? naturals()[OFF[path]];
 // What the "lines" knob can move on what's showing: freq multiplies straight lines, and a pattern with none (rings, spokes, a field) can only be seen from further away.
 hand.linesPath = () => {
   const n = naturals();
+  if (n[OFF['field.kind']] > 3.5) return 'scale';      // a world's own field: its stripes are only there for when it's gone, and it takes away whatever freq would do
   for (let i = 0; i < FAMILIES; i++) if (n[OFF[`f${i}.on`]] >= 0.5 && Math.abs(n[OFF[`f${i}.d`]]) <= 1.01 && Math.hypot(n[OFF[`f${i}.x`]], n[OFF[`f${i}.y`]]) > 1e-3) return 'freq';
   return 'scale';
 };
@@ -384,7 +394,7 @@ hand.linesPath = () => {
 // Go somewhere: what's showing becomes it, whatever mode this is, and it gets there on real seconds. With a song playing, the film carries on with this
 // pattern as its motif.
 hand.go = (id, opts = {}) => {
-  const pat = typeof id === 'string' ? app.byId[id] : id;
+  const pat = typeof id === 'string' ? app.byId[id] ?? stage.world?._pool?.find(p => p.id === id) : id;
   if (!pat) return;
   stage.pick(pat, app.pictureT(), opts);
   hand.emit('going', pat);

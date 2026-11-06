@@ -1,11 +1,12 @@
 // A click always moves there: a real click on a real tile, in every mode, with and without colour.  node tools/lab.mjs tests/pick.mjs --out lab-out/h
 // Pass: within 11 s lastFrame.G.pattern is the one clicked and nothing is morphing, no pop at either end of the handover, no errors.
 // ONLY=wander,held,...  picks modes. COLOUR=off,on picks colour. Writes pick.json, and a frame from any failure.
+// WORLD=flower          all of it inside a world, on the world's own patterns, from tiles the library shows for it. Colour stays off there: b leaves a world.
 const POP_ABS = 16, POP_REL = 7;      // a step over this many /255, and over this many times what was going on around it, is a pop
 
 export default async ({ page, log, save, sleep }) => {
   const only = process.env.ONLY?.split(',');
-  const colours = (process.env.COLOUR || 'off,on').split(',');
+  const colours = process.env.WORLD ? ['off'] : (process.env.COLOUR || 'off,on').split(',');
   const mouse = (type, x, y, o = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, button: o.button ?? 'none', buttons: o.buttons ?? 0, clickCount: o.clickCount ?? 0, modifiers: o.modifiers ?? 0, deltaX: o.deltaX ?? 0, deltaY: o.deltaY ?? 0, pointerType: 'mouse' });
   const click = async (x, y) => { await mouse('mouseMoved', x, y); await mouse('mousePressed', x, y, { button: 'left', buttons: 1, clickCount: 1 }); await mouse('mouseReleased', x, y, { button: 'left', clickCount: 1 }); };
   const key = async k => {
@@ -37,7 +38,18 @@ export default async ({ page, log, save, sleep }) => {
     window.__tile = id => { const t = app.ui.library.tiles.get(id); t.b.scrollIntoView({ block: 'center' }); const r = t.b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2 - 8]; };
     window.__state = () => ({ t: +app.t.toFixed(2), pt: +app.pictureT().toFixed(2), pat: app.lastFrame.G.pattern.id, N: app.lastFrame.N?.pattern.id ?? null, kind: app.lastFrame.kind, T: +(app.lastFrame.T || 0).toFixed(3), morphing: app.stage.morphing(app.pictureT()), held: app.stage.hold, staticG: !!app.stage.staticG, want: app.stage.want?.pat.id ?? null, song: !!app.stage.score.song, here: [...app.ui.library.tiles.values()].filter(x => x.b.classList.contains('here')).map(x => x.p.id) });
   });
-  const ids = await page.eval(() => app.patterns.filter(p => p.pool !== false).map(p => p.id));
+  const WORLD = process.env.WORLD || null;
+  if (WORLD) {
+    await page.eval(async id => { await app.stage.setWorld(id); }, WORLD);
+    for (let i = 0; i < 200; i++) { if (await page.eval('!app.stage.score.handover?.change')) break; await sleep(100); }
+    await sleep(300);
+    const shows = await page.eval(() => { const on = [...document.querySelectorAll('#library .tile')].filter(b => b.offsetParent).map(b => b.title), pool = app.stage.world._pool.map(p => p.name); return { on, pool }; });
+    const same = shows.on.length === shows.pool.length && shows.pool.every(n => shows.on.includes(n));
+    log(same ? 'ok  ' : 'FAIL', 'the library shows the world\'s patterns and nothing else:', shows.on.join(', '));
+    if (!same) process.exitCode = 1;
+    await page.shot('pick-library-in-world');
+  }
+  const ids = await page.eval(() => (app.stage.world?._pool?.length ? app.stage.world._pool : app.patterns.filter(p => p.pool !== false)).map(p => p.id));
   let seedN = 5;
   const nextTarget = async () => {
     const cur = await page.eval(() => app.lastFrame.G.pattern.id);
@@ -124,7 +136,7 @@ export default async ({ page, log, save, sleep }) => {
 
     if (want('wander')) await run(tag('wander'), { before: toWander });
     if (want('held')) await run(tag('held'), {
-      before: async () => { await toWander(); await page.eval(`app.hand.go('lines.river',{dur:3})`); await sleep(3500); } });
+      before: async () => { await toWander(); await page.eval(`app.hand.go(${JSON.stringify(WORLD ? ids[1] : 'lines.river')},{dur:3})`); await sleep(3500); } });
     if (want('static')) {
       await run(tag('static'), { before: async () => { await toWander(); await sleep(3000); await page.eval('app.hand.setStatic(true)'); await sleep(5000); } });
       await page.eval('app.hand.setStatic(false)'); await sleep(300);
@@ -154,11 +166,21 @@ export default async ({ page, log, save, sleep }) => {
         await page.eval(() => { const s = app.stage, t = app.pictureT(), g = s.score.gestures, c = s.current(t); c.t1 = t + 8; c.morph = 10; delete c.plan; g.length = g.indexOf(c) + 1; c.xform = null; s.hold = false; s._extend(t); g[g.indexOf(c) + 1].pattern = app.byId[app.lastFrame.G.pattern.family === 'checks' ? 'rooms.hall' : 'checks.vega']; });
         await sleep(3000);
       } });
-      await run(tag('mid-handover'), { before: async () => { await toWander(); await page.eval(`app.hand.go('rooms.hall',{dur:8})`); await sleep(3000); } });
+      await run(tag('mid-handover'), { before: async () => { await toWander(); await page.eval(`app.hand.go(${JSON.stringify(WORLD ? ids[2] : 'rooms.hall')},{dur:8})`); await sleep(3000); } });
       await run(tag('tool selected'), { before: async () => { await toWander(); await key('3'); await sleep(200); } });
       await key('3');
       await run(tag('two quick clicks'), { before: toWander, clicks: 2, gap: 900 });
       await run(tag('three quick clicks'), { before: toWander, clicks: 3, gap: 500 });
+    }
+    // In the middle of a change of world, on the tile of the world it's going to. It hurries the change home, then flies.
+    if (WORLD && want('change')) {
+      await run('mid-change', { before: async () => {
+        await toWander();
+        await page.eval(async () => { await app.stage.setWorld(null); });
+        for (let i = 0; i < 200; i++) { if (await page.eval('!app.stage.score.handover?.change')) break; await sleep(100); }
+        await page.eval(async id => { await app.stage.setWorld(id); }, WORLD);
+        await sleep(3000);
+      } });
     }
     if (want('stop') && on) {
       // Inside colour's own stop: its rest has the picture's clock standing still.

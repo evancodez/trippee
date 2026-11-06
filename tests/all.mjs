@@ -70,7 +70,7 @@ const plain = async (test, name, script, o = {}) => {
   if (!existsSync(join(ROOT, script))) { merge(test, 'PENDING', `${name}: no ${script} yet`); return null; }
   const r = await lab(name, script, o);
   noteConsole(r);
-  const f = failLines(r.text);
+  const f = [...failLines(r.text), ...(o.bad ? r.text.split('\n').filter(l => o.bad.test(l)) : [])];     // o.bad: what counts as failing, for a test that doesn't say FAIL. lab.mjs exits 0 whatever process.exitCode a test set
   merge(test, r.code || f.length ? 'FAIL' : 'PASS', `${name}${r.code || f.length ? ' failed' : ' passed'}`, f.slice(0, 6).join(' | '));
   return r;
 };
@@ -202,7 +202,29 @@ const steps = {
     await plain('Lanes', 'fallpops', 'tests/shockpops.mjs', { env: { KIND: 'fall', N: QUICK ? '10' : '30' }, minutes: 15 });
     await plain('Lanes', 'clickpop', 'tests/clickpop.mjs', { env: { SONG: 'mgmt' }, minutes: 10 });
     await plain('Lanes', 'repairs', 'tests/repairs.mjs', { env: { SONG: 'mgmt' }, minutes: 10 });
-    for (const s of SONGS) await plain('Lanes', `filmpops-${s}`, 'tests/filmpops.mjs', { env: { SONG: `media/${s}.mp3` }, minutes: 10 });
+    for (const s of SONGS) await plain('Lanes', `filmpops-${s}`, 'tests/filmpops.mjs', { env: { SONG: `media/${s}.mp3` }, minutes: 10, bad: /, [1-9]\d* pops\./ });
+    await plain('Lanes', 'iris', 'tests/iris.mjs', { env: { MODE: 'film', SONG: 'media/ppp.mp3' }, minutes: 15 });
+    await plain('Lanes', 'compare', 'tests/compare.mjs', { env: { SONG: 'media/mgmt.mp3' }, size: '1280,720', minutes: 20 });
+    await plain('Lanes', 'compare-nocut', 'tests/compare.mjs', { env: { NOCUT: 'media/wildflower.mp3' }, size: '1280,720', minutes: 5 });
+    await plain('Lanes', 'cut', 'tests/cut.mjs', { size: '1280,720', minutes: 30 });
+    await plain('Lanes', 'land', 'tests/land.mjs', { env: { STRIPS: '0' }, minutes: 30 });
+    await node('Lanes', 'runway', 'tests/runway.mjs', { minutes: 2 });
+    await plain('Lanes', 'smallbugs', 'tests/smallbugs.mjs', { env: { SONG: 'ppp' }, size: '1280,720', minutes: 15 });
+  },
+  // Worlds: docs/MODES.md section 7. What only a world has, and the first real one through everything a film goes through.
+  async worlds() {
+    await plain('Worlds', 'worlds', 'tests/worlds.mjs', { env: { STAGE: 'boot,compile,mirror,numbers,change,compose,sound,strip' }, minutes: 30 });
+    await plain('Worlds', 'worldfrag', 'tests/worldfrag.mjs', { minutes: 5 });
+    await plain('Worlds', 'flashworld', 'tests/flashworld.mjs', { minutes: 10 });
+    await node('Worlds', 'inkcarry-self', 'tests/inkcarry.mjs', { minutes: 1 });
+    await plain('Worlds', 'inkcarry-flower', 'tests/inkcarry.mjs', { env: { WORLD: 'flower', SONG: 'media/mgmt.mp3', ...(QUICK ? { SCAN: '0' } : null) }, minutes: 40 });
+    await plain('Worlds', 'inkcarry-numbers', 'tests/inkcarry.mjs', { env: { WORLD: 'numbers', SONG: 'media/mgmt.mp3', ...(QUICK ? { SCAN: '0' } : null) }, minutes: 40 });
+    await plain('Worlds', 'flashworld-flower', 'tests/flashworld.mjs', { env: { STAGE: 'world', WORLD: 'flower', SONG: 'media/mgmt.mp3' }, minutes: 30 });
+    await plain('Worlds', 'judge-flower', 'tests/judge.mjs', { env: { WORLD: 'flower', SONG: 'media/mgmt.mp3' }, minutes: 40 });
+    await plain('Worlds', 'world-flower', 'tests/world-flower.mjs', { env: { STAGE: 'stills,buds,change' }, minutes: 15 });
+    await plain('Worlds', 'stills', 'tests/stills.mjs', { env: { WORLDS: 'film,beyond,mirror,flower', SONGS: 'mgmt,ppp' }, minutes: 30 });
+    await plain('Worlds', 'pick-flower', 'tests/pick.mjs', { env: { WORLD: 'flower', ONLY: 'wander,held,static,paused,music,flight,change' }, size: '1280,720', minutes: 20 });
+    await plain('Worlds', 'tools-flower', 'tests/tools.mjs', { env: { WORLD: 'flower', ONLY: 'wander,held,static,paused,music,rest' }, size: '1280,720', minutes: 20 });
   },
 };
 

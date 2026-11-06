@@ -3,6 +3,7 @@ const CUTS = {
   b348c58fdc8d0af2d7ecbe0b9d646db9: () => import('./b348c58fdc8d0af2d7ecbe0b9d646db9.js'),     // MGMT
   f9ee57f6abe35539eae4fdecc1fdd65f: () => import('./f9ee57f6abe35539eae4fdecc1fdd65f.js'),     // PPP
   '95b65702b9f8b1a927f5f6f889a911e2': () => import('./95b65702b9f8b1a927f5f6f889a911e2.js'),   // Wildflower, the chill end
+  '74d3369b18c08b32b582f783e54cf61a': () => import('./74d3369b18c08b32b582f783e54cf61a.js'),   // Disclosure, the restless end
 };
 // Another cut of a song, instead of the one above, with ?cut=<name> in the address.
 const OTHER = {

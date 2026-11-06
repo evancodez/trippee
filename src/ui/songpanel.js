@@ -53,7 +53,7 @@ export class SongPanel {
     $('[data-strip]').onclick = e => {
       const b = e.currentTarget.getBoundingClientRect(), d = this.duration();
       // seeking is a cut in the music, so the picture bends into the new place. A song that's waiting just moves its place.
-      if (d) { const at = (e.clientX - b.left) / b.width * d; if (this.app.song?.aside) this.app.song.seek(at); else this.hand.veil(() => this.app.song?.seek?.(at)); }
+      if (d) { const at = (e.clientX - b.left) / b.width * d; if (this.app.song?.aside) this.app.song.seek(at); else this.app.song?.jump?.(at); }
     };
     app.onFrame.push(() => this.update());
   }

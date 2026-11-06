@@ -514,7 +514,10 @@ export default async ({ page, log, save, out, sleep }) => {
     const seq = await page.eval(() => app.song.score.gestures.map(G => ({ t0: G.t0, t1: G.t1, kinds: [G.hero, G.xform?.id, ...(G.moves || []).map(m => m.id)].filter(Boolean) })));
     const heroes = []; for (const G of seq) for (const k of G.kinds) heroes.push({ t: G.t0, k });
     const planKinds = rec?.kind ? [...new Set(rec.kind.filter(Boolean))] : [];
-    if (!heroes.length) add(row('Variety', 'PENDING', `plan kinds: ${planKinds.join(' ') || '?'}`, 'no gesture has moves or a transformation yet'));
+    // A world that names one kind of landing (motion.xform) means it: that's its film, and a director's variety isn't what it's after. Anything else it does is still counted.
+    const oneKind = WORLD ? await page.eval(() => app.stage.world?.motion?.xform ?? null) : null;
+    if (oneKind && heroes.every(h => h.k === oneKind)) add(row('Variety', 'PASS', `one kind of landing, ${oneKind}, and the world says so`, `motion.xform; plan kinds: ${planKinds.join(' ') || '?'}`));
+    else if (!heroes.length) add(row('Variety', 'PENDING', `plan kinds: ${planKinds.join(' ') || '?'}`, 'no gesture has moves or a transformation yet'));
     else {
       const names = [...new Set(heroes.map(h => h.k))];
       const twice = heroes.filter((h, i) => i && heroes[i - 1].k === h.k);
@@ -639,7 +642,7 @@ export default async ({ page, log, save, out, sleep }) => {
           if (F[Fw + 2] > 0) cs.push(1 / F[Fw + 2]);
           if (i % 30 === 0) await new Promise(r => setTimeout(r));
         }
-        return { inner, outer, times, c: cs.length ? cs[cs.length >> 1] : 0.6, pulses: pulses.filter(p => sections.some(s => p > s + 2.5 && p < s + 23)) };
+        return { inner, outer, times, c: cs.length ? cs[cs.length >> 1] : 0.6, fall: F[Fw + 3] > 0, pulses: pulses.filter(p => sections.some(s => p > s + 2.5 && p < s + 23)) };
       }, { pulses: info.pulses, duration: info.duration });
       const w = waveOf(res);
       add(badIf(!w.ok, 'Wave', `inner ${w.inner.lag} frames, outer lead ${w.outer.lag} (want ${w.expected}), p ${w.p}`, `${res.pulses.length} beats. Inner peak within 3 frames of the beat, outer lead r/c within 10, permuted beats p < .01`));
@@ -815,13 +818,13 @@ export function breathFold({ fps, white }, grid, breath, mask = null) {
   return { range: +real.range.toFixed(3), peak: +real.peak.toFixed(2), p: +(more / tries).toFixed(3), attack: +(((a - c) / B) * P).toFixed(2), share: +((only ? kept : n) / n).toFixed(2) };
 }
 
-export function waveOf({ inner, outer, times, c, pulses }) {
+export function waveOf({ inner, outer, times, c, pulses, fall }) {
   const FPS = 60, idx = t => { let lo = 0, hi = times.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (times[m] < t) lo = m + 1; else hi = m; } return Math.abs(times[lo] - t) < 0.02 ? lo : -1; };
   const detrend = s => { const R = 90, o = new Float64Array(s.length); for (let i = 0; i < s.length; i++) { let v = 0, k = 0; for (let j = Math.max(0, i - R); j <= Math.min(s.length - 1, i + R); j += 6) { v += s[j]; k++; } o[i] = s[i] - v / k; } return o; };
   const A = detrend(inner), B = detrend(outer);
   const locked = (s, beats, lo, hi) => { const m = new Float64Array(hi - lo + 1), n = new Float64Array(hi - lo + 1); for (const b of beats) { const i = idx(b); if (i < 0) continue; for (let l = lo; l <= hi; l++) { const k = i + l; if (k >= 0 && k < s.length) { m[l - lo] += s[k]; n[l - lo]++; } } } return m.map((v, i) => v / Math.max(n[i], 1)); };
   const peakOf = (m, lo) => { let best = -1e9, at = 0, sum = 0; m.forEach((v, i) => { sum += v; if (v > best) { best = v; at = i + lo; } }); return { lag: at, height: best - sum / m.length }; };
-  const expected = -Math.round(0.9 / (c || 0.6) * FPS);
+  const expected = fall ? -Math.round(0.35 * 0.9 ** 4 * FPS) : -Math.round(0.9 / (c || 0.6) * FPS);     // fall: hearing 6, the rings accelerate in, s = .35 r^4
   const iLo = -30, iHi = 30, oLo = expected - 45, oHi = expected + 45;
   const inP = peakOf(locked(A, pulses, iLo, iHi), iLo), outP = peakOf(locked(B, pulses, oLo, oHi), oLo);
   // the same measure with the beats wherever they like inside the section, 200 times

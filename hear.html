@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearing compared</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; background: #000; color: #ddd; font: 13px/1.4 system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 8px 12px; }
+  #bar input[type=text] { width: 7em; background: #111; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 2px 6px; }
+  #bar button { background: #eee; color: #000; border: 0; border-radius: 4px; padding: 4px 12px; cursor: pointer; }
+  #bar button:disabled { opacity: .4; cursor: default; }
+  #say { color: #999; }
+  #films { flex: 1; min-height: 0; display: flex; gap: 2px; }
+  iframe { flex: 1; min-width: 0; border: 0; background: #000; }
+  @media (max-width: 700px) { #films { flex-direction: column; } }
+</style>
+<div id="bar">
+  <input id="file" type="file" accept="audio/*" aria-label="Pick a song">
+  <label>left <input id="a" type="text" value="0" aria-label="Left film's hearing"></label>
+  <label>right <input id="b" type="text" value="1" aria-label="Right film's hearing"></label>
+  <button id="play" disabled>play</button>
+  <span id="say">pick a song. Both films play from the left one's clock, and only the left one makes a sound.</span>
+</div>
+<div id="films"><iframe id="A" title="Left film"></iframe><iframe id="B" title="Right film"></iframe></div>
+<script type="module">
+// The same song, the same moment, two films: nobody here can hear the songs, so this is what the owner compares with. ?a=0&b=1,2,6&song=/media/mgmt.mp3 sets it all up from the address. See docs/HEARING.md.
+const $ = id => document.getElementById(id), q = new URLSearchParams(location.search);
+const say = t => { $('say').textContent = t; };
+$('a').value = q.get('a') ?? '0'; $('b').value = q.get('b') ?? '1';
+const open = (frame, spec) => new Promise(res => {
+  frame.onload = () => { const w = frame.contentWindow, wait = () => (w.trippee?.ready ? res(w) : setTimeout(wait, 100)); wait(); };
+  frame.src = `./?hear=${encodeURIComponent(spec)}`;
+});
+let A = null, B = null, song = null;
+const load = async () => {
+  if (!song) return;
+  $('play').disabled = true; say('listening, then rehearsing two films. A minute or so the first time.');
+  [A, B] = await Promise.all([open($('A'), $('a').value), open($('B'), $('b').value)]);
+  await Promise.all([A, B].map(w => w.trippee.song(new Blob([song]))));      // a Blob, since an ArrayBuffer from this window isn't one in theirs
+  // The right one has no sound of its own and never plays: its picture runs on the left one's clock, wherever that's been sent.
+  B.app.clock = () => A.app.t;
+  B.trippee.run();
+  window.A = A; window.B = B;
+  $('play').disabled = false; say(`left: hear=${$('a').value}   right: hear=${$('b').value}   Seek in the left one and the right one goes with it.`);
+};
+$('file').onchange = async e => { const f = e.target.files[0]; if (f) { song = await f.arrayBuffer(); load(); } };
+$('a').onchange = $('b').onchange = load;
+$('play').onclick = () => { const s = A.app.song; if (s.playing) { s.pause(); $('play').textContent = 'play'; } else { s.play(); $('play').textContent = 'pause'; } };
+if (q.get('song')) { song = await (await fetch(q.get('song'))).arrayBuffer(); load(); }
+</script>

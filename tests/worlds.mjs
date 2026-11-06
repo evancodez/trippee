@@ -876,11 +876,16 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
     await click(...n); await sleep(1000);
     s = await state(); log('clicked numbers', JSON.stringify(s));
     check(log, 'clicking it starts the change', s.world === 'numbers' && s.change);
-    await sleep(4000); await page.shot('strip-2-mid'); await sleep(5500);
+    await sleep(4000); await page.shot('strip-2-mid');
+    for (let i = 0; i < 80 && (await state()).change; i++) await sleep(250);      // a change takes 9 seconds, or longer if it's been looked at and flashed
+    await sleep(400);
     s = await state();
     check(log, 'it arrives', s.world === 'numbers' && !s.change && s.wp === 'numbers' && s.now === 'numbers', JSON.stringify(s));
     await page.shot('strip-3-numbers');
     const landed = async ms => { const t0 = Date.now(); for (;;) { const q = await state(); if (!q.change && Date.now() - t0 > 1200) return q; if (Date.now() - t0 > ms) return q; await sleep(250); } };
+    // Round to the last world there is. There were only the test worlds when this was written.
+    const after = await page.eval(`(ids=>ids.slice(ids.indexOf('numbers')+1))([...document.querySelectorAll('#worlds [data-w]')].map(b=>b.dataset.w))`);
+    for (const id of after) { await key('v'); await sleep(1500); s = await landed(22000); check(log, `v goes on to ${id}`, s.world === id, JSON.stringify(s)); }
     await key('v'); await sleep(1500);
     s = await state(); log('v, from the last world', JSON.stringify(s));
     check(log, 'v from the last world goes round to the film', s.world === null && s.change);
@@ -893,7 +898,8 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
     await key('b'); await sleep(1000);
     s = await state(); log('b', JSON.stringify(s));
     check(log, 'b in a world goes to the film first', s.world === null && !s.colour && s.change, JSON.stringify(s));
-    await sleep(9500);
+    for (let i = 0; i < 80 && (await state()).change; i++) await sleep(250);
+    await sleep(600);
     s = await state(); log('b landed', JSON.stringify(s));
     check(log, 'and then colour opens', s.colour && !s.world && !s.change, JSON.stringify(s));
     await move(640, 300); await sleep(200);
