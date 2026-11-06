@@ -64,7 +64,7 @@ export const SNAP = new Set(['surf.kind', 'surf.map', 'matte.kind', 'matte.outsi
 
 // Frame-wide block, after the two slots.
 export const RIPPLES = 8;
-export const FRAME_VEC4 = 13 + RIPPLES;
+export const FRAME_VEC4 = 13 + RIPPLES + 14;
 export const FRAME = {
   compose: 0,    // x: level-set mix of A into B (0 = A only), y: B active, z: XOR A with B, w: unused
   paper: 1, ink: 2, band1: 3, band2: 4,      // rgb; a: unused
@@ -77,7 +77,11 @@ export const FRAME = {
   hand: 11,      // x, y, height, on (0..1): a hand coming up through the sheet
   hand2: 12,     // curl, spread, turn, size
   ripple: 13,    // RIPPLES of them: x, y, radius of the ring now, height now (0 = none)
+  dive: 21,      // flying into an element of one pattern that has the next one inside it: focus x, y, zoom, mode (0 off, 1/2 A holds B in its white/black, 3/4 B holds A)
+  mel: 22,       // the tune travelling through the sheet: amount, samples per unit, mode (0 out from the centre, 1 sideways, 2 up), unused
+  melS: 23,      // 8 vec4: 32 samples of the melody, newest first
+  pose: 31,      // 4 vec4: lenses in the sheet: x, y, strength, radius (the chord's shape, and the pulse)
 };
 
 export const GLSL_INDEX = V.map(([name, i]) => `#define I_${name} ${i}`).join('\n');
-export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}\n#define F_PAIR ${FRAME.pair}\n#define F_HAND ${FRAME.hand}\n#define F_RIP ${FRAME.ripple}\n#define NRIP ${RIPPLES}`;
+export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}\n#define F_PAIR ${FRAME.pair}\n#define F_HAND ${FRAME.hand}\n#define F_RIP ${FRAME.ripple}\n#define NRIP ${RIPPLES}\n#define F_DIVE ${FRAME.dive}\n#define F_MEL ${FRAME.mel}\n#define F_MELS ${FRAME.melS}\n#define F_POSE ${FRAME.pose}`;

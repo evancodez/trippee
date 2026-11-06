@@ -5,7 +5,7 @@ import { rng } from './score/curves.js';
 import { arcU } from './score/frame.js';
 
 const GHOST_BPM = 76;   // with no song, things still flow on a steady, slow clock
-const MORPH = [12, 18];  // seconds, when it's wandering
+const MORPH = [8, 12];   // seconds, when it's wandering
 const PICKED = 8;        // seconds, when someone picks a pattern
 
 export class Stage {

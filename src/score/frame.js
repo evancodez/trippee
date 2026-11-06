@@ -1,11 +1,15 @@
 // frame(score, t): what the picture is at any moment. A pure function, so seeking, export and exact landings are free.
 //
-// A score is a list of gestures end to end. Each is one pattern making one long move. In the last `morph` seconds of a gesture
-// the next one is already there in the second slot, and the two become each other: families bend into their partners phase by
-// phase, the rest open and close as slits while XOR-ed in. There are no solids and no hard shapes between patterns.
-import { OFF, SLOT_FLOATS, FRAME, FAMILIES } from '../pattern/layout.js';
+// A score is a list of gestures end to end. Each is one pattern making one long move. In the last `morph` seconds of a gesture it
+// transforms into the next, in one of three ways, and only one thing moves while it does:
+//   slide   the same kind of pattern: its numbers glide to the next one's, so warps grow and lines straighten
+//   bend    lines of one become lines of the other, phase by phase
+//   dive    a flight into one element of the pattern, which has the next pattern inside it (or, rising, out of one)
+// Nothing is laid over anything else.
+import { OFF, SLOT_FLOATS, FRAME, FAMILIES, SNAP } from '../pattern/layout.js';
 import { flatten } from '../pattern/genome.js';
 import { clamp, lerp, smoother, evalTrack } from './curves.js';
+import { reactAt, chordLenses } from './react.js';
 
 const cache = new Map();
 export function base(pattern) {
@@ -24,8 +28,8 @@ const pathOff = p => { const o = OFF[p]; if (o === undefined) throw new Error('n
 
 // The film's strength is bold shapes, with hairlines only in passing, and a morph between two fine patterns is only wallpaper. So a
 // gesture rides just the part of its long move that stays this bold. In cycles per picture unit: at 720p that's a period of about 20 px.
-const BOLD = 8;
-const lim = new Float32Array(SLOT_FLOATS);
+const BOLD = 12;
+const lim = new Float32Array(SLOT_FLOATS), lim3 = new Float32Array(SLOT_FLOATS), limR = new Float32Array(SLOT_FLOATS), lensTmp = new Float32Array(12);
 function boldRange(G) {
   if (G.range) return G.range;
   G.range = [0, 1];
@@ -33,8 +37,8 @@ function boldRange(G) {
   const horizon = (G.arcEnd ?? G.t1) - G.t0;
   for (let i = 0; i <= n; i++) {
     G.freezeU = i / n;
-    fillSlot(lim, G, G.t0 + horizon * i / n, G.pattern, { phi: 0 });
-    ks.push(fineness(lim));
+    fillSlot(limR, G, G.t0 + horizon * i / n, G.pattern, { phi: 0 });
+    ks.push(fineness(limR));
   }
   G.freezeU = null;
   let lo = 0, hi = n;
@@ -101,15 +105,41 @@ const coef = (s, i) => ['x', 'y', 'r1', 'l1', 'r2', 'l2'].map(n => s[OFF[`f${i}.
 function fineness(s) {
   let k = 0;
   for (let i = 0; i < FAMILIES; i++) {
-    if (s[OFF[`f${i}.on`]] < 0.5) continue;
+    if (s[OFF[`f${i}.on`]] < 0.5 || Math.abs(s[OFF[`f${i}.d`]]) > 0.98) continue;
     const g = n => Math.abs(s[OFF[`f${i}.${n}`]]);
     k = Math.max(k, Math.hypot(g('x'), g('y')) + g('r1') + g('r2') + (g('l1') + g('l2')) / 0.7 + (g('t1') + g('t2')) / 4);
   }
   return Math.max(k * Math.max(s[OFF.freq], 1e-3) / Math.max(s[OFF.scale], 1e-4), 1e-3);
 }
 
-// Worked out once per morph, from the two patterns as they stand when it starts.
-function makePlan(a, b) {
+// The biggest element in a small rendering of the pattern, near the middle if it can be: where to fly to, and what colour it is.
+function biggestElement(R, slot, aspect) {
+  const { W, H, px } = R.probe(slot, aspect);
+  const best = { r: 0, score: -1, x: 0, y: 0, white: true };
+  for (const white of [true, false]) {
+    const d = new Float32Array(W * H);
+    for (let i = 0; i < W * H; i++) d[i] = (white ? px[i * 4] > 225 : px[i * 4] < 30) ? 1e6 : 0;     // a mid value is an edge or lines too fine to tell
+    const relax = (i, j, c) => { if (d[j] + c < d[i]) d[i] = d[j] + c; };
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) d[i] = Math.min(d[i], 1.2);   // an element can run off the frame
+      if (x > 0) relax(i, i - 1, 1); if (y > 0) relax(i, i - W, 1); if (x > 0 && y > 0) relax(i, i - W - 1, 1.41); if (x < W - 1 && y > 0) relax(i, i - W + 1, 1.41);
+    }
+    for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+      const i = y * W + x;
+      if (x < W - 1) relax(i, i + 1, 1); if (y < H - 1) relax(i, i + W, 1); if (x < W - 1 && y < H - 1) relax(i, i + W + 1, 1.41); if (x > 0 && y < H - 1) relax(i, i + W - 1, 1.41);
+    }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x, fx = ((x + 0.5) - W / 2) / H * 2, fy = ((y + 0.5) - H / 2) / H * 2;
+      const score = d[i] * (1 - 0.3 * Math.hypot(fx / aspect, fy));
+      if (score > best.score) { best.score = score; best.r = Math.max(d[i] - 0.5, 0.6) / H * 2; best.x = fx; best.y = fy; best.white = white; }
+    }
+  }
+  return best;
+}
+
+// Worked out once per transition, from the two patterns as they stand when it starts.
+function makePlan(a, b, ctx) {
   const A = [], B = [];
   // A family with a huge duty isn't lines at all, just a constant some patterns use to lift their level. It stays out of this.
   const real = (s, i) => s[OFF[`f${i}.on`]] >= 0.5 && Math.abs(s[OFF[`f${i}.d`]]) <= 1.01;
@@ -117,11 +147,14 @@ function makePlan(a, b) {
   const pair = [-1, -1, -1, -1], flip = [false, false, false, false], offset = [0, 0, 0, 0], taken = new Set();
   const options = [];
   for (const i of A) for (const j of B) {
-    if (winding(a, i) || winding(b, j)) continue;
+    if (winding(a, i) !== winding(b, j)) continue;
+    if (winding(a, i)) {
+      const same = ['t1', 't2'].every(n => Math.abs(a[OFF[`f${i}.${n}`]] - b[OFF[`f${j}.${n}`]]) < 1e-6);
+      if (!same) continue;
+    }
     const ca = coef(a, i), cb = coef(b, j);
     const na = Math.hypot(...ca) || 1, nb = Math.hypot(...cb) || 1;
-    const dot = ca.reduce((s, v, n) => s + v * cb[n], 0) / (na * nb);
-    options.push({ i, j, dot });
+    options.push({ i, j, dot: ca.reduce((s, v, n) => s + v * cb[n], 0) / (na * nb) });
   }
   options.sort((p, q) => Math.abs(q.dot) - Math.abs(p.dot));
   for (const o of options) {
@@ -132,28 +165,67 @@ function makePlan(a, b) {
     offset[o.j] = Math.round(pa - pb);
   }
   const close = A.filter(i => pair[i] < 0), open = B.filter(j => !taken.has(j));
-  const ka = fineness(a), kb = fineness(b);
+  const ratio = fineness(a) / fineness(b);
   const flat = s => s[OFF['surf.kind']] < 0.5;
-  const ratio = flat(a) && flat(b) ? clamp(ka / kb, 1 / 8, 8) : 1;
-  return { pair, flip, offset, close, open, ratio };
+  const same = n => a[OFF[n]] === b[OFF[n]];
+  const shaped = s => s[OFF['ribbon.on']] > 0.5 || s[OFF['blobs.on']] > 0.5 || s[OFF['matte.kind']] > 0.5;
+  const closeEnough = ratio < 3.2 && ratio > 1 / 3.2;
+  const allPaired = !close.length && !open.length;
+  const onlyOneExtra = close.length + open.length <= 1 && pair.some(p => p >= 0);
+  const plain = !shaped(a) && !shaped(b) && same('fold.n') && a[OFF['droste.lnS']] === 0 && b[OFF['droste.lnS']] === 0 && a[OFF['conf.amt']] === b[OFF['conf.amt']];
+  // The same kind of thing: its numbers can simply glide. Otherwise lines can bend into lines if they're near enough in size.
+  // Otherwise it's a flight, which works between anything.
+  if (plain && same('surf.kind') && a[OFF['surf.map']] < 0.5 && b[OFF['surf.map']] < 0.5 && onlyOneExtra && closeEnough && ctx.D >= 6) return { kind: 'slide', pair, flip, offset, close, open, ratio };
+  if (plain && flat(a) && flat(b) && allPaired && closeEnough && ctx.D >= 8) return { kind: 'bend', pair, flip, offset, close, open, ratio };
+  const out = biggestElement(ctx.R, a, ctx.aspect), inn = biggestElement(ctx.R, b, ctx.aspect);
+  const diag = Math.hypot(Math.max(ctx.aspect, 1.9), 1);
+  const zoomFor = e => clamp((Math.hypot(e.x, e.y) + diag) * 1.15 / Math.max(e.r, 0.012), 1.5, 240);
+  const zo = zoomFor(out), zi = zoomFor(inn);
+  // Out of the pattern with the bigger element, which is the shorter and more legible flight. Now and then the other way, for variety.
+  const rise = ctx.rise ?? zi < zo * 0.8;
+  const e = rise ? inn : out;
+  return { kind: rise ? 'rise' : 'dive', lnZ: Math.log(rise ? zi : zo), q: [e.x, e.y], white: e.white };
 }
 
-function applyMorph(A, B, plan, T, F) {
-  // both zoom towards each other, so at every moment the two have about the same size of element
-  if (plan.ratio !== 1) {
-    A[OFF.scale] *= Math.pow(plan.ratio, T);
-    B[OFF.scale] *= Math.pow(1 / plan.ratio, 1 - T);
+// Time runs on for a moment and then comes to rest (or starts from rest), so only the transformation moves while it happens.
+const easeOut = (t, t0, stop) => (t <= t0 ? t : t0 + stop * (x => x - x * x / 2)(Math.min(1, (t - t0) / stop)));
+const easeIn = (t, t1, stop) => (t >= t1 ? t : t1 - stop * (x => x - x * x / 2)(Math.min(1, (t1 - t) / stop)));
+
+const lim2 = new Float32Array(SLOT_FLOATS);
+function applySlide(A, B, plan, T) {
+  // Glide A's numbers to B's, family by family, where each family's partner is. B's own numbers are left alone.
+  lim2.set(B);
+  for (let i = 0; i < FAMILIES; i++) {
+    const j = plan.pair[i];
+    if (j < 0) continue;
+    const sign = plan.flip[j] ? -1 : 1;
+    for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) lim2[OFF[`f${i}.${n}`]] = sign * B[OFF[`f${j}.${n}`]] + (n === 'ph' ? plan.offset[j] : 0);
+    lim2[OFF[`f${i}.d`]] = B[OFF[`f${j}.d`]]; lim2[OFF[`f${i}.on`]] = 1;
   }
+  for (const i of plan.close) { for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) lim2[OFF[`f${i}.${n}`]] = A[OFF[`f${i}.${n}`]]; lim2[OFF[`f${i}.d`]] = -1; lim2[OFF[`f${i}.on`]] = 1; }
+  // A new family needs a place of its own, and starts closed
+  const used = new Set(plan.pair.map((j, i) => (j >= 0 ? i : -1)).concat(plan.close));
+  for (const j of plan.open) {
+    let free = 0; while (used.has(free) && free < FAMILIES - 1) free++;
+    used.add(free);
+    for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) { A[OFF[`f${free}.${n}`]] = B[OFF[`f${j}.${n}`]]; lim2[OFF[`f${free}.${n}`]] = B[OFF[`f${j}.${n}`]]; }
+    A[OFF[`f${free}.d`]] = -1; lim2[OFF[`f${free}.d`]] = B[OFF[`f${j}.d`]]; A[OFF[`f${free}.on`]] = 1; lim2[OFF[`f${free}.on`]] = 1;
+  }
+  const s0 = A[OFF.scale], s1 = B[OFF.scale];
+  for (let i = 0; i < FAMILIES; i++) if (lim2[OFF[`f${i}.on`]] > 0.5 && A[OFF[`f${i}.on`]] < 0.5) { A[OFF[`f${i}.d`]] = -1; A[OFF[`f${i}.on`]] = 1; for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) A[OFF[`f${i}.${n}`]] = lim2[OFF[`f${i}.${n}`]]; }
+  for (let n = 0; n < SLOT_FLOATS; n++) if (!SNAP.has(n)) A[n] = A[n] + (lim2[n] - A[n]) * T;
+  A[OFF.scale] = s0 * Math.pow(s1 / s0, T);
+}
+
+function applyBend(A, B, plan, T, F) {
   for (let j = 0; j < FAMILIES; j++) {
     if (B[OFF[`f${j}.on`]] < 0.5) continue;
     if (plan.flip[j]) for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) B[OFF[`f${j}.${n}`]] = -B[OFF[`f${j}.${n}`]];
     B[OFF[`f${j}.ph`]] += plan.offset[j];
   }
-  // A family with nowhere to go closes after the new ones have opened, so an open family is always there and the frame stays half and half.
-  const op = smoother(T / 0.55), cl = smoother((T - 0.45) / 0.55);
-  for (const j of plan.open) B[OFF[`f${j}.d`]] = lerp(-1, B[OFF[`f${j}.d`]], op);
-  for (const i of plan.close) A[OFF[`f${i}.d`]] = lerp(A[OFF[`f${i}.d`]], -1, cl);
-  // what's common to the whole slot slides across together
+  // both zoom towards each other, so at every moment the two have about the same size of element
+  A[OFF.scale] *= Math.pow(plan.ratio, T);
+  B[OFF.scale] *= Math.pow(1 / plan.ratio, 1 - T);
   const rnd = lerp(A[OFF.round], B[OFF.round], T), sum = lerp(A[OFF.sum], B[OFF.sum], T);
   A[OFF.round] = B[OFF.round] = rnd; A[OFF.sum] = B[OFF.sum] = sum;
   const P = FRAME.pair * 4;
@@ -161,8 +233,6 @@ function applyMorph(A, B, plan, T, F) {
   F[FRAME.compose * 4] = T;
   F[FRAME.compose * 4 + 1] = 1;
 }
-
-const scratch = new Float32Array(SLOT_FLOATS), scratch2 = new Float32Array(SLOT_FLOATS);
 
 export function frame(score, t, R, edits) {
   const g = score.gestures, A = R.slotA, B = R.slotB, F = R.frame;
@@ -178,38 +248,76 @@ export function frame(score, t, R, edits) {
   F[FRAME.plate * 4] = edits?.plate ?? 0;
   F[FRAME.pair * 4] = F[FRAME.pair * 4 + 1] = F[FRAME.pair * 4 + 2] = F[FRAME.pair * 4 + 3] = -1;
 
-  const phi = phiOf(G, t);
   const aspect = R.canvas ? R.canvas.width / R.canvas.height : 16 / 9;
-  let T = 0, two = false, plan = null, solid = pat.solid ?? 1, theta = thetaOf(G, t);
+  const phi = phiOf(G, t);
+  let solid = pat.solid ?? 1, theta = thetaOf(G, t), two = false, T = 0, kind = null, thetaB = 0;
 
+  // Which transformation is under way, if any: from `from` (at its own time) into `to`, over x from 0 to 1.
   const h = score.handover;
-  if (h && t < h.t1 && t >= h.t0) {
-    // Whatever was showing (another film, a held pattern) keeps going and becomes what's showing now.
-    const from = h.G, tf = t + (h.dt || 0);
-    fillSlot(A, from, tf, from.pattern, { phi: h.phi ? h.phi(tf, from) : phiOf(from, tf) });
-    fillSlot(B, G, t, pat, { phi });
-    if (!h.plan) {
-      fillSlot(scratch, from, h.t0 + (h.dt || 0), from.pattern, { phi: h.phi ? h.phi(h.t0 + (h.dt || 0), from) : phiOf(from, h.t0 + (h.dt || 0)) });
-      fillSlot(scratch2, G, h.t0, pat, { phi: phiOf(G, h.t0) });
-      h.plan = makePlan(scratch, scratch2);
+  let from = null, to = null, x = 0, tf = t, plan = null, t0 = 0, D = 0, holder = null, phiFrom = null;
+  if (h && t >= h.t0 && t < h.t1) { from = h.G; to = G; tf = t + (h.dt || 0); t0 = h.t0; D = h.t1 - h.t0; holder = h; phiFrom = h.phi; }
+  else if (N && G.morph && t > G.t1 - G.morph) { from = G; to = N; t0 = G.t1 - G.morph; D = G.morph; holder = G; }
+
+  if (from) {
+    x = clamp((t - t0) / D);
+    const stop = Math.min(D * 0.4, 3.5), dtf = tf - t;
+    const pf = tt => (phiFrom ? phiFrom(tt, from) : phiOf(from, tt));
+    const tA = easeOut(tf, t0 + dtf, stop), tA0 = t0 + dtf + stop / 2;
+    const t1 = t0 + D;
+    const tB = holder === h ? t : easeIn(t, t1, stop);
+    const tB0 = t1 - stop / 2;
+    if (!holder.plan || holder.planFor !== to) {
+      fillSlot(lim, from, tA0, from.pattern, { phi: pf(tA0) });
+      fillSlot(lim3, to, tB0, to.pattern, { phi: phiOf(to, tB0) });
+      noHorizon(lim, aspect); noHorizon(lim3, aspect);
+      lim[OFF.theta] = thetaOf(from, tA0); lim3[OFF.theta] = thetaOf(to, tB0);
+      holder.plan = makePlan(lim, lim3, { R, aspect, D, rise: from.rise });
+      holder.planFor = to;
     }
-    T = smoother((t - h.t0) / (h.t1 - h.t0)); plan = h.plan; two = true;
-    theta = lerp(thetaOf(from, tf), theta, T);
-    solid = lerp(from.pattern.solid ?? 1, solid, T);
-  } else if (N && G.morph && t > G.t1 - G.morph) {
-    const t0 = G.t1 - G.morph;
-    fillSlot(A, G, t, pat, { phi });
-    fillSlot(B, N, t, N.pattern, { phi: phiOf(N, t) });
-    if (!G.plan || G.planFor !== N) {
-      fillSlot(scratch, G, t0, pat, { phi: phiOf(G, t0) });
-      fillSlot(scratch2, N, t0, N.pattern, { phi: phiOf(N, t0) });
-      G.plan = makePlan(scratch, scratch2); G.planFor = N;
+    plan = holder.plan; kind = plan.kind;
+    fillSlot(A, from, tA, from.pattern, { phi: pf(tA) });
+    fillSlot(B, to, tB, to.pattern, { phi: phiOf(to, tB) });
+    const sa = from.pattern.solid ?? 1, sb = to.pattern.solid ?? 1;
+    T = smoother(x);
+    const thA = thetaOf(from, tA), thB = thetaOf(to, tB);
+    if (kind === 'slide' || kind === 'bend') { theta = lerp(thA, thB, T); solid = lerp(sa, sb, T); }
+    else if (kind === 'dive') {
+      // Flying in: the other pattern opens up inside the element, starting out as that element's own colour
+      const k = smoother((x - 0.1) / 0.5);
+      theta = thA; solid = sa;
+      thetaB = lerp(plan.white ? -sb : sb, thB, k);
+      B[OFF.scale] *= Math.exp(-0.35 * plan.lnZ * (1 - T));
+    } else {
+      // Rising out: what's showing closes up to the element's colour and shrinks, until it's one element of the next pattern
+      const k = smoother((x - 0.5) / 0.45);
+      theta = lerp(thA, plan.white ? -sa : sa, k); solid = sb;
+      thetaB = thB;
+      A[OFF.scale] *= Math.exp(-0.35 * plan.lnZ * T);
     }
-    T = smoother((t - t0) / G.morph); plan = G.plan; two = true;
-    theta = lerp(theta, thetaOf(N, t), T);
-    solid = lerp(solid, N.pattern.solid ?? 1, T);
+    two = true;
   } else {
     fillSlot(A, G, t, pat, { phi });
+  }
+
+  // ---------- the song
+  const Rc = score.react, amt = edits?.reactAmt ?? 1;
+  if (Rc && amt > 0) {
+    const s = reactAt(Rc, t), big = 0.45 + 0.75 * s.energy;
+    // Tone: brighter sound, finer lines. Only on flat patterns, slowly.
+    if (A[OFF['surf.kind']] < 0.5) A[OFF.freq] *= 1 + 0.16 * s.tone * amt;
+    if (two && B[OFF['surf.kind']] < 0.5) B[OFF.freq] *= 1 + 0.16 * s.tone * amt;
+    // Pulse: lines fatten on the beat, and the middle of the sheet swells towards you
+    theta -= 0.2 * (solid || 1) * s.pulse * big * amt;
+    if (kind === 'dive' || kind === 'rise') thetaB -= 0.2 * (solid || 1) * s.pulse * big * amt * (kind === 'dive' ? smoother((x - 0.6) / 0.4) : 1);
+    const Po = FRAME.pose * 4;
+    chordLenses(Rc, t, lensTmp);
+    for (let n = 0; n < 12; n += 4) { F[Po + n] = lensTmp[n]; F[Po + n + 1] = lensTmp[n + 1]; F[Po + n + 2] = lensTmp[n + 2] * big * amt; F[Po + n + 3] = lensTmp[n + 3]; }
+    F[Po + 12] = 0; F[Po + 13] = 0; F[Po + 14] = 0.2 * s.pulse * big * amt; F[Po + 15] = 1.15;
+    // Melody: the tune leaves the middle and travels out through the lines, a sample every eighth of a second
+    const Ml = FRAME.mel * 4, step = 0.125, speed = 0.62;
+    F[Ml] = (0.05 + 0.07 * s.energy) * amt; F[Ml + 1] = 1 / (step * speed); F[Ml + 2] = G.melMode ?? 0;
+    const Ms = FRAME.melS * 4;
+    for (let n = 0; n < 32; n++) F[Ms + n] = reactAt(Rc, Math.max(0, t - n * step)).melody;
   }
 
   if (edits) {
@@ -235,13 +343,24 @@ export function frame(score, t, R, edits) {
       F[H + 4] = e.curl; F[H + 5] = e.spread; F[H + 6] = e.turn; F[H + 7] = e.size;
     }
     // the threshold never quite reaches solid under the hand either
-    if (edits.duty) theta = clamp(theta + edits.duty, -0.88 * solid, 0.88 * solid);
+    if (edits.duty) theta += edits.duty;
     if (edits.invert) A[OFF.invert] = 1 - A[OFF.invert];
   }
+  // Never empty, however much the song and the hand push it, except while a flight is closing one up inside an element
+  if (kind !== 'rise') theta = clamp(theta, -0.9 * solid, 0.9 * solid);
   noHorizon(A, aspect);
-  if (two) { noHorizon(B, aspect); applyMorph(A, B, plan, T, F); B[OFF.theta] = theta; }
-  A[OFF.theta] = theta;
-  return { G, theta, solid, phi, T, N: two ? (h && t < h.t1 ? G : N) : null };
+  if (two) noHorizon(B, aspect);
+
+  if (kind === 'slide') { A[OFF.theta] = theta; B[OFF.theta] = theta; applySlide(A, B, plan, T); two = false; }
+  else if (kind === 'bend') { applyBend(A, B, plan, T, F); B[OFF.theta] = theta; A[OFF.theta] = theta; }
+  else if (kind === 'dive' || kind === 'rise') {
+    const lnS = kind === 'dive' ? plan.lnZ * T : plan.lnZ * (1 - T);
+    const Dv = FRAME.dive * 4;
+    F[Dv] = plan.q[0]; F[Dv + 1] = plan.q[1]; F[Dv + 2] = Math.exp(lnS);
+    F[Dv + 3] = kind === 'dive' ? (plan.white ? 1 : 2) : (plan.white ? 3 : 4);
+    A[OFF.theta] = theta; B[OFF.theta] = thetaB;
+  } else A[OFF.theta] = theta;
+  return { G, theta, solid, phi, T, kind, N: from ? to : null };
 }
 
 // The threshold a gesture wants at time t. Patterns can read it; `solid` isn't reached any more.

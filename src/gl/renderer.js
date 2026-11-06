@@ -132,6 +132,39 @@ export class Renderer {
     this.brushEnergy = 0; this.pushOn = false;
   }
 
+  // Draws a slot's picture very small and reads it back: how the planner finds an element to fly into. Only once per transition.
+  probe(slot, aspect) {
+    const gl = this.gl, H = 180, W = Math.min(400, Math.max(40, Math.round(H * aspect)));
+    if (!this.probeT) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 400, 180, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      const fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      this.probeT = { tex, fbo };
+    }
+    const saved = this.block.slice();
+    this.slotA.set(slot);
+    this.frame.fill(0);
+    this.frame.set([0, 0, 0, 1], FRAME.paper * 4);
+    this.frame.set([1, 1, 1, 1], FRAME.ink * 4);
+    this.frame.set([W, H, W / H, 0], FRAME.res * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.probeT.fbo);
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(this.prog);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.block);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const px = new Uint8Array(W * H * 4);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.block.set(saved);
+    return { W, H, px };
+  }
+
   resize(cssW, cssH, dpr) {
     const w = Math.max(2, Math.round(cssW * dpr)), h = Math.max(2, Math.round(cssH * dpr));
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; return true; }

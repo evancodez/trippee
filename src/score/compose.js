@@ -1,9 +1,10 @@
 // Composing a film from a song's analysis. A pure function of (analysis, seed, opts): no audio, no clock, no Math.random.
 //
-// It isn't audio-reactive. It's choreographed: one motif family for the whole song, long gestures that land their solid
-// exactly on the song's structural moments, sections that come back move for move with one thing changed, and flow locked
-// to the beat clock by position only. Nothing pulses on a drum.
+// Long gestures, each transforming into the next exactly on one of the song's structural moments. A few families of pattern, one for
+// each kind of section, and sections that come back move for move with one thing changed. Flow is locked to the beat clock and surges
+// on it. Moment by moment the pulse, the melody and the tone act on the sheet (see react.js).
 import { rng, clamp, lerp, smoother, evalTrack } from './curves.js';
+import { buildReact } from './react.js';
 
 const AFFINITY = {          // slide, perc, tempo, harmRate
   lattice: [0, 0.8, 0.6, 0.5], poles: [1, 0, 0.3, 0.2], pole: [1, 0, 0.3, 0.2], rooms: [0.2, 0.7, 0.8, 0.6], room: [0.2, 0.7, 0.8, 0.6],
@@ -193,18 +194,27 @@ export function compose(A, seed = 1, opts = {}) {
     spec.push(out);
   }
 
+  // A few families, not one: each kind of section gets its own, so a song keeps changing character as it goes.
+  const famNames = [family, ...scored.map(x => x.f).filter(f => f !== family)].slice(0, 3);
+  const poolOf = new Map(famNames.map((f, i) => [f, i === 0 ? pool : shuffled(byFam.get(f) || [])]));
+  const labels = [...new Set(A.segments.map(x => x.label))];
+  const famForLabel = l => famNames[Math.max(0, labels.indexOf(l)) % famNames.length];
+  const cursors = new Map();
+
   const biggest = [...pool].sort((a, b) => {
     const big = p => { const s = (p.arcs || []).find(x => x.path === 'scale'); return s && s.from > 0 && s.to > 0 ? Math.abs(Math.log(s.to / s.from)) : 0; };
     return big(b) - big(a);
   })[0];
   let cursor = 0, lastPat = null;
-  const nextPat = (a, b) => {
+  const nextPat = (a, b, label) => {
     if (A.climax >= a && A.climax < b && biggest && biggest !== lastPat) return biggest;
-    for (let tries = 0; tries < pool.length; tries++) {
-      const p = pool[cursor++ % pool.length];
-      if (p !== lastPat || pool.length === 1) return p;
+    const f = famForLabel(label), list = poolOf.get(f)?.length ? poolOf.get(f) : pool;
+    for (let tries = 0; tries < list.length; tries++) {
+      const c = cursors.get(f) ?? 0; cursors.set(f, c + 1);
+      const p = list[c % list.length];
+      if (p !== lastPat || list.length === 1) return p;
     }
-    return pool[0];
+    return list[0];
   };
   // Patterns first, because some of them decide the colour of their own landing
   {
@@ -213,7 +223,7 @@ export function compose(A, seed = 1, opts = {}) {
       const src = q.replayOf !== null ? spec[q.replayOf] : null;
       // A section saying the same thing again straight away gets a sibling, not the same picture twice running
       if (src && src.pat !== prev) q.pat = src.pat;
-      else { q.replayOf = null; lastPat = prev; q.pat = q.k === 0 && given ? given : nextPat(q.a, q.b); }
+      else { q.replayOf = null; lastPat = prev; q.pat = q.k === 0 && given ? given : nextPat(q.a, q.b, q.seg.label); }
       prev = q.pat;
     }
     lastPat = null;
@@ -336,7 +346,8 @@ export function compose(A, seed = 1, opts = {}) {
     const G = {
       t0: a, t1: b, arcEnd: b, pattern: pat, arcs, kindIn: l0.kind, kindOut: l1.kind,
       // It has become the next pattern exactly on the boundary. Where the music falls away it takes longer over it; where it rises it's quicker.
-      morph: clamp(len * (l1.kind === 'fall' || l1.kind === 'break' ? 0.7 : l1.kind === 'rise' ? 0.5 : 0.6), 8, 20),
+      morph: clamp(len * (l1.kind === 'fall' || l1.kind === 'break' ? 0.5 : l1.kind === 'rise' ? 0.3 : 0.4), 7, 13),
+      melMode: (() => { const f = (pat.g.fams || [])[0] || {}, ax = Math.abs(f.x || 0), ay = Math.abs(f.y || 0); return ay > ax * 2 ? 1 : ax > ay * 2 ? 2 : 0; })(),
       replayOf: s.replayOf, change, label: s.seg.label, visit: s.seg.visit || 0,
     };
     if (flowOver) { G.flow = flowOver; G.flowOver = flowOver; }
@@ -410,6 +421,8 @@ export function compose(A, seed = 1, opts = {}) {
   const finalPat = gestures.length ? gestures[gestures.length - 1].pattern : pool[0];
   gestures.push({ t0: tEnd, t1: tEnd + 3600, pattern: finalPat, arcs: [], phiTrack: [{ t: tau(tEnd), x: 0, v: 1 / 16 }], gears: [] });
 
+  const SURGE = 0.78;
+  const surged = t => { const b = tau(t), i = Math.floor(b), x = b - i; return i + x + (SURGE / (2 * Math.PI)) * Math.sin(2 * Math.PI * x); };
   const landings = L.slice(1).map((l, j) => ({ B: +l.B.toFixed(3), kind: l.kind, form: l.form, pol: l.pol, holdOut: l.holdOut, holdIn: l.holdIn, dE: +(l.dE ?? 0).toFixed(3) }));
   const lens = gestures.slice(0, -1).map(g => g.t1 - g.t0);
   const plain = landings.filter(l => l.form === 'duty').length;
@@ -423,7 +436,9 @@ export function compose(A, seed = 1, opts = {}) {
   };
   return {
     gestures, landings, stats, tau, rate, family, pool: pool.map(p => p.id), seed,
-    phi: (t, G) => (G.phiTrack ? evalTrack(G.phiTrack, tau(t)) : tau(t) / 8),
+    // Flow surges on the beat and glides between, arriving at the same place every beat, so it stays locked and never jolts
+    phi: (t, G) => { const s = surged(t); return G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8; },
+    react: buildReact(A, seed),
     song: { duration, bpm: A.bpm, hash: A.hash, meter, phraseBars: A.phraseBars },
   };
 }

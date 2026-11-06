@@ -321,7 +321,37 @@ void main(){
     p+=d/l*r.w*sin(fr*22.)*exp(-fr*fr*16.);
   }
 
+  // the song in the sheet: the chord's shape and the pulse are lenses, and the tune travels out through the lines
+  for(int i=0;i<4;i++){
+    vec4 q=uF[F_POSE+i];
+    if(q.z==0.) continue;
+    vec2 d=p-q.xy;
+    p+=q.z*d*exp(-dot(d,d)/max(q.w*q.w,1e-4));
+  }
+  vec4 ml=uF[F_MEL];
+  if(ml.x!=0.){
+    float r=length(p),x=ml.z<.5?r:(ml.z<1.5?abs(p.x):abs(p.y));
+    float fi=clamp(x*ml.y,0.,30.99); int mk=int(fi);
+    float mv=mix(uF[F_MELS+mk/4][mk%4],uF[F_MELS+(mk+1)/4][(mk+1)%4],fi-float(mk));
+    vec2 dir=ml.z<.5?p/max(r,1e-3)*smoothstep(0.,.25,r):(ml.z<1.5?vec2(0.,1.):vec2(1.,0.));
+    p+=dir*ml.x*mv;
+  }
+
   float th=uG[I_shape].z,dl=uF[5].x;
+  vec4 dv=uF[F_DIVE];
+  if(dv.w>.5){
+    // A flight into one element of a pattern: the other pattern is what's inside that element, so there is nothing laid over anything.
+    bool bOuter=dv.w>2.5, inWhite=dv.w==1.||dv.w==3.;
+    vec2 pz=dv.xy+(p-dv.xy)/dv.z;
+    float oA=uG[I_matte].y; if(oA==2.) oA=0.;
+    float oB=uG[SLOT+I_matte].y; if(oB==2.) oB=0.;
+    float mA=prepare(0,0,bOuter?p:pz),mB=prepare(1,SLOT,bOuter?pz:p);
+    float cA=mix(oA,inkOf(0,0,FAM,th),mA),cB=mix(oB,inkOf(1,FAM,2*FAM,uG[SLOT+I_shape].z),mB);
+    float outer=bOuter?cB:cA,inner=bOuter?cA:cB;
+    float cd=inWhite?outer*inner:1.-(1.-outer)*(1.-inner);
+    outColor=vec4(mix(uF[1].rgb,uF[2].rgb,pow(cd,.4545)),1.);
+    return;
+  }
   float ma=prepare(0,0,p),o=uG[I_matte].y; if(o==2.) o=0.;
   int k1=FAM;
   if(uF[0].y>.5){
