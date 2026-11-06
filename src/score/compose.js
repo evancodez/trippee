@@ -244,7 +244,7 @@ export function compose(A, seed = 1, opts = {}) {
   // Colour of each solid, and its form. Plain solids stay the rule: at most about a third are hard shapes, never two running.
   L[0].pol = 1;
   let hard = 0, lastHard = -2;
-  const allowHard = Math.floor(nG * 0.34);
+  const allowHard = 0;     // no hard shapes closing over the picture: every change is a morph
   for (let j = 1; j <= nG; j++) {
     const l = L[j], before = spec[j - 1], after = spec[j];
     const src = before.replayOf !== null ? L[before.replayOf + 1] : null;
@@ -334,8 +334,9 @@ export function compose(A, seed = 1, opts = {}) {
     const outDur = l1.form === 'void' ? 0.05 : clamp(Math.min(rand.range(4, 5.5), len * 0.3), 2.5, 5.5) * tight;
     const inDur = l0.form === 'sliver' ? 0.02 : clamp(l0.inDur, 2.5, len * 0.4) * tight;
     const G = {
-      t0: a, t1: b, arcEnd: b, pattern: pat, pol0: l0.pol, pol1: l1.pol, inDur, outDur, holdIn: l0.holdIn, holdOut: l1.holdOut,
-      crisp: true, arcs, form: `${l0.form === 'sliver' ? 'sliver-in ' : ''}${l1.form === 'void' ? 'void-out' : ''}`.trim() || null, kindIn: l0.kind, kindOut: l1.kind,
+      t0: a, t1: b, arcEnd: b, pattern: pat, arcs, kindIn: l0.kind, kindOut: l1.kind,
+      // It has become the next pattern exactly on the boundary. Where the music falls away it takes longer over it; where it rises it's quicker.
+      morph: clamp(len * (l1.kind === 'fall' || l1.kind === 'break' ? 0.7 : l1.kind === 'rise' ? 0.5 : 0.6), 8, 20),
       replayOf: s.replayOf, change, label: s.seg.label, visit: s.seg.visit || 0,
     };
     if (flowOver) { G.flow = flowOver; G.flowOver = flowOver; }
@@ -403,37 +404,11 @@ export function compose(A, seed = 1, opts = {}) {
       }
     }
 
-    // Hard shapes: a void closing into the solid, a sliver opening out of it
-    if (l1.form === 'void' || l0.form === 'sliver') {
-      const voidS = l1.form === 'void' ? (() => {
-        const D = clamp(len * 0.5, 6, 16), q = rand.pick([2, 4, 8]), rxk = rand.pick([1, aspect]);
-        const cx = rand.range(-0.25, 0.25), cy = rand.range(-0.15, 0.15);
-        const R1 = Math.pow(Math.pow((aspect + Math.abs(cx)) / rxk, q) + Math.pow(1 + Math.abs(cy), q), 1 / q) * 1.04;
-        return { start: b - l1.holdOut - D, end: b - l1.holdOut, q, rxk, cx, cy, R1, out: l1.pol > 0 ? 0 : 1 };
-      })() : null;
-      const crackS = l0.form === 'sliver' ? (() => {
-        const D = clamp(len * 0.5, 8, 14), rot = rand.range(0.25, 0.8) * rand.sign(), start = a + (l0.holdIn || 0);
-        const E1 = Math.hypot(aspect, 1) + 0.36;
-        return { start, end: start + D, rot, E1, out: l0.pol > 0 ? 0 : 1, cy: rand.range(-0.2, 0.2) };
-      })() : null;
-      G.matte = t => {
-        if (crackS && t < crackS.end) {
-          const u = clamp((t - crackS.start) / (crackS.end - crackS.start));
-          return { 'matte.kind': 2, 'matte.outside': crackS.out, 'matte.invert': 0, 'matte.rot': crackS.rot, 'matte.cx': 0, 'matte.cy': crackS.cy, 'matte.t': (t - crackS.start) * 0.14, 'matte.eps': lerp(-0.012, crackS.E1, smoother(u)), 'matte.wob': 0 };
-        }
-        if (voidS && t >= voidS.start) {
-          // reaches the far corner at a finite rate, exactly at the landing
-          const u = clamp((t - voidS.start) / (voidS.end - voidS.start)), R = Math.max(voidS.R1 * 2 * smoother(u * 0.5), 1e-3);
-          return { 'matte.kind': 1, 'matte.outside': voidS.out, 'matte.invert': 1, 'matte.q': voidS.q, 'matte.rx': R * voidS.rxk, 'matte.ry': R, 'matte.cx': voidS.cx, 'matte.cy': voidS.cy, 'matte.rot': 0, 'matte.t': (t - voidS.start) * 0.2, 'matte.wob': 0.012 };
-        }
-        return {};
-      };
-    }
     gestures.push(G);
   }
-  // After the last landing the film rests on its solid
+  // After the last landing the film carries on, slowly, on its last pattern
   const finalPat = gestures.length ? gestures[gestures.length - 1].pattern : pool[0];
-  gestures.push({ t0: tEnd, t1: tEnd + 3600, pattern: finalPat, pol0: L[nG].pol, pol1: L[nG].pol, inDur: 1, outDur: 1, holdIn: 3600, holdOut: 0, crisp: true, arcs: [], phiTrack: [{ t: tau(tEnd), x: 0, v: 0 }], gears: [] });
+  gestures.push({ t0: tEnd, t1: tEnd + 3600, pattern: finalPat, arcs: [], phiTrack: [{ t: tau(tEnd), x: 0, v: 1 / 16 }], gears: [] });
 
   const landings = L.slice(1).map((l, j) => ({ B: +l.B.toFixed(3), kind: l.kind, form: l.form, pol: l.pol, holdOut: l.holdOut, holdIn: l.holdIn, dE: +(l.dE ?? 0).toFixed(3) }));
   const lens = gestures.slice(0, -1).map(g => g.t1 - g.t0);

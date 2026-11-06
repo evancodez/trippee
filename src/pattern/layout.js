@@ -48,6 +48,7 @@ add('room', ['room.depth', 'room.wall', 'room.back', 'room.floorRot']);     // r
 add('matte', ['matte.kind', 'matte.outside', 'matte.q', 'matte.wob']);      // kind: 0 none, 1 superellipse, 2 crack. outside: what shows beyond it: 0 black, 1 white, 2 the other slot
 add('matte2', ['matte.cx', 'matte.cy', 'matte.rx', 'matte.ry']);
 add('matte3', ['matte.rot', 'matte.t', 'matte.invert', 'matte.eps']);
+add('bg', ['bg.on', 'bg.rot', 'bg.scale', 'bg.x']);                      // nothing is ever empty: past a surface or shape, the same lines carry on flat, turned by rot
 
 export const SLOT_VEC4 = V.length;
 export const SLOT_FLOATS = SLOT_VEC4 * 4;
@@ -58,11 +59,12 @@ export const OFF = {};
 for (const [, i, comps] of V) comps.forEach((c, k) => { OFF[c] = i * 4 + k; });
 
 // Numbers that must jump, never slide. They take the target's value at the halfway point of a lerp.
-export const SNAP = new Set(['surf.kind', 'surf.map', 'matte.kind', 'matte.outside', 'fold.n',
+export const SNAP = new Set(['surf.kind', 'surf.map', 'matte.kind', 'matte.outside', 'fold.n', 'bg.on',
   ...Array.from({ length: FAMILIES }, (_, i) => `f${i}.on`)].map(n => OFF[n]));
 
 // Frame-wide block, after the two slots.
-export const FRAME_VEC4 = 10;
+export const RIPPLES = 8;
+export const FRAME_VEC4 = 13 + RIPPLES;
 export const FRAME = {
   compose: 0,    // x: level-set mix of A into B (0 = A only), y: B active, z: XOR A with B, w: unused
   paper: 1, ink: 2, band1: 3, band2: 4,      // rgb; a: unused
@@ -71,7 +73,11 @@ export const FRAME = {
   sheetOfs: 7,   // x, y, rotation, strength: a lifted copy XOR-ed on top (the hand's moire)
   res: 8,        // x, y: drawing size in pixels, z: aspect, w: push texture on
   misc: 9,       // x: time in seconds (only for noise in grain-free boil)
+  pair: 10,      // morphing: which family of B each family of A bends into, or -1
+  hand: 11,      // x, y, height, on (0..1): a hand coming up through the sheet
+  hand2: 12,     // curl, spread, turn, size
+  ripple: 13,    // RIPPLES of them: x, y, radius of the ring now, height now (0 = none)
 };
 
 export const GLSL_INDEX = V.map(([name, i]) => `#define I_${name} ${i}`).join('\n');
-export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}`;
+export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}\n#define F_PAIR ${FRAME.pair}\n#define F_HAND ${FRAME.hand}\n#define F_RIP ${FRAME.ripple}\n#define NRIP ${RIPPLES}`;

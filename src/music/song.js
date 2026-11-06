@@ -143,37 +143,26 @@ export function init(app) {
     }
   };
 
-  // The wander closes down to black before the film starts on black, so loading a song is never a cut.
-  const settle = async () => {
-    if (app.manual) return;
-    const stage = app.stage, t = app.t, cur = stage.current?.(t);
-    if (!cur) return;
-    const out = 2.2;
-    cur.t1 = t + out; cur.outDur = out; cur.pol1 = 1; cur.holdOut = 0;
-    const list = stage.score.gestures;
-    list.length = list.indexOf(cur) + 1;
-    list.push({ t0: t + out, t1: t + 7200, pattern: cur.pattern, pol0: 1, pol1: 1, inDur: 1, outDur: 1, holdIn: 7200, arcs: [] });
-    stage.hold = true;
-    await new Promise(r => setTimeout(r, out * 1000 + 60));
-  };
-
-  // The song has finished. The film's last solid holds for a moment, then the wander opens out of it, so the picture never just
-  // stops. The song stays loaded: play or a seek goes back to the film, from under a solid.
+  // The song has finished. The film's last pattern bends into the wander, so the picture never just stops. The song stays loaded:
+  // play or a seek goes back to the film.
   const rest = () => {
     resting = true; endedAt = 0;
-    const t = app.t, stage = app.stage, f = app.lastFrame, pol = f.theta >= 0 ? 1 : -1;
-    stage.score = { gestures: [{ t0: t - 1, t1: t, pattern: f.G.pattern, pol0: pol, pol1: pol, inDur: 0.5, outDur: 0.5 }], phi: x => (x * 76 / 60) / 8, song: null };
+    const t = app.t, stage = app.stage, snap = stage.snapshot(t);
+    stage.score = { gestures: [{ t0: t, t1: t + 16, arcEnd: t + 16, pattern: snap.G.pattern, arcs: [], morph: 12 }], phi: x => (x * 76 / 60) / 8, song: null };
     stage.hold = false;
     stage._extend(t);
     app.clock = null;
+    stage.morphFrom(snap, t, 3);
   };
   const wake = () => {
     resting = false; endedAt = 0;
+    const snap = app.stage.snapshot(app.t);
     app.stage.setScore(score);
     app.clock = clock;
     needSnap = true;
+    app.stage.morphFrom(snap, Math.max(0, offset), 6);
   };
-  app.onFrame.push(() => { if (endedAt && !resting && performance.now() - endedAt > END_HOLD * 1000 && Math.abs(app.lastFrame.theta) >= app.lastFrame.solid - 1e-3) rest(); });
+  app.onFrame.push(() => { if (endedAt && !resting && performance.now() - endedAt > END_HOLD * 1000) rest(); });
 
   const song = app.song = {
     analysis: null, score: null, fromCache: false, analyseSeconds: 0, hash: null, rehearsal: null,
@@ -206,7 +195,6 @@ export function init(app) {
       }
       if (token !== loadToken) return null;
       song.analyseSeconds = (performance.now() - t0) / 1000;
-      await settle();
       stopSource();
       endedAt = 0; resting = false;
       buffer = decoded; duration = decoded.duration; offset = 0; playing = false; analysis = A;
@@ -216,10 +204,12 @@ export function init(app) {
       app.governor?.quiet(3);    // the rehearsal holds up the frame loop for a moment; that's not the pixels' fault
       await rehearseNow(p => onProgress(0.98 + 0.02 * p));
       if (token !== loadToken) return null;
+      const snap = app.stage.snapshot(app.t);
       app.stage.setScore(score);
       app.clock = clock;
-      if (!app.manual) app.t = 0;
+      app.t = 0;
       lastPerf = 0; tEst = 0; needSnap = true;
+      app.stage.morphFrom(snap, 0, 7);
       onProgress(1);
       if (autoplay) song.play();
       return song;

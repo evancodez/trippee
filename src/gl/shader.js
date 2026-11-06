@@ -93,14 +93,36 @@ vec3 poleOf(vec4 P,vec2 x){
   return vec3(rho,log(rho),atan(d.y,d.x)/TAU);
 }
 
-float gPh[3*FAM],gGn[3*FAM],gDu[3*FAM]; vec2 gGr[3*FAM];
-int gN[3]; float gPar[3],gRnd[3],gSum[3],gInv[3],gFar[3];
+float matteOf(int b,vec2 p){
+  vec4 m=uG[b+I_matte],sf0=uG[b+I_surf];
+  if(sf0.x>.5&&sf0.x<1.5&&sf0.y>.5){ vec4 v=uG[b+I_view]; p=rot(-v.y)*p/max(v.x,1e-5)+v.zw; }   // it stays on the lens with the surface
+  if(m.x<.5) return 1.;
+  vec4 m2=uG[b+I_matte2],m3=uG[b+I_matte3];
+  vec2 q=rot(-m3.x)*(p-m2.xy);
+  float sd;
+  if(m.x<1.5){
+    float e=max(m.z,.5);
+    float r=pow(pow(abs(q.x)/max(m2.z,1e-4),e)+pow(abs(q.y)/max(m2.w,1e-4),e),1./e);
+    sd=(1.-r)*min(m2.z,m2.w);
+  } else {
+    // a crack: the wobbling line |g| < eps opening into a field
+    float g=q.y-.18*sin(q.x*2.1+m3.y+1.3)-.09*sin(q.x*5.3-m3.y*.7)-.05*sin(q.x*9.1+m3.y*.4+2.);
+    sd=m3.w-abs(g);
+  }
+  if(m.w!=0.) sd+=m.w*boil(p*3.,m3.y,1.1);
+  if(m3.z>.5) sd=-sd;
+  return aaOf(sd);
+}
+
+float gPh[3*FAM],gGn[3*FAM],gDu[3*FAM]; vec2 gGr[3*FAM]; bool gOn[3*FAM];
+float gRnd[3],gSum[3];
 
 // Everything up to the threshold: where this pixel lands, what each family's phase and gradient are. Returns coverage of the surface.
 float prepare(int K,int b,vec2 p){
   float cover=1.,parity=1.,slipY=0.;
   // On a surface wrapped by angle the around-count has to stay a whole number, or there's a seam. So the view can't scale or turn
   // the texture there. It acts on the camera instead, like a lens: zoom and roll, about the same point as everywhere else.
+  vec2 p0=p;
   vec4 v=uG[b+I_view],sf0=uG[b+I_surf];
   bool lensView=sf0.x>.5&&sf0.x<1.5&&sf0.y>.5;
   if(lensView) p=rot(-v.y)*p/max(v.x,1e-5)+v.zw;
@@ -186,6 +208,19 @@ float prepare(int K,int b,vec2 p){
     X.xy=exp(wx)*vec2(cos(wy),sin(wy));
   }
 
+  // Nothing is ever empty. Past a surface's edge or a shape, the same lines carry on flat, turned: the outline exists only because
+  // the pattern changes direction there. When two patterns are bending together the jump in phase shrinks away, so edges dissolve.
+  cover*=matteOf(b,p0);
+  vec4 bgv=uG[b+I_bg];
+  bool seam=false;
+  if(bgv.x>.5){
+    float inside=step(.5,cover);
+    seam=dFdx(inside)!=0.||dFdy(inside)!=0.;
+    if(inside<.5){ X=vec3(rot(bgv.y)*p0/(max(bgv.z,1e-4)*max(v.x,1e-5))+vec2(bgv.w,0.),0.); }
+    cover=1.;
+  }
+  if(parity<0.==(uG[b+I_shape].w>.5)) parity=1.; else parity=-1.;
+
   // the families: each is a phase, each is XOR-ed in. This is the whole pattern language.
   vec4 tn=uG[b+I_tune];
   vec3 b1=poleOf(uG[b+I_p1],X.xy),b2=poleOf(uG[b+I_p2],X.xy);
@@ -197,10 +232,11 @@ float prepare(int K,int b,vec2 p){
   vec2 gT2=vec2(v2.x*dXx.y*P2.w-v2.y*dXx.x,v2.x*dXy.y*P2.w-v2.y*dXy.x)*i2;
   bool wrapped=uG[b+I_surf].y>.5;
   vec2 fq=lensView?vec2(1.,tn.x):vec2(tn.x);          // and the lines knob only changes what runs along it
-  int n=0; float finest=0.;
   for(int i=0;i<FAM;i++){
     vec4 fa=uG[b+3*i],fb=uG[b+3*i+1],fc=uG[b+3*i+2];
-    if(fc.w<.5) continue;
+    int k=K*FAM+i;
+    gOn[k]=fc.w>=.5;
+    if(!gOn[k]) continue;
     // the smooth part of the phase; angles are added afterwards, with their exact gradient, so a wrap never shows
     float sm=dot(fa.xyz,vec3(X.xy*fq,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
     if(tn.y!=0.) sm+=tn.y*boil(X.xy*tn.z,tn.w,float(i)*2.3+.7);
@@ -210,16 +246,12 @@ float prepare(int K,int b,vec2 p){
     if(lensView){ float J=abs(fa.x)*sf0.z; if(J>1e-3) g-=J*round(g/J); }
     else if(wrapped) g-=round(g);
     g+=fb.z*gT1+fc.z*gT2;
-    int k=K*FAM+n;
+    if(seam){ float gl=length(g); if(gl>.5) g*=.5/gl; }     // the one pixel across a jump between two fields isn't a real gradient
     gPh[k]=sm+fb.z*b1.z+fc.z*b2.z+fa.w+fa.y*tn.x*slipY;
+    if(parity<0.){ gPh[k]+=.5; parity=1.; }                 // half a cycle on one family inverts the whole XOR
     gGr[k]=g; gGn[k]=max(length(g),1e-5); gDu[k]=fb.w;
-    finest=max(finest,gGn[k]);
-    n++;
   }
-  // A surface going away from the camera reaches a place finer than a pixel (a horizon, the end of a tunnel). True area there is
-  // a band of flat grey, which the film never shows: its lines close up into solid instead.
-  gFar[K]=sf0.x>.5&&sf0.x<1.5?smoothstep(.3,.7,finest):0.;
-  gN[K]=n; gPar[K]=parity; gRnd[K]=uG[b+I_shape].x; gSum[K]=uG[b+I_shape].y; gInv[K]=uG[b+I_shape].w;
+  gRnd[K]=uG[b+I_shape].x; gSum[K]=uG[b+I_shape].y;
   return cover;
 }
 
@@ -228,10 +260,11 @@ float prepare(int K,int b,vec2 p){
 float bandI(float x,float h){ float f=floor(x); return f*h+clamp(x-f-.5+.5*h,0.,h); }
 float band(float x,float h,float g){ return clamp((bandI(x+.5*g,h)-bandI(x-.5*g,h))/g,0.,1.); }
 
-float inkBand(int K,float th){
+// k0..k1 is a run of families, XOR-ed together. While two patterns morph it spans both of them.
+float inkBand(int k0,int k1,float th){
   float T=abs(th),P=1.,Q=1.;
-  for(int i=0;i<gN[K];i++){
-    int k=K*FAM+i;
+  for(int k=k0;k<k1;k++){
+    if(!gOn[k]) continue;
     float d=gDu[k],t=T*(1.-smoothstep(.85,1.,abs(d))),x=gPh[k],g=gGn[k];
     float p=band(x,clamp(.5*(1.-t-d),0.,1.),g);       // tri(x)-d >  t
     float q=band(x+.5,clamp(.5*(1.-t+d),0.,1.),g);    // tri(x)-d < -t
@@ -240,12 +273,11 @@ float inkBand(int K,float th){
   return th>=0.?.5*(P+Q):1.-.5*(P-Q);
 }
 
-// Soft path: dots, quasicrystals and level-set morphs. Analytic gradient, with a curvature floor so the ramp can't collapse at a crest.
-void softF(int K,out float f,out vec2 gf,out float g1,out float g2){
-  float rnd=gRnd[K],sm=gSum[K],mn=9.,sg=1.,pr=1.,su=0.; vec2 gm=vec2(0.),gp=vec2(0.),gs=vec2(0.);
-  g1=1e-5; g2=1e-5;
-  for(int i=0;i<gN[K];i++){
-    int k=K*FAM+i;
+// Soft path: dots and quasicrystals. Analytic gradient, with a curvature floor so the ramp can't collapse at a crest.
+float inkSoft(int k0,int k1,float rnd,float smm,float th){
+  float mn=9.,sg=1.,pr=1.,su=0.,nOpen=0.,g1=1e-5,g2=1e-5; vec2 gm=vec2(0.),gp=vec2(0.),gs=vec2(0.);
+  for(int k=k0;k<k1;k++){
+    if(!gOn[k]) continue;
     float x=gPh[k],d=gDu[k],fr=fract(x);
     float a=mix(1.-4.*abs(fr-.5),-cos(TAU*x),rnd)-d;
     vec2 da=mix(fr<.5?4.:-4.,TAU*sin(TAU*x),rnd)*gGr[k];
@@ -254,53 +286,24 @@ void softF(int K,out float f,out vec2 gf,out float g1,out float g2){
     if(abs(a)+2.*off<mn){ mn=abs(a)+2.*off; gm=sa*da*(1.-off); }
     float a2=mix(a,sa,off); vec2 da2=da*(1.-off);
     gp=gp*a2+pr*da2; pr*=a2;
-    su+=a; gs+=da;
+    su+=a; gs+=da; nOpen+=1.;
     if(off<.5){ float gg=gGn[k]; if(gg>g1){ g2=g1; g1=gg; } else if(gg>g2) g2=gg; }
   }
   if(g2<=1e-5) g2=g1;
-  float nr=1./sqrt(max(float(gN[K]),1.));
-  f=mix(mix(sg*mn,pr,rnd),su*nr,sm);
-  gf=mix(mix(sg*gm,gp,rnd),gs*nr,sm);
-}
-float inkSoft(int K,float f,vec2 gf,float g1,float g2,float th){
-  float H=19.74*g1*g1*max(gRnd[K],gSum[K]);
+  float nr=1./sqrt(max(nOpen,1.));
+  float f=mix(mix(sg*mn,pr,rnd),su*nr,smm);
+  vec2 gf=mix(mix(sg*gm,gp,rnd),gs*nr,smm);
+  float H=19.74*g1*g1*max(rnd,smm);
   float w=sqrt(dot(gf,gf)+H*H+1e-10);
   float c=clamp(.5+(f-th)/w,0.,1.);
   float A=max(1.-abs(th),0.)/(6.283*g1*g2);            // element area in pixels
-  float gain=clamp(A/.5,0.,1.);                        // a vanishing speck keeps its true area, and is exactly gone at |th|=1
+  float gain=clamp(A/.5,0.,1.);                        // a vanishing speck keeps its true area
   c=th>=0.?c*gain:1.-(1.-c)*gain;
   return mix(c,.5*(1.-th),smoothstep(.22,.45,g1));     // below Nyquist, the true average
 }
-float inkOf(int K,float th){
-  float c;
-  if(gN[K]==0) c=th>=0.?0.:1.;
-  else if(gRnd[K]>0.||gSum[K]>0.){ float f,g1,g2; vec2 gf; softF(K,f,gf,g1,g2); c=inkSoft(K,f,gf,g1,g2,th); }
-  else c=inkBand(K,th);
-  c=mix(c,smoothstep(.62,.82,c),gFar[K]);     // exact solids stay exact: 0 and 1 go nowhere
-  if(gInv[K]>.5) c=1.-c;
-  if(gPar[K]<0.) c=1.-c;
-  return c;
-}
 
-float matteOf(int b,vec2 p){
-  vec4 m=uG[b+I_matte],sf0=uG[b+I_surf];
-  if(sf0.x>.5&&sf0.x<1.5&&sf0.y>.5){ vec4 v=uG[b+I_view]; p=rot(-v.y)*p/max(v.x,1e-5)+v.zw; }   // it stays on the lens with the surface
-  if(m.x<.5) return 1.;
-  vec4 m2=uG[b+I_matte2],m3=uG[b+I_matte3];
-  vec2 q=rot(-m3.x)*(p-m2.xy);
-  float sd;
-  if(m.x<1.5){
-    float e=max(m.z,.5);
-    float r=pow(pow(abs(q.x)/max(m2.z,1e-4),e)+pow(abs(q.y)/max(m2.w,1e-4),e),1./e);
-    sd=(1.-r)*min(m2.z,m2.w);
-  } else {
-    // a crack: the wobbling line |g| < eps opening into a field
-    float g=q.y-.18*sin(q.x*2.1+m3.y+1.3)-.09*sin(q.x*5.3-m3.y*.7)-.05*sin(q.x*9.1+m3.y*.4+2.);
-    sd=m3.w-abs(g);
-  }
-  if(m.w!=0.) sd+=m.w*boil(p*3.,m3.y,1.1);
-  if(m3.z>.5) sd=-sd;
-  return aaOf(sd);
+float inkOf(int K,int k0,int k1,float th){
+  return gRnd[K]>0.||gSum[K]>0.?inkSoft(k0,k1,gRnd[K],gSum[K],th):inkBand(k0,k1,th);
 }
 
 void main(){
@@ -310,43 +313,43 @@ void main(){
   if(pr.z!=0.){ vec2 d=p-pr.xy; p+=pr.z*d*exp(-dot(d,d)/max(pr.w*pr.w,1e-5)); }
   if(uF[8].w>.5) p+=texture(uPush,gl_FragCoord.xy/res).xy;
 
-  float thA=uG[I_shape].z,dl=uF[5].x;
-  float ma=prepare(0,0,p)*matteOf(0,p),outA=uG[I_matte].y;
-  float c,c2=0.;
-  if(uF[0].y>.5){
-    float thB=uG[SLOT+I_shape].z,outB=uG[SLOT+I_matte].y;
-    float mb=prepare(1,SLOT,p)*matteOf(SLOT,p);
-    if(uF[0].x>0.){
-      // level-set morph: the two fields are mixed before the threshold, so lines split and merge
-      float t=uF[0].x,fa,fb,a1,a2,b1,b2; vec2 ga,gb;
-      softF(0,fa,ga,a1,a2); softF(1,fb,gb,b1,b2);
-      fa-=thA; fb-=thB;
-      float H=19.74*max(a1,b1)*max(a1,b1)*.25;
-      float wm=sqrt(dot(mix(ga,gb,t),mix(ga,gb,t))+H*H+1e-10);
-      c=clamp(.5+mix(fa,fb,t)/wm,0.,1.);
-      c=mix(t<.5?outA:outB,c,mix(ma,mb,t));
-      c2=c;
-    } else {
-      float cb=inkOf(1,thB),cb2=dl!=0.?inkOf(1,thB+dl):cb;
-      cb=mix(outB==2.?0.:outB,cb,mb); cb2=mix(outB==2.?0.:outB,cb2,mb);
-      float ca=inkOf(0,thA),ca2=dl!=0.?inkOf(0,thA+dl):ca;
-      if(uF[0].z>.5){
-        ca=mix(outA==2.?0.:outA,ca,ma); ca2=mix(outA==2.?0.:outA,ca2,ma);
-        c=ca+cb-2.*ca*cb; c2=ca2+cb2-2.*ca2*cb2;
-      } else {
-        c=mix(outA==2.?cb:outA,ca,ma); c2=mix(outA==2.?cb2:outA,ca2,ma);
-      }
-    }
-  } else {
-    float o=outA==2.?0.:outA;
-    c=mix(o,inkOf(0,thA),ma);
-    c2=dl!=0.?mix(o,inkOf(0,thA+dl),ma):c;
+  // ripples: rings of displacement running out through the sheet, under everything
+  for(int i=0;i<NRIP;i++){
+    vec4 r=uF[F_RIP+i];
+    if(r.w==0.) continue;
+    vec2 d=p-r.xy; float l=max(length(d),1e-4),fr=l-r.z;
+    p+=d/l*r.w*sin(fr*22.)*exp(-fr*fr*16.);
   }
+
+  float th=uG[I_shape].z,dl=uF[5].x;
+  float ma=prepare(0,0,p),o=uG[I_matte].y; if(o==2.) o=0.;
+  int k1=FAM;
+  if(uF[0].y>.5){
+    // Two patterns at once. Families that have a partner bend into it, phase by phase, so each line travels to where it's going;
+    // the rest stay XOR-ed in, opening and closing as slits (their duties are set from the score). Nothing is ever blended.
+    float mb=prepare(1,SLOT,p),T=uF[0].x;
+    vec4 pa=uF[F_PAIR];
+    for(int i=0;i<FAM;i++){
+      int j=int(pa[i]);
+      if(j<0) continue;
+      int qa=i,qb=FAM+j;
+      if(!gOn[qa]||!gOn[qb]) continue;
+      gPh[qa]=mix(gPh[qa],gPh[qb],T);
+      gGr[qa]=mix(gGr[qa],gGr[qb],T);
+      gGn[qa]=max(length(gGr[qa]),1e-5);
+      gDu[qa]=mix(gDu[qa],gDu[qb],T);
+      gOn[qb]=false;
+    }
+    k1=2*FAM;
+    ma=mix(ma,mb,T);
+  }
+  float c=mix(o,inkOf(0,0,k1,th),ma);
+  float c2=dl!=0.?mix(o,inkOf(0,0,k1,th+dl),ma):c;
   // the hand's moire: a lifted copy of the same sheet, XOR-ed on top
   vec4 so=uF[7];
   if(so.w>0.){
     float ms=prepare(2,0,rot(so.z)*p+so.xy);
-    float cs=mix(outA==2.?0.:outA,inkOf(2,thA),ms);
+    float cs=mix(o,inkOf(2,2*FAM,3*FAM,th),ms);
     c=mix(c,c+cs-2.*c*cs,so.w); c2=c;
   }
   vec3 col;

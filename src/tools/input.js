@@ -3,11 +3,11 @@
 //   move            Press    a ball under the sheet, about 250 ms behind the cursor
 //   drag            Push     comb the sheet; dents stay and relax slowly
 //   scroll, pinch   Journey  log zoom about the cursor
-//   sideways, shift+scroll   Duty, an endless corridor: past each solid is the next pattern
+//   sideways, shift+scroll   Duty: thinner or fatter lines, stopping short of solid
 //   alt+drag        Sheet    a lifted copy XOR-ed on top, with detents where the fringes lock into rosettes
 import { OFF, SNAP } from '../pattern/layout.js';
 import { clamp, smoother } from '../score/curves.js';
-import { fillSlot, thetaAt } from '../score/frame.js';
+import { fillSlot } from '../score/frame.js';
 import { Spring } from './spring.js';
 import { detentsFor, magnet } from './moire.js';
 
@@ -48,7 +48,7 @@ const push = { on: false, x: new Spring(0, 40), y: new Spring(0, 40), px: 0, py:
 // Journey
 const J = { s: new Spring(0, 7), target: 0, lo: -3, hi: 5, jx: 0, jy: 0, touched: -1e9, lift: new Spring(0, 1.2), prev: 0, clearing: false };
 
-// Duty: the corridor. Room r spans w in [2r-1, 2r+1]. Past each end is the next room, through a solid that both rooms share.
+// Duty: the threshold under the hand
 const D = { s: new Spring(0, 7), target: 0, room: 0, base: 0, touched: -1e9 };
 
 // Sheet
@@ -89,40 +89,7 @@ const periodPx = A => (canvas.height / 2) * Math.max(A[OFF.scale], 1e-5) / finen
 
 // ------------------------------------------------------------------------------------------------- taking hold of a pattern
 // The hand takes the threshold from whatever the gesture was doing, and nothing on screen moves as it does.
-function takeHold(t) {
-  if (hand.corridor || stage.score.song) return;
-  const G = stage.current(t), th = app.lastFrame?.theta ?? 0, solid = app.lastFrame?.solid ?? 1;
-  const end = G.arcEnd ?? G.t1;
-  if (!G.period) {
-    // Keep the long move exactly where it is and let it swing from here.
-    const u = clamp((t - G.t0) / Math.max(end - G.t0, 1e-3));
-    let lo = 0, hi = 1;
-    for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (smoother(mid) < u) lo = mid; else hi = mid; }
-    G.period = ARC_SWING; G.t0 = t - lo * ARC_SWING;
-  }
-  G.pol0 = 0; G.pol1 = 0; G.t1 = t + 3600; G.arcEnd = G.t1;
-  const g = stage.score.gestures;
-  g.splice(0, g.indexOf(G)); g.length = 1;
-  stage.hold = true;
-  hand.corridor = true;
-  curG = G;
-  D.room = 0;
-  D.base = Math.max(0, app.patterns.indexOf(G.pattern));
-  const w = clamp(th / solid, -1, 1) * (1 - DWELL);
-  D.s.set(w); D.target = w;
-  edits.duty = th;      // now, not at the end of this frame: the very next picture has to be the same picture
-}
-
-function swapRoom(nr, t) {
-  const n = app.patterns.length, idx = ((D.base + nr) % n + n) % n, pat = app.patterns[idx];
-  const g = stage.score.gestures, cur = stage.current(t);
-  cur.t1 = t; g.length = g.indexOf(cur) + 1;
-  g.push({ t0: t, t1: t + 3600, arcEnd: t + ARC_SWING, period: ARC_SWING, pattern: pat, pol0: 0, pol1: 0, inDur: 0, outDur: 6 });
-  curG = g[g.length - 1];
-  stage.hold = true; stage._last = pat;
-  D.room = nr;
-  resetForPattern(pat);
-}
+function takeHold() {}
 
 function resetForPattern(pat, announce = true) {
   curPat = pat; lastAsked = null;
@@ -134,11 +101,8 @@ function resetForPattern(pat, announce = true) {
 
 // ----------------------------------------------------------------------------------------------------------------- verbs
 function dutyWheel(dx) {
-  const t = app.t;
   D.touched = nowS();
-  if (stage.score.song) { D.target = clamp(D.target + dx * 0.0022, -1.1, 1.1); return; }
-  takeHold(t);
-  D.target = clamp(D.target + dx * 0.0022, D.s.x - 1.1, D.s.x + 1.1);
+  D.target = clamp(D.target + dx * 0.0022, -0.85, 0.85);
 }
 
 function journeyWheel(dy, pinch) {
@@ -256,43 +220,11 @@ function tickJourney(dt, now, A) {
 }
 
 function tickDuty(dt, now, t, G, solid) {
-  const song = !!stage.score.song;
-  if (song && now - D.touched > 2) D.target += (0 - D.target) * (1 - Math.exp(-dt / 2.5));
-  const rate = hand.calm ? DUTY_RATE * 0.5 : DUTY_RATE;
-  D.s.step(D.target, dt, 7, rate);
-  let duty;
-  // Something else is landing this gesture (a song arriving, say): give it the threshold, closing whatever the hand had added.
-  if (hand.corridor && G.pol1) {
-    const sign = D.room % 2 === 0 ? 1 : -1, w = sign * clamp((D.s.x - 2 * D.room) / (1 - DWELL), -1, 1);
-    hand.corridor = false; D.room = 0; D.s.set(w); D.target = w;
-  }
-  if (hand.corridor) {
-    while (D.s.x > 2 * D.room + 1) swapRoom(D.room + 1, t);
-    while (D.s.x < 2 * D.room - 1) swapRoom(D.room - 1, t);
-    const sign = D.room % 2 === 0 ? 1 : -1;
-    duty = sign * clamp((D.s.x - 2 * D.room) / (1 - DWELL), -1, 1) * solid;
-    if (curPat !== G.pattern) duty = sign * clamp((D.s.x - 2 * D.room) / (1 - DWELL), -1, 1) * (curPat?.solid ?? 1);
-  } else {
-    duty = D.s.x * solid;
-    // Whatever the hand has added closes as the gesture lands, so every solid is exactly solid.
-    const start = G.t1 - (G.holdOut || 0) - G.outDur;
-    if (G.pol1 && t > start) duty *= 1 - smoother((t - start) / G.outDur);
-  }
-  // the veil sits on top of everything; twice the solid is past any threshold
-  if (V.phase) {
-    V.t += dt;
-    const sol = curPat?.solid ?? solid;
-    if (V.phase === 1) {
-      const u = V.t / V.close;
-      duty += V.pol * 2 * sol * smoother(u);
-      if (u >= 1) { const fn = V.fn; V.fn = null; V.phase = 2; V.t = 0; try { fn?.(); } catch (e) { console.error(e); } }
-    } else {
-      const u = V.t / V.open;
-      duty += V.pol * 2 * sol * (1 - smoother(u));
-      if (u >= 1) V.phase = 0;
-    }
-  }
-  edits.duty = duty;
+  // The threshold under the hand: thinner or fatter lines, short of solid. It eases back on its own with a song playing.
+  if (stage.score.song && now - D.touched > 2) D.target += (0 - D.target) * (1 - Math.exp(-dt / 2.5));
+  D.target = clamp(D.target, -0.85, 0.85);
+  D.s.step(D.target, dt, 7, hand.calm ? DUTY_RATE * 0.5 : DUTY_RATE);
+  edits.duty = D.s.x * solid;
 }
 
 function tickSheet(dt) {
@@ -408,29 +340,23 @@ hand.knobValue = path => {
 hand.natural = path => naturals()[OFF[path]];
 hand.liveValue = path => knobs.get(path)?.s.x ?? naturals()[OFF[path]];
 
-// Go somewhere: the threshold carries on from wherever it is, closes to a solid, and the new pattern grows out of it.
+// Go somewhere: what's showing bends into it. With a song playing, the film carries on with this pattern as its motif.
 hand.go = (id, opts = {}) => {
-  const t = app.t, f = app.lastFrame, th = f?.theta ?? 0, solid = f?.solid ?? 1;
+  const t = app.t;
   const pat = typeof id === 'string' ? app.byId[id] : id;
   if (!pat) return;
-  // With a song playing, the film carries on with this pattern as its motif. The clock doesn't stop, and the change is under a solid.
-  if (stage.score.song && app.song?.rebuild) { hand.veil(() => app.song.rebuild({ pattern: pat })); hand.emit('going', pat); return; }
+  if (stage.score.song && app.song?.rebuild && !stage.staticG) { hand.veil(() => app.song.rebuild({ pattern: pat })); hand.emit('going', pat); return; }
   if (app.paused && !app.clock) app.paused = false;
-  hand.corridor = false;
-  const pol = Math.abs(th) > 0.02 * solid ? Math.sign(th) : undefined;
-  stage.go(pat, t, { pol, ...opts });
-  // Whatever the threshold is at now and the sweep doesn't account for is carried as a duty that closes over the sweep.
-  const w = clamp((th - thetaAt(stage.current(t), t, solid)) / solid, -2, 2);
-  D.s.set(w); D.target = w; D.room = 0;
-  edits.duty = w * solid;
+  stage.go(pat, t, opts);
   hand.emit('going', pat);
 };
 
-hand.veil = (fn, { close = 1.5, open = 2.4 } = {}) => {
-  // already closing: just do this one too when it gets there
-  if (V.phase === 1) { const prev = V.fn; V.fn = () => { prev?.(); fn?.(); }; return; }
-  const th = app.lastFrame?.theta ?? 0;
-  V.phase = 1; V.t = 0; V.fn = fn; V.pol = th < 0 ? -1 : 1; V.close = close; V.open = open;
+// Do something that changes what's showing (another take, a seek, a song going away), and have the old picture bend into the new one.
+hand.veil = (fn, { dur = 6 } = {}) => {
+  const snap = stage.snapshot(app.t);
+  try { fn?.(); } catch (e) { console.error(e); }
+  // A seek's new time only shows on the next frame, so ask the clock
+  stage.morphFrom(snap, app.clock ? app.clock() : app.t, dur);
 };
 
 // What the hand has made of the current pattern, as a pattern a song can be composed from.
@@ -462,22 +388,13 @@ hand.step = dir => {
 
 hand.wander = () => {
   if (stage.score.song && app.song?.rebuild) { hand.veil(() => app.song.rebuild({ pattern: null })); hand.emit('wander'); return; }
-  const t = app.t, cur = stage.current(t), f = app.lastFrame, th = f?.theta ?? 0;
   if (app.paused && !app.clock) app.paused = false;
-  const g = stage.score.gestures;
-  const wasHeld = stage.hold || hand.corridor;
-  stage.hold = false;
-  hand.corridor = false;
-  if (wasHeld) {
-    const earliest = (cur.pol0 ? cur.t0 + (cur.inDur || 0) : t) + 6.5;
-    cur.pol1 = cur.pol1 || (th >= 0 ? 1 : -1);
-    cur.outDur = 6;
-    cur.t1 = Math.max(t + 8, earliest);
-    g.length = g.indexOf(cur) + 1;
-  }
-  D.target = D.s.x;
+  stage.wander(app.t);
   hand.emit('wander');
 };
+
+// Static: what's showing stays. No more automatic transitions until it's turned off.
+hand.setStatic = on => { stage.setStatic(on, app.t); hand.emit('static', on); };
 
 hand.offsets = OFF;
 hand.isHeld = () => stage.hold || hand.corridor;

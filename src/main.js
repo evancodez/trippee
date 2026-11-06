@@ -5,7 +5,7 @@ import { Stage } from './stage.js';
 import { Governor } from './gl/governor.js';
 import { patterns, byId, families } from './pattern/library.js';
 
-export const VERSION = 'v1';
+export const VERSION = 'v1.1';
 const canvas = document.getElementById('c');
 const R = new Renderer(canvas);
 // A different wander each visit, from a count rather than the clock, so a given seed always gives the same picture.
@@ -31,6 +31,7 @@ fit();
 
 function render() {
   stage.update(app.t);
+  app.edits.staticG = stage.staticG;
   app.lastFrame = frame(stage.score, app.t, R, app.edits);
   R.brush(app.brush || {});
   app.brush = null;
@@ -65,8 +66,20 @@ window.trippee = {
   load(id, { arcs = true, sweep = false, len = 26, inDur = 6, outDur = 6 } = {}) {
     const p = byId[id];
     if (!p) throw new Error('no pattern ' + id);
-    stage.score.gestures = [{ t0: 0, t1: sweep ? len : 3600, arcEnd: len, pattern: p, pol0: sweep ? 1 : 0, pol1: sweep ? -1 : 0, inDur, outDur, arcs: arcs ? undefined : [] }];
+    stage.score.gestures = [{ t0: 0, t1: 3600, arcEnd: len, pattern: p, arcs: arcs ? undefined : [] }];
+    stage.score.handover = null;
     stage.hold = !sweep; app.t = 0; render();
+  },
+  // One pattern becoming another, for looking at a morph on its own: it starts straight away and takes dur seconds
+  morph(a, b, dur = 16, hold = 2) {
+    const A = byId[a], B = byId[b];
+    if (!A || !B) throw new Error('no pattern ' + a + ' or ' + b);
+    stage.score.gestures = [
+      { t0: -20, t1: hold + dur, arcEnd: hold + dur, pattern: A, morph: dur },
+      { t0: hold + dur, t1: 3600, arcEnd: hold + dur + 26, pattern: B },
+    ];
+    stage.score.handover = null;
+    stage.hold = true; app.t = 0; render();
   },
   // Draws one pattern at the middle of its move, for looking at many at once
   still(id, u = 0.5) { this.load(id); app.manual = true; app.t = 26 * u; render(); },

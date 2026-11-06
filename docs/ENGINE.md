@@ -1,5 +1,14 @@
 # The engine, as built
 
+**Patterns change by morphing, never through a solid.** In the last `morph` seconds of a gesture the next gesture is evaluated in
+slot B, and `frame.js` makes a plan: families with a partner bend into it phase by phase (whole-cycle offsets keep lines from whipping,
+and both patterns zoom towards the same element size); families with nowhere to go, or with an angle in their phase that would show a
+cut, stay XOR-ed in and open or close as slits. New ones open before old ones close, so the frame stays half and half. `pol0`, `pol1`,
+`inDur` and `outDur` below no longer exist. `stage.go`, `stage.snapshot` + `stage.morphFrom`, and `stage.setStatic` are how anything
+changes what's showing. Nothing is ever empty: past a surface or matte the same lines carry on flat, turned by `bg.rot` (`bg.on` 1 by
+default). Flat floors can't tip far enough to show their horizon. A gesture only rides the part of its long move that stays bold
+(`BOLD` in frame.js; a pattern with `fine: true` is exempt).
+
 This overrides section 2 of `DESIGN.md` wherever they differ. The rest of `DESIGN.md` (music, transition grammar, pattern
 ideas, tools, acceptance tests) is still the intent, adapted to what's here.
 

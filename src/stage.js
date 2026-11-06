@@ -1,15 +1,19 @@
-// The stage: what's playing now. It holds a score (a film of a song, or an endless wander with no song) and lets the
-// user step in at any moment. Every change of pattern goes through a solid, however it was asked for.
+// The stage: what's playing now. It holds a score (a film of a song, or an endless wander with no song) and lets the user step in
+// at any moment. Every change of pattern is a morph: the lines of one bend and weave into the next.
 import { patterns, byId } from './pattern/library.js';
 import { rng } from './score/curves.js';
+import { arcU } from './score/frame.js';
 
 const GHOST_BPM = 76;   // with no song, things still flow on a steady, slow clock
+const MORPH = [12, 18];  // seconds, when it's wandering
+const PICKED = 8;        // seconds, when someone picks a pattern
 
 export class Stage {
   constructor(seed = 7) {
     this.rand = rng(seed);
     this.hold = false;         // true when the user has chosen a pattern and it should stay
-    this.lastPol = 1;
+    this.staticG = null;       // static mode: this gesture is shown, frozen in its long move, however long, song or no song
+    this.staticOn = false;
     this.score = { gestures: [], phi: t => (t * GHOST_BPM / 60) / 8, song: null };
     this._extend(0);
   }
@@ -34,16 +38,15 @@ export class Stage {
     while (!g.length || g[g.length - 1].t1 < t + 60) {
       const prev = g[g.length - 1];
       const t0 = prev ? prev.t1 : 0;
-      const pol0 = prev ? prev.pol1 : 1;
-      const len = this.rand.range(20, 32);
-      const pol1 = this.rand() < 0.42 ? -1 : 1;
-      g.push({ t0, t1: t0 + len, arcEnd: t0 + len, pattern: this._nextPattern(), pol0, pol1, inDur: this.rand.range(5, 8), outDur: this.rand.range(5, 7) });
+      const len = this.rand.range(24, 38);
+      g.push({ t0, t1: t0 + len, arcEnd: t0 + len, pattern: this._nextPattern(), morph: this.rand.range(MORPH[0], MORPH[1]) });
     }
   }
 
   update(t) {
-    if (this.score.song) return;
     const g = this.score.gestures;
+    if (this._wantStatic && !this.morphing(t)) this._enterStatic(t);
+    if (this.score.song) return;
     if (this.hold) {
       // A held pattern never runs out. Only the last gesture can: one that's been told to land has its successor queued behind it.
       const cur = this.current(t);
@@ -51,34 +54,113 @@ export class Stage {
       return;
     }
     this._extend(t);
+    // Old gestures can go, as long as nothing is reading them
+    if (g.length > 40) g.splice(0, g.length - 40);
   }
 
   current(t) {
+    if (this.staticG) return this.staticG;
     const g = this.score.gestures;
     let lo = 0, hi = g.length - 1;
     while (lo < hi) { const m = (lo + hi + 1) >> 1; if (g[m].t0 <= t) lo = m; else hi = m - 1; }
     return g[lo];
   }
 
-  // Go to a pattern: the current one closes down to a solid over `out` seconds and the new one grows out of it.
-  go(id, t, { out = 3.2, into = 5, hold = true, pol } = {}) {
-    const pat = typeof id === 'string' ? byId[id] : id;
-    if (!pat) return;
-    const g = this.score.gestures;
-    const cur = this.current(t);
-    const pol1 = pol ?? (this.rand() < 0.5 ? -1 : 1);
-    const end = t + out;
-    cur.t1 = end; cur.outDur = out; cur.pol1 = pol1;
-    g.length = g.indexOf(cur) + 1;
-    this.hold = hold;
-    const len = hold ? 3600 : 26;
-    g.push({ t0: end, t1: end + len, arcEnd: end + (hold ? 44 : len), period: hold ? 44 : 0, pattern: pat, pol0: pol1, pol1: hold ? 0 : 1, inDur: into, outDur: 6 });
-    this._last = pat;
-    this.score.song = this.score.song && null;
+  morphing(t) {
+    const h = this.score.handover;
+    if (h && t >= h.t0 && t < h.t1) return true;
+    if (this.staticG) return false;
+    const c = this.current(t);
+    return !!(c.morph && t > c.t1 - c.morph && t < c.t1);
   }
 
-  wander(t) { this.hold = false; const cur = this.current(t); cur.t1 = Math.min(cur.t1, t + 12); cur.pol1 = cur.pol1 || 1; cur.outDur = 6; this._extend(t); }
+  // Go to a pattern: the lines of what's showing bend into it.
+  go(id, t, { dur = PICKED, hold = true } = {}) {
+    const pat = typeof id === 'string' ? byId[id] : id;
+    if (!pat) return;
+    const fresh = (t0, t1) => ({ t0, t1, arcEnd: t0 + 44, period: hold ? 44 : 0, pattern: pat, morph: 0 });
+    if (this.staticG) {
+      // Static: stay static, on the new one, once it has arrived
+      const from = this.staticG;
+      const G = fresh(t, t + 3600);
+      G.freezeU = 0;
+      this.staticG = G;
+      this._handover(from, t, dur);
+      this._last = pat;
+      return;
+    }
+    const g = this.score.gestures;
+    let cur = this.current(t);
+    if (this.morphing(t) && g[g.indexOf(cur) + 1]) {
+      // Already on the way somewhere: arrive there, then carry straight on to this
+      cur = g[g.indexOf(cur) + 1];
+      g.length = g.indexOf(cur) + 1;
+      cur.t1 = cur.t0 + dur; cur.morph = dur;
+    } else {
+      g.length = g.indexOf(cur) + 1;
+      cur.t1 = t + dur; cur.morph = dur;
+    }
+    delete cur.plan;
+    this.hold = hold;
+    g.push(fresh(cur.t1, cur.t1 + (hold ? 3600 : 30)));
+    if (!hold) { g[g.length - 1].morph = this.rand.range(MORPH[0], MORPH[1]); g[g.length - 1].arcEnd = cur.t1 + 30; }
+    this._last = pat;
+  }
 
-  // A new score from the composer (a song's film)
+  wander(t) {
+    this.setStatic(false, t);
+    this.hold = false;
+    const cur = this.current(t);
+    if (cur.t1 > t + 10) { cur.t1 = t + 10; cur.morph = cur.morph || this.rand.range(MORPH[0], MORPH[1]); cur.morph = Math.min(cur.morph, 10); }
+    const g = this.score.gestures;
+    g.length = g.indexOf(cur) + 1;
+    this._extend(t);
+  }
+
+  // Static mode: no more automatic transitions. What's showing stays, and stops making its long move. It still flows.
+  setStatic(on, t) {
+    this.staticOn = on;
+    if (on) { this._wantStatic = true; if (!this.morphing(t)) this._enterStatic(t); return; }
+    this._wantStatic = false;
+    const held = this.staticG;
+    if (!held) return;
+    this.staticG = null;
+    if (this.score.song) { this._handover(held, t, 6); return; }
+    // Pick up the long move from where it was frozen
+    const u = held.freezeU ?? 0;
+    const G = { ...held, freezeU: null, period: 0, plan: null };
+    const len = 30;
+    G.t0 = t - u * len; G.arcEnd = G.t0 + len; G.t1 = t + Math.max(10, len * (1 - u)); G.morph = 10;
+    const g = this.score.gestures;
+    g.length = 0; g.push(G);
+    this.hold = false;
+    this._extend(t);
+  }
+
+  _enterStatic(t) {
+    this._wantStatic = false;
+    const G = this.current(t);
+    this.staticG = { ...G, freezeU: arcU(G, t), morph: 0, plan: null };
+  }
+
+  _handover(from, t, dur, dt = 0, phi = null) {
+    this.score.handover = { G: from, t0: t, t1: t + dur, dt, phi, plan: null };
+  }
+
+  // What's showing now, so that it can bend into whatever comes next (a song's film, another take, a seek). Nothing cuts.
+  snapshot(t) {
+    const G = this.current(t);
+    return { G, score: this.score, t };
+  }
+
+  morphFrom(snap, t, dur = 6) {
+    if (!snap) return;
+    this.score.handover = { G: { ...snap.G, plan: null, morph: 0 }, t0: t, t1: t + dur, dt: snap.t - t, phi: snap.score.phi, plan: null };
+    if (this.staticG) return;
+    // the film's own next morph waits until this one is done
+    const cur = this.current(t);
+    if (cur.morph && cur.t1 - cur.morph < t + dur) { cur.morph = Math.max(0, cur.t1 - (t + dur)); delete cur.plan; }
+  }
+
   setScore(score) { this.score = score; this.hold = false; }
 }

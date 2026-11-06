@@ -100,7 +100,7 @@ export default [
     lambda: lam(5) },
 
   // Two nearly equal fine families: a huge lattice out of nothing. The fringes are the picture; the carrier never moves much.
-  { id: 'lines.ghost', name: 'Ghost', family: 'lines',
+  { id: 'lines.ghost', fine: true, name: 'Ghost', family: 'lines',
     g: { fams: [plane(42, 90), { x: 0, y: 42 }], bulge: { a: 3, r: 0.9, cx: 0.2, cy: 0 } },
     flow: { 'f0.ph': 1 },
     arcs: [

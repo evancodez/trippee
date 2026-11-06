@@ -17,7 +17,8 @@ const SUM = n => 1.2 / (B * nr(n));
 const TAU = Math.PI * 2;
 // Quiet near the solids at both ends of the gesture, so the sweep in and out is still specks and nothing else.
 const env = (u, a = 0.2) => smoother(u / a) * smoother((1 - u) / a);
-const breathe = (phi, u, amp, n = 1, off = 0) => amp * Math.sin(TAU * (n * phi + off)) * env(u);
+// They swell and shrink but never quite merge or vanish: the frame should never go empty.
+const breathe = (phi, u, amp, n = 1, off = 0) => 0.62 * amp * Math.sin(TAU * (n * phi + off)) * env(u);
 const lift = (amp, n = 1, off = 0, fams = 3) => (out, { u, phi, OFF }) => { out[OFF.sum] = sumFor(breathe(phi, u, amp, n, off), fams); };
 
 export default [

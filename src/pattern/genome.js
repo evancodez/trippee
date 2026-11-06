@@ -13,6 +13,7 @@ export const DEFAULTS = {
   'q.zw': 0.5,                 // the quadric starts as the plane z = 0
   'room.hw': 0.9, 'room.hh': 0.5, 'room.depth': 6,
   'matte.q': 2, 'matte.rx': 1, 'matte.ry': 1, 'matte.eps': 0,
+  'bg.on': 1, 'bg.rot': 1.5708, 'bg.scale': 1,
   'ribbon.w': 0.2, 'ribbon.om': 3, 'ribbon.k': 10,
 };
 

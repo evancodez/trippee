@@ -8,13 +8,13 @@ node tools/serve.mjs
 
 Then open http://localhost:5300 in Chrome.
 
-With no song it wanders through the patterns on its own. Every change of pattern goes through a solid black or white frame.
+With no song it wanders through the patterns on its own. Every change of pattern is a morph: the lines of one bend and weave into the next, with no solid frames and no empty black.
 
 Flickering line patterns can trigger seizures in people with photosensitive epilepsy. Press `m` for calm mode: slower flow and no fine lines.
 
 ## Songs
 
-Drop an audio file anywhere on the window, or press `s` and choose one. It listens to the song for a few seconds, composes a film and starts playing. The film is worked out from the song's beats and sections, and it lands its solids on the song's big moments.
+Drop an audio file anywhere on the window, or press `s` and choose one. It listens to the song for a few seconds, composes a film and starts playing. The film is worked out from the song's beats and sections, and each morph arrives exactly on one of the song's big moments.
 
 In the song panel:
 
@@ -32,7 +32,7 @@ Songs stay on your machine. The analysis is cached in the browser so a song is o
 | move | a ball pushes up under the sheet |
 | drag | comb the lines. Dents stay and slowly relax |
 | scroll, pinch | zoom about the cursor, from hairlines to huge |
-| scroll sideways, shift+scroll | move the threshold. Past each solid is the next pattern |
+| scroll sideways, shift+scroll | thinner or fatter lines |
 | alt+drag | lift a copy of the sheet. Up and down turns it, sideways slides it. It locks where the fringes close |
 | alt+scroll | turn the copy very finely |
 | alt+double-click | lay the copy back down |
