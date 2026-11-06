@@ -1,0 +1,18 @@
+.DS_Store
+.vercel
+.claude/
+node_modules/
+lab-out/
+
+# songs stay local (copyrighted): drop them into the app instead
+*.mp3
+*.wav
+*.m4a
+*.flac
+*.ogg
+*.aac
+*.opus
+*.mp4
+*.webm
+*.mov
+media/

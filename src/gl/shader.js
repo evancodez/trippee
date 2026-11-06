@@ -1,0 +1,363 @@
+// The whole picture is one signed field and one threshold. All mixing happens on the field, before the threshold, so a
+// grey crossfade cannot occur. Everything here is a pure function of the numbers in the block: no history, no lighting.
+import { GLSL_INDEX, GLSL_SLOT } from '../pattern/layout.js';
+
+export const VERT = `#version 300 es
+out vec2 vUv;
+void main(){ vec2 v=vec2((gl_VertexID<<1)&2, gl_VertexID&2); vUv=v; gl_Position=vec4(v*2.-1.,0.,1.); }`;
+
+export const FRAG = `#version 300 es
+precision highp float;
+precision highp int;
+${GLSL_SLOT}
+${GLSL_INDEX}
+layout(std140) uniform Block { vec4 uG[NSLOTS*SLOT]; vec4 uF[FRAMEV]; };
+uniform sampler2D uPush;
+in vec2 vUv;
+out vec4 outColor;
+const float TAU=6.28318530718, PI=3.14159265359;
+
+mat2 rot(float a){ float c=cos(a),s=sin(a); return mat2(c,s,-s,c); }
+float tri(float x){ return 1.-4.*abs(fract(x)-.5); }
+float aaOf(float sd){ float w=length(vec2(dFdx(sd),dFdy(sd))); return clamp(.5+sd/max(w,1e-6),0.,1.); }
+
+// A smooth, slow boil: hand-cut paper, not noise
+float boil(vec2 x,float t,float seed){
+  return .36*(sin(x.x*1.7+x.y*.6+t*.7+seed)+sin(-x.x*.8+x.y*1.9-t*.5+seed*2.1)
+     +.6*sin(x.x*3.1-x.y*2.3+t*1.1+seed*3.3)+.4*sin(x.y*4.3+x.x*1.1-t*.9+seed*.7));
+}
+
+// ---------------------------------------------------------------- surfaces: where this pixel lands, with no lighting at all
+vec3 hitQuadric(int b,vec3 ro,vec3 rd,inout float cover){
+  vec4 a0=uG[b+I_q0],a1=uG[b+I_q1],a2=uG[b+I_q2];
+  mat4 Q=mat4(a0.x,a0.y,a0.z,a0.w, a0.y,a1.x,a1.y,a1.z, a0.z,a1.y,a1.w,a2.x, a0.w,a1.z,a2.x,a2.y);
+  vec4 O=vec4(ro,1.),D=vec4(rd,0.),Qd=Q*D;
+  float A=dot(D,Qd),B=dot(O,Qd),C=dot(O,Q*O);
+  float disc=B*B-A*C;
+  cover*=aaOf(disc);
+  float q=-(B+(B<0.?-1.:1.)*sqrt(max(disc,0.)));
+  float t1=abs(A)>1e-7?q/A:1e9,t2=abs(q)>1e-7?C/q:1e9;
+  float tn=min(t1,t2),tf=max(t1,t2);
+  float t=tn>1e-3?tn:tf;
+  if(t<=1e-3||t>=1e8) cover=0.;
+  return ro+max(t,0.)*rd;
+}
+
+vec3 surface(int b,vec2 p,inout float cover,inout float parity){
+  vec4 sf=uG[b+I_surf],cam=uG[b+I_cam];
+  if(sf.x<.5) return vec3(p,0.);
+  float d=cam.w;
+  mat2 Rp=rot(cam.x),Ry=rot(cam.y),Rr=rot(cam.z);
+  vec3 rd=normalize(vec3(p,-max(d,.05)));
+  rd.xy=Rr*rd.xy;
+  if(sf.x<1.5){
+    vec3 ro=vec3(0.,0.,d);
+    rd.yz=Rp*rd.yz; ro.yz=Rp*ro.yz;
+    rd.xy=Ry*rd.xy; ro.xy=Ry*ro.xy;
+    vec3 h=hitQuadric(b,ro,rd,cover);
+    if(sf.y<.5) return h;
+    if(sf.y<1.5){ return vec3(atan(h.y,h.x)/TAU*sf.z+sf.w,h.z,0.); }                 // round the z axis: tunnel
+    if(sf.y<2.5){ float R=max(length(h),1e-4);                                     // Mercator: conformal, so squares stay square
+      float lon=atan(h.x,h.z)+sf.w, lat=asin(clamp(h.y/R,-1.,1.));
+      return vec3(lon/TAU*sf.z, log(tan(lat*.5+PI*.25)+1e-5)/TAU*sf.z, 0.); }
+    return vec3(atan(h.z,h.x)/TAU*sf.z+sf.w,h.y,0.);                               // round the y axis: tube
+  }
+  // a room: walls meeting with no outline drawn, only the pattern changing direction
+  vec4 q2=uG[b+I_q2],rm=uG[b+I_room];
+  float hw=q2.z,hh=q2.w;
+  rd=normalize(vec3(p,-max(d*.4,.05)));
+  rd.yz=Rp*rd.yz; rd.xz=Ry*rd.xz; rd.xy=Rr*rd.xy;
+  float tx=(rd.x>0.?hw:-hw)/max(abs(rd.x),1e-5)*(rd.x>0.?1.:1.);
+  tx=hw/max(abs(rd.x),1e-5);
+  float ty=hh/max(abs(rd.y),1e-5);
+  float tz=rd.z<0.?rm.x/max(-rd.z,1e-5):1e9;
+  if(tz<min(tx,ty)){
+    if(rm.z<.5) cover*=0.;
+    vec3 h=rd*tz;
+    return vec3(h.xy,0.);
+  }
+  if(tx<ty){ vec3 h=rd*tx; parity=rm.y>.5&&rd.x>0.?-parity:parity; return vec3(h.y,-h.z,0.); }
+  vec3 h=rd*ty;
+  vec2 fl=rot(rm.w)*vec2(h.x,-h.z);
+  return vec3(fl,0.);
+}
+
+// ---------------------------------------------------------------- a pole: distance and angle, round, square or diamond
+vec3 poleOf(vec4 P,vec2 x){
+  vec2 d=x-P.xy; d.y*=P.w;
+  float l2=length(d),rho;
+  if(P.z>0.) rho=mix(l2,max(abs(d.x),abs(d.y)),P.z);
+  else if(P.z<0.) rho=mix(l2,(abs(d.x)+abs(d.y))*.70711,-P.z);
+  else rho=l2;
+  rho=max(rho,1e-4);
+  return vec3(rho,log(rho),atan(d.y,d.x)/TAU);
+}
+
+float gPh[3*FAM],gGn[3*FAM],gDu[3*FAM]; vec2 gGr[3*FAM];
+int gN[3]; float gPar[3],gRnd[3],gSum[3],gInv[3];
+
+// Everything up to the threshold: where this pixel lands, what each family's phase and gradient are. Returns coverage of the surface.
+float prepare(int K,int b,vec2 p){
+  float cover=1.,parity=1.,slipY=0.;
+  vec3 X=surface(b,p,cover,parity);
+
+  // cloth: a rippled sheet seen at an angle, so it hides behind itself where it folds
+  vec4 sh=uG[b+I_wSheet];
+  if(sh.x!=0.){
+    mat2 Rs=rot(sh.w); vec2 q=X.xy;
+    for(int i=0;i<3;i++){ vec2 r=Rs*q; float h=sh.x*(sin(sh.y*r.x+sh.z)+.5*sin(1.7*sh.y*r.y-sh.z*.6)+.3*sin(2.9*sh.y*(r.x+r.y)+sh.z*.4)); q=X.xy+vec2(0.,h); }
+    X.xy=q;
+  }
+
+  // the view: this zooms everything including the warps below
+  vec4 v=uG[b+I_view];
+  X.xy=rot(-v.y)*X.xy/max(v.x,1e-5)+v.zw;
+
+  // mattes that also wrap the pattern
+  vec4 rb=uG[b+I_mRibbon];
+  if(rb.x>.5){
+    vec4 r2=uG[b+I_mRibbon2];
+    vec2 q=rot(r2.z)*X.xy; float s=q.x;
+    float c=rb.y*sin(r2.x*s*.7+r2.y),Wd=rb.z*cos(rb.w*s+r2.y*.6);
+    float vv=(q.y-c)/max(abs(Wd),1e-3);
+    cover*=aaOf((1.-abs(vv))*abs(Wd));
+    if(Wd<0.) parity=-parity;
+    X.xy=vec2(s,asin(clamp(vv,-1.,1.))/1.5708*r2.w*.1);
+  }
+  vec4 bl=uG[b+I_mBlobs];
+  if(bl.x>.5){
+    float Gs=0.; vec2 u=vec2(0.);
+    for(int i=0;i<3;i++){ vec4 bi=uG[b+I_mBlobA+i]; vec2 d=X.xy-bi.xy; float gi=bi.z*bi.z/(dot(d,d)+1e-4); u+=gi*(rot(bi.w)*d); Gs+=gi; }
+    cover*=aaOf(Gs-1.);
+    X.xy=u/max(Gs,1e-5); X.z+=bl.y/max(Gs,1e-3);
+  }
+
+  // the warp bank: fixed order, amount 0 means skipped, so any pattern can slide into any other
+  vec4 w=uG[b+I_wFold];
+  if(w.x>=2.){ vec2 c=X.xy-w.zw; float th=atan(c.y,c.x)+w.y,sec=TAU/w.x; th=abs(mod(th,sec)-sec*.5); X.xy=length(c)*vec2(cos(th),sin(th)); }
+  w=uG[b+I_wLens];
+  if(w.x!=1.){ vec2 c=X.xy-w.yz; float r=max(length(c),1e-5); X.xy=w.yz+c/r*w.w*pow(r,w.x); }
+  w=uG[b+I_wSwirl];
+  if(w.x!=0.||w.z!=0.){ vec2 c=X.xy-vec2(w.w,0.); float r2=dot(c,c); X.xy=vec2(w.w,0.)+rot(w.x*exp(-r2/max(w.y*w.y,1e-5))+w.z*.5*log(r2+1e-6))*c; }
+  w=uG[b+I_wBulge];
+  if(w.x!=0.){ vec2 c=X.xy-w.zw; X.xy=w.zw+c/(1.+w.x*exp(-dot(c,c)/max(w.y*w.y,1e-5))); }
+  w=uG[b+I_wSqueeze];
+  if(w.x!=0.){ mat2 R=rot(-w.w); vec2 q=R*X.xy; q.x+=w.x*atan((q.x-w.y)/max(w.z,1e-4)); X.xy=rot(w.w)*q; }
+  w=uG[b+I_wBowtie];
+  if(w.x!=0.){ mat2 R=rot(-w.w); vec2 q=R*X.xy; q.y=mix(q.y,q.y*(1.+w.y)/(abs(q.x-w.z)+w.y),w.x); X.xy=rot(w.w)*q; }
+  w=uG[b+I_wBend1];
+  if(w.x!=0.){ vec2 dir=vec2(cos(w.w),sin(w.w)); X.xy+=vec2(-dir.y,dir.x)*w.x*sin(w.y*dot(X.xy,dir)+w.z); }
+  w=uG[b+I_wBend2];
+  if(w.x!=0.){ vec2 dir=vec2(cos(w.w),sin(w.w)); X.xy+=vec2(-dir.y,dir.x)*w.x*sin(w.y*dot(X.xy,dir)+w.z); }
+  w=uG[b+I_wRipple];
+  if(w.x!=0.){ vec2 c=X.xy-vec2(w.w,0.); float r=max(length(c),1e-5); X.xy+=c/r*w.x*sin(w.y*r-w.z); }
+  w=uG[b+I_wZig];
+  if(w.x!=0.){ X.y+=w.x*tri(w.y*X.x+w.z*floor(w.w*X.y)); }
+  w=uG[b+I_wTeeth];
+  if(w.x!=0.||w.z!=0.){ float col=floor(w.y*X.x); X.y*=1.+w.x*(.5+.5*tri(w.y*X.x)); slipY=(mod(col,2.)*2.-1.)*w.z; }
+  w=uG[b+I_wConf];
+  if(w.x!=0.){
+    vec4 a=uG[b+I_wConfA],c=uG[b+I_wConfB];
+    vec2 z=X.xy, sum=vec2(0.);
+    for(int j=0;j<3;j++){
+      vec2 aj=j==0?a.xy:(j==1?a.zw:c.zw);
+      float cj=j==0?c.x:(j==1?c.y:1.-step(1e-4,abs(c.z)+abs(c.w)));
+      if(j==2&&abs(c.z)+abs(c.w)<1e-4) continue;
+      if(j==2) cj=c.x;
+      if(cj==0.) continue;
+      vec2 d=z-aj; float lr=.5*log(dot(d,d)+1e-7),th=atan(d.y,d.x);
+      vec2 bz;
+      if(abs(w.y)<1e-3) bz=vec2(lr,th);
+      else { float e=exp(w.y*lr); bz=(vec2(e*cos(w.y*th),e*sin(w.y*th))-vec2(1.,0.))/w.y; }
+      sum+=cj*bz;
+    }
+    sum=rot(-w.z)*sum*w.w;
+    X.xy=mix(z,vec2(sum.y,sum.x),w.x);
+  }
+  w=uG[b+I_wDroste];
+  if(w.x!=0.){
+    float r=max(length(X.xy),1e-5),th=atan(X.y,X.x),lr=log(r),k=w.x/TAU;
+    float wx=lr+k*th,wy=th-k*lr;
+    wx=mod(wx+w.y,w.x);
+    X.xy=exp(wx)*vec2(cos(wy),sin(wy));
+  }
+
+  // the families: each is a phase, each is XOR-ed in. This is the whole pattern language.
+  vec4 tn=uG[b+I_tune];
+  vec3 b1=poleOf(uG[b+I_p1],X.xy),b2=poleOf(uG[b+I_p2],X.xy);
+  vec2 dXx=dFdx(X.xy),dXy=dFdy(X.xy);
+  vec4 P1=uG[b+I_p1],P2=uG[b+I_p2];
+  vec2 v1=X.xy-P1.xy,v2=X.xy-P2.xy; v1.y*=P1.w; v2.y*=P2.w;
+  float i1=1./(TAU*max(dot(v1,v1),1e-9)),i2=1./(TAU*max(dot(v2,v2),1e-9));
+  vec2 gT1=vec2(v1.x*dXx.y*P1.w-v1.y*dXx.x,v1.x*dXy.y*P1.w-v1.y*dXy.x)*i1;
+  vec2 gT2=vec2(v2.x*dXx.y*P2.w-v2.y*dXx.x,v2.x*dXy.y*P2.w-v2.y*dXy.x)*i2;
+  bool wrapped=uG[b+I_surf].y>.5;
+  int n=0;
+  for(int i=0;i<FAM;i++){
+    vec4 fa=uG[b+3*i],fb=uG[b+3*i+1],fc=uG[b+3*i+2];
+    if(fc.w<.5) continue;
+    // the smooth part of the phase; angles are added afterwards, with their exact gradient, so a wrap never shows
+    float sm=dot(fa.xyz,vec3(X.xy*tn.x,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
+    if(tn.y!=0.) sm+=tn.y*boil(X.xy*tn.z,tn.w,float(i)*2.3+.7);
+    vec2 g=vec2(dFdx(sm),dFdy(sm));
+    if(wrapped) g-=round(g);
+    g+=fb.z*gT1+fc.z*gT2;
+    int k=K*FAM+n;
+    gPh[k]=sm+fb.z*b1.z+fc.z*b2.z+fa.w+fa.y*tn.x*slipY;
+    gGr[k]=g; gGn[k]=max(length(g),1e-5); gDu[k]=fb.w;
+    n++;
+  }
+  gN[K]=n; gPar[K]=parity; gRnd[K]=uG[b+I_shape].x; gSum[K]=uG[b+I_shape].y; gInv[K]=uG[b+I_shape].w;
+  return cover;
+}
+
+// Exact box filter of a periodic band centred on fract(x)=.5, filling fraction h of the cycle; g is cycles per pixel.
+// A one-pixel ramp at coarse lines, hairlines that fade by true area instead of twinkling, exact solids at h=0 and h=1.
+float bandI(float x,float h){ float f=floor(x); return f*h+clamp(x-f-.5+.5*h,0.,h); }
+float band(float x,float h,float g){ return clamp((bandI(x+.5*g,h)-bandI(x-.5*g,h))/g,0.,1.); }
+
+float inkBand(int K,float th){
+  float T=abs(th),P=1.,Q=1.;
+  for(int i=0;i<gN[K];i++){
+    int k=K*FAM+i;
+    float d=gDu[k],t=T*(1.-smoothstep(.85,1.,abs(d))),x=gPh[k],g=gGn[k];
+    float p=band(x,clamp(.5*(1.-t-d),0.,1.),g);       // tri(x)-d >  t
+    float q=band(x+.5,clamp(.5*(1.-t+d),0.,1.),g);    // tri(x)-d < -t
+    P*=p+q; Q*=p-q;
+  }
+  return th>=0.?.5*(P+Q):1.-.5*(P-Q);
+}
+
+// Soft path: dots, quasicrystals and level-set morphs. Analytic gradient, with a curvature floor so the ramp can't collapse at a crest.
+void softF(int K,out float f,out vec2 gf,out float g1,out float g2){
+  float rnd=gRnd[K],sm=gSum[K],mn=9.,sg=1.,pr=1.,su=0.; vec2 gm=vec2(0.),gp=vec2(0.),gs=vec2(0.);
+  g1=1e-5; g2=1e-5;
+  for(int i=0;i<gN[K];i++){
+    int k=K*FAM+i;
+    float x=gPh[k],d=gDu[k],fr=fract(x);
+    float a=mix(1.-4.*abs(fr-.5),-cos(TAU*x),rnd)-d;
+    vec2 da=mix(fr<.5?4.:-4.,TAU*sin(TAU*x),rnd)*gGr[k];
+    float off=smoothstep(.85,1.,abs(d)),sa=a<0.?-1.:1.;
+    sg*=sa;
+    if(abs(a)+2.*off<mn){ mn=abs(a)+2.*off; gm=sa*da*(1.-off); }
+    float a2=mix(a,sa,off); vec2 da2=da*(1.-off);
+    gp=gp*a2+pr*da2; pr*=a2;
+    su+=a; gs+=da;
+    if(off<.5){ float gg=gGn[k]; if(gg>g1){ g2=g1; g1=gg; } else if(gg>g2) g2=gg; }
+  }
+  if(g2<=1e-5) g2=g1;
+  float nr=1./sqrt(max(float(gN[K]),1.));
+  f=mix(mix(sg*mn,pr,rnd),su*nr,sm);
+  gf=mix(mix(sg*gm,gp,rnd),gs*nr,sm);
+}
+float inkSoft(int K,float f,vec2 gf,float g1,float g2,float th){
+  float H=19.74*g1*g1*max(gRnd[K],gSum[K]);
+  float w=sqrt(dot(gf,gf)+H*H+1e-10);
+  float c=clamp(.5+(f-th)/w,0.,1.);
+  float A=max(1.-abs(th),0.)/(6.283*g1*g2);            // element area in pixels
+  float gain=clamp(A/.5,0.,1.);                        // a vanishing speck keeps its true area, and is exactly gone at |th|=1
+  c=th>=0.?c*gain:1.-(1.-c)*gain;
+  return mix(c,.5*(1.-th),smoothstep(.22,.45,g1));     // below Nyquist, the true average
+}
+float inkOf(int K,float th){
+  float c;
+  if(gN[K]==0) c=th>=0.?0.:1.;
+  else if(gRnd[K]>0.||gSum[K]>0.){ float f,g1,g2; vec2 gf; softF(K,f,gf,g1,g2); c=inkSoft(K,f,gf,g1,g2,th); }
+  else c=inkBand(K,th);
+  if(gInv[K]>.5) c=1.-c;
+  if(gPar[K]<0.) c=1.-c;
+  return c;
+}
+
+float matteOf(int b,vec2 p){
+  vec4 m=uG[b+I_matte];
+  if(m.x<.5) return 1.;
+  vec4 m2=uG[b+I_matte2],m3=uG[b+I_matte3];
+  vec2 q=rot(-m3.x)*(p-m2.xy);
+  float sd;
+  if(m.x<1.5){
+    float e=max(m.z,.5);
+    float r=pow(pow(abs(q.x)/max(m2.z,1e-4),e)+pow(abs(q.y)/max(m2.w,1e-4),e),1./e);
+    sd=(1.-r)*min(m2.z,m2.w);
+  } else {
+    // a crack: the wobbling line |g| < eps opening into a field
+    float g=q.y-.18*sin(q.x*2.1+m3.y+1.3)-.09*sin(q.x*5.3-m3.y*.7)-.05*sin(q.x*9.1+m3.y*.4+2.);
+    sd=m3.w-abs(g);
+  }
+  if(m.w!=0.) sd+=m.w*boil(p*3.,m3.y,1.1);
+  if(m3.z>.5) sd=-sd;
+  return aaOf(sd);
+}
+
+void main(){
+  vec2 res=uF[8].xy;
+  vec2 p=(gl_FragCoord.xy-.5*res)/res.y*2.;         // frame coordinates: y runs -1..1
+  vec4 pr=uF[6];
+  if(pr.z!=0.){ vec2 d=p-pr.xy; p+=pr.z*d*exp(-dot(d,d)/max(pr.w*pr.w,1e-5)); }
+  if(uF[8].w>.5) p+=texture(uPush,gl_FragCoord.xy/res).xy;
+
+  float thA=uG[I_shape].z,dl=uF[5].x;
+  float ma=prepare(0,0,p)*matteOf(0,p),outA=uG[I_matte].y;
+  float c,c2=0.;
+  if(uF[0].y>.5){
+    float thB=uG[SLOT+I_shape].z,outB=uG[SLOT+I_matte].y;
+    float mb=prepare(1,SLOT,p)*matteOf(SLOT,p);
+    if(uF[0].x>0.){
+      // level-set morph: the two fields are mixed before the threshold, so lines split and merge
+      float t=uF[0].x,fa,fb,a1,a2,b1,b2; vec2 ga,gb;
+      softF(0,fa,ga,a1,a2); softF(1,fb,gb,b1,b2);
+      fa-=thA; fb-=thB;
+      float H=19.74*max(a1,b1)*max(a1,b1)*.25;
+      float wm=sqrt(dot(mix(ga,gb,t),mix(ga,gb,t))+H*H+1e-10);
+      c=clamp(.5+mix(fa,fb,t)/wm,0.,1.);
+      c=mix(t<.5?outA:outB,c,mix(ma,mb,t));
+      c2=c;
+    } else {
+      float cb=inkOf(1,thB),cb2=dl!=0.?inkOf(1,thB+dl):cb;
+      cb=mix(outB==2.?0.:outB,cb,mb); cb2=mix(outB==2.?0.:outB,cb2,mb);
+      float ca=inkOf(0,thA),ca2=dl!=0.?inkOf(0,thA+dl):ca;
+      if(uF[0].z>.5){
+        ca=mix(outA==2.?0.:outA,ca,ma); ca2=mix(outA==2.?0.:outA,ca2,ma);
+        c=ca+cb-2.*ca*cb; c2=ca2+cb2-2.*ca2*cb2;
+      } else {
+        c=mix(outA==2.?cb:outA,ca,ma); c2=mix(outA==2.?cb2:outA,ca2,ma);
+      }
+    }
+  } else {
+    float o=outA==2.?0.:outA;
+    c=mix(o,inkOf(0,thA),ma);
+    c2=dl!=0.?mix(o,inkOf(0,thA+dl),ma):c;
+  }
+  // the hand's moire: a lifted copy of the same sheet, XOR-ed on top
+  vec4 so=uF[7];
+  if(so.w>0.){
+    float ms=prepare(2,0,rot(so.z)*p+so.xy);
+    float cs=mix(outA==2.?0.:outA,inkOf(2,thA),ms);
+    c=mix(c,c+cs-2.*c*cs,so.w); c2=c;
+  }
+  vec3 col;
+  // gamma-correct coverage, so an edge pixel carries half the light rather than looking dark
+  if(dl==0.) col=mix(uF[1].rgb,uF[2].rgb,pow(c,.4545));
+  else {
+    float a=pow(max(c,c2),.4545),b=pow(min(c,c2),.4545);
+    col=mix(mix(uF[1].rgb,uF[3].rgb,a),uF[2].rgb,b);
+  }
+  outColor=vec4(col,1.);
+}`;
+
+// Brush pass: paints displacement into a small texture, which springs back on its own.
+export const BRUSH_FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D uPrev;
+uniform vec4 uBrush;   // x,y in uv; z radius (uv height units); w on
+uniform vec4 uBrush2;  // dx,dy displacement, aspect, heal rate per frame
+in vec2 vUv;
+out vec4 o;
+void main(){
+  vec2 v=texture(uPrev,vUv).xy*(1.-uBrush2.w);
+  if(uBrush.w>.5){
+    vec2 d=vUv-uBrush.xy; d.x*=uBrush2.z;
+    v+=uBrush2.xy*exp(-dot(d,d)/(uBrush.z*uBrush.z));
+  }
+  o=vec4(v,0.,1.);
+}`;
