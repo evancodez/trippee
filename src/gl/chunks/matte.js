@@ -21,7 +21,15 @@ float matteOf(int b,vec2 p){
     float e=max(m.z,.5);
     float r=pow(pow(abs(q.x)/max(m2.z,1e-4),e)+pow(abs(q.y)/max(m2.w,1e-4),e),1./e);
     sd=(1.-r)*min(m2.z,m2.w);
-  } else {
+  }
+#ifndef NORILEY
+  else if(m.x>2.5){
+    // a labyrinth: one slice through a gyroid, so its walls wander and never end. matte.t is how deep the slice is, matte.rx how big, matte.eps which side has more room.
+    vec3 s=vec3(q*2.2/max(m2.z,1e-4),m3.y);
+    sd=dot(sin(s),cos(s.yzx))+m3.w;
+  }
+#endif
+  else {
     // a crack: the wobbling line |g| < eps opening into a field
     float g=q.y-.18*sin(q.x*2.1+m3.y+1.3)-.09*sin(q.x*5.3-m3.y*.7)-.05*sin(q.x*9.1+m3.y*.4+2.);
     sd=m3.w-abs(g);

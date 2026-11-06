@@ -119,12 +119,25 @@ export default `void main(){
   }
 #endif
 #else
+  if(uF[F_XF2].w!=0.) p=xfPush(p0,p);
   float ma=prepare(0,0,p);
   int k1=FAM;
   if(uF[0].y>.5){
     // Two patterns at once: each family bends into its partner, phase by phase, so each line travels to where it's going.
     float mb=prepare(1,SLOT,p),T=xfT(p0,uF[0].x);
     vec4 pa=uF[F_PAIR];
+    // With time local to the pixel, a family with no partner closes up behind the front, and one the next pattern needs opens there. Closed is d=-1, nothing at all to the XOR.
+    // Both ends are exact: a family that's done with is off altogether.
+    if(uF[F_XF].x>.5){
+      gRnd[0]=mix(gRnd[0],gRnd[1],T); gSum[0]=mix(gSum[0],gSum[1],T);
+      for(int i=0;i<FAM;i++){
+        if(int(pa[i])<0&&gOn[i]){ if(abs(gDu[i])<=1.01) gDu[i]=mix(gDu[i],-1.,1.-(1.-T)*(1.-T)); if(T>=1.) gOn[i]=false; }       // it gets through its last thin lines quickly
+      }
+      for(int j=0;j<FAM;j++){
+        int q=FAM+j; bool taken=int(pa[0])==j||int(pa[1])==j||int(pa[2])==j||int(pa[3])==j;
+        if(!taken&&gOn[q]){ if(abs(gDu[q])<=1.01) gDu[q]=mix(-1.,gDu[q],T*T); if(T<=0.) gOn[q]=false; }
+      }
+    }
     for(int i=0;i<FAM;i++){
       int j=int(pa[i]);
       if(j<0) continue;

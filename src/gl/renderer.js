@@ -1,14 +1,15 @@
 // Owns the GPU: one program, one block of numbers, a brush texture, and a canvas whose size only changes when the window does.
 import { VERT, FRAG, BRUSH_FRAG } from './shader.js';
-import { SLOT_FLOATS, FRAME_VEC4, FRAME } from '../pattern/layout.js';
+import { SLOT_FLOATS, FRAME_VEC4, FRAME, OFF } from '../pattern/layout.js';
 
 const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 
-// One shader, built eight ways: with or without the hand, colour's second plate, and a flight between two patterns. A GPU pays for what a
-// program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each
-// is only in the program while it's in use. The first two are what the picture needs to run; the rest build behind it.
-const HAND = 1, PLATES = 2, FLIGHT = 4, ORDER = [0, FLIGHT, HAND, PLATES, HAND | FLIGHT, PLATES | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT];
-const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}`);
+// One shader, built sixteen ways: with or without the hand, colour's second plate, a flight between two patterns, and the rarer moves (slip, star, coin, fields). A GPU pays for what
+// a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
+// The first four are what a film needs to run; the rest build behind it.
+const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8;
+const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
+const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -47,7 +48,7 @@ export class Renderer {
     gl.disable(gl.BLEND);
 
     this.vs = compile(gl, gl.VERTEX_SHADER, VERT);
-    this.progs = new Array(8).fill(null);
+    this.progs = new Array(16).fill(null);
     this.variant = 0;
     this._start(0);
     this._whenReady = new Promise(res => { this._resolveReady = res; });
@@ -96,13 +97,18 @@ export class Renderer {
 
   // The smallest program with what this frame needs. One still building, the frame goes without the hand or colour for a moment. They both come up slowly anyway.
   _variantOf(F) {
-    return (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0);
+    return (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0) | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0);
+  }
+
+  // Does this slot wear anything only the fuller programs have?
+  _extra(S) {
+    return S[OFF['slip.kind']] > .5 || S[OFF['star.k']] > 0 || S[OFF['field.kind']] > .5 || S[OFF['matte.kind']] > 2.5 || S[OFF['lathe.k']] !== 0 || S[OFF['lathe.w']] !== 0 || S[OFF['meta.amt']] !== 0;
   }
 
   _programFor(F) {
     const v = this._variantOf(F);
     if (!this.progs[v] && !this.parallel && !this._pending) { this._start(v); this._poll(); }
-    const got = this.progs[v] ? v : v & FLIGHT;
+    const got = this.progs[v] ? v : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
     this.variant = got;
     return this.progs[got];
   }

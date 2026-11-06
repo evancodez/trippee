@@ -8,7 +8,7 @@ export const flags = {
   // transformations
   shock: true, fall: true, iris: true,
   // fields and worlds
-  river: true, arcade: true, blaze: true,
+  river: true, arcade: true, blaze: true, octagrid: true, metamorphosis: true, labyrinth: true,
   // the director
   direct: true, countdown: true, lock: true,
   // the film's rehearsal: patterns kept out of films, the good part of each long move, which way a flight goes

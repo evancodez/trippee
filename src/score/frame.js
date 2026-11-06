@@ -78,8 +78,12 @@ function songInFlight(st, score, edits) {
 
 export function frame(score, t, R, edits) {
   const tReal = t, beyond = edits?.beyond;
-  if (score.time) t = score.time(t);       // the film's own stops
-  if (beyond) t = beyond.time(t, score);   // Beyond's stops: the picture's clock with a rest taken out of it
+  const tFilm = score.time ? score.time(t) : t;       // the film's own stops: it freezes while the band stops, and pays the time back
+  if (beyond) t = beyond.time(tFilm, score);          // Beyond's stops: the picture's clock with a rest taken out of it
+  else t = tFilm;
+  // The song's tables don't lag behind a rest: they stand still for it on their own axis and are in step the moment the sound's back. Colour's lag they share, since it's the picture's own.
+  // No rests in this song: the axis is the picture's clock itself.
+  const c = score.time?.c ? score.time.c(tReal) - (tFilm - t) : t;
   const g = score.gestures, A = R.slotA, B = R.slotB, F = R.frame;
   const i = indexAt(g, t);
   const held = edits?.staticG;
@@ -96,7 +100,7 @@ export function frame(score, t, R, edits) {
   const aspect = R.canvas ? R.canvas.width / R.canvas.height : 16 / 9;
   const phi = phiOf(G, t);
   // What the frame has so far, handed round to the transformation, the song and the hand. moveA, moveB: which slots they may move.
-  const st = { t, G, A, B, F, x: 0, T: 0, kind: null, plan: null, two: false, solid: pat.solid ?? 1, theta: thetaOf(G, t), thetaB: 0, moveA: true, moveB: false, sa: 0, sb: 0, thA: 0, thB: 0 };
+  const st = { t, c, G, A, B, F, x: 0, T: 0, kind: null, plan: null, two: false, solid: pat.solid ?? 1, theta: thetaOf(G, t), thetaB: 0, moveA: true, moveB: false, sa: 0, sb: 0, thA: 0, thB: 0 };
 
   // Which transformation is under way, if any: from `from` (at its own time) into `to`, over x from 0 to 1.
   let m = morphAt(score, G, N, t), shown = G, xf = null;
@@ -151,8 +155,8 @@ export function frame(score, t, R, edits) {
 
   if (xf) xf.write(st, A, B, F);
   else A[OFF.theta] = st.theta;
-  if (beyond) beyond.write(F, tReal, score, shown, m ? m.to : null, st.T, st.plan);
-  return { G, theta: st.theta, solid: st.solid, phi, T: st.T, kind: st.kind, from: m ? m.from : null, N: m ? m.to : null };
+  if (beyond) beyond.write(F, tFilm, score, shown, m ? m.to : null, st.T, st.plan);     // the plates stand still in a rest with everything else
+  return { G, c, theta: st.theta, solid: st.solid, phi, T: st.T, kind: st.kind, from: m ? m.from : null, N: m ? m.to : null };
 }
 
 // The threshold a gesture wants at time t. Patterns can read it; `solid` isn't reached any more.

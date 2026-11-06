@@ -3,6 +3,7 @@ import { OFF, SLOT_FLOATS, FAMILIES } from '../pattern/layout.js';
 import { flatten } from '../pattern/genome.js';
 import { clamp, lerp, smoother, evalTrack } from './curves.js';
 import { runMoves } from './moves/index.js';
+import { flag } from './flags.js';
 
 const cache = new Map();
 export function base(pattern) {
@@ -88,6 +89,13 @@ export function fillSlot(out, G, t, pat, opts = {}) {
   if (flow) for (const p in flow) out[pathOff(p)] += flow[p] * phi;
   if (pat.drive) pat.drive(out, { u, t, phi, OFF, G });
   if (G.moves) runMoves(out, { u, t, phi, OFF, G });
+  // A fall lands at speed, and this pattern carries on at that speed and coasts to rest. It lands a little small so as to end up about the size it was rehearsed at.
+  const c = G.carry;
+  if (c && G.freezeU == null && Math.abs(G.t0 - c.t1) < 1e-3 && flag('fall')) {      // a gesture rewritten to start at some other moment (a pick) didn't arrive by a fall
+    const left = t <= c.t1 ? 0 : 1 - Math.exp(-(t - c.t1) / c.tau);
+    out[OFF.scale] *= Math.exp(c.K * left - c.pre);
+    if (c.w) out[OFF.rot] += c.w * c.tau * left;
+  }
   if (G.over) for (const p in G.over) out[pathOff(p)] = G.over[p];
 }
 
