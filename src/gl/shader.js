@@ -120,7 +120,7 @@ float prepare(int K,int b,vec2 p){
     vec2 q=rot(r2.z)*X.xy; float s=q.x;
     float c=rb.y*sin(r2.x*s*.7+r2.y),Wd=rb.z*cos(rb.w*s+r2.y*.6);
     float vv=(q.y-c)/max(abs(Wd),1e-3);
-    cover*=aaOf((1.-abs(vv))*abs(Wd));
+    cover*=aaOf(abs(Wd)-abs(q.y-c));
     if(Wd<0.) parity=-parity;
     X.xy=vec2(s,asin(clamp(vv,-1.,1.))/1.5708*r2.w*.1);
   }

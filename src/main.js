@@ -4,7 +4,7 @@ import { frame } from './score/frame.js';
 import { Stage } from './stage.js';
 import { patterns, byId, families } from './pattern/library.js';
 
-export const VERSION = 'v0.1';
+export const VERSION = 'v0.2';
 const canvas = document.getElementById('c');
 const R = new Renderer(canvas);
 const stage = new Stage(Date.now() % 100000);
