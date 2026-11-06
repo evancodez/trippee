@@ -62,6 +62,8 @@ export class Brain {
     this.harmN = null;
     this.walked = 0;
     this.lastMain = -1;
+    this.lastNote = null;
+    this.arpDir = 1;
     this.repeats = 0;
     this.seenRipples = new WeakSet();
     this.smooth = { press: 0, bright: 0.5, white: 0.5, sheet: 0, cut: 400 };
@@ -361,6 +363,7 @@ export class Brain {
       } else this._play(base, 'main', phase, S, F);
     }
     this.lastMain = notes.length ? notes[0].midi : -1;
+    if (notes.length) this.lastNote = notes[0].midi;
 
     // The bottom of the picture is the bass
     const every = Math.max(1, Math.round(fam.bassEvery * S));
@@ -387,6 +390,8 @@ export class Brain {
     return m;
   }
 
+  _nearOctave(m, near, reach) { while (m - near > reach) m -= 12; while (near - m > reach) m += 12; return m; }
+
   // Thin what the read line found down to a few notes, the way this family plays them.
   _choose(cands, fam, flow, n, S, onBeat, onBar, sig) {
     if (!cands.length) return [];
@@ -408,10 +413,21 @@ export class Brain {
       const speak = fam.keep * (onBeat ? 1.5 : 0.75) * this.energy * Math.min(1, 0.45 + 0.2 * cands.length);
       if (hash(loop, 3) > speak) return [];
       const start = Math.floor(hash(loop, 5) * cands.length);
-      return spaced([...cands.slice(start), ...cands.slice(0, start)]);
+      const said = spaced([...cands.slice(start), ...cands.slice(0, start)]);
+      if (said.length && this.lastNote != null) said[0] = { ...said[0], midi: this._nearOctave(said[0].midi, this.lastNote, 9) };
+      return said;
     }
-    // arp: walk through what's there, one per step, in the direction of the flow.
-    const first = cands[walk(this.walked++, cands.length, fam.dir ?? flow.dir, flow.both)];
+    // arp: one per step, moving through what's there the way a hand does: to the nearest note on the way it's going, turning at the top and the
+    // bottom. With nothing near, whatever the walk lands on comes by the nearest octave. So it's a line, not a scatter, and the picture still says which notes.
+    let first = cands[walk(this.walked++, cands.length, fam.dir ?? flow.dir, flow.both)];
+    const last = this.lastNote;
+    if (last != null) {
+      const above = cands.find(c => c.midi > last && c.midi - last <= 7);
+      let below = null; for (const c of cands) if (c.midi < last && last - c.midi <= 7) below = c;
+      const step = this.arpDir > 0 ? above ?? below : below ?? above;
+      if (step) { this.arpDir = step === above ? 1 : -1; first = step; }
+      else first = { ...first, midi: this._nearOctave(first.midi, last, 6) };
+    }
     // Don't hammer one note
     if (first.midi === this.lastMain) { this.repeats++; if (this.repeats > 1 && !onBeat) { this.repeats = 0; return []; } } else this.repeats = 0;
     const out = [first];

@@ -47,7 +47,7 @@ export class Synth {
     const sat = ctx.createWaveShaper();
     sat.curve = curve(x => Math.tanh(x * 1.5) / Math.tanh(1.5));
     sat.oversample = '2x';
-    const shelf = BQ('highshelf', 5200, 0.707, -5), top = BQ('lowpass', 11500, 0.5), floor = BQ('highpass', 26, 0.6);
+    const shelf = BQ('highshelf', 5200, 0.707, -2), top = BQ('lowpass', 15000, 0.5), floor = BQ('highpass', 26, 0.6);
     const glue = ctx.createDynamicsCompressor();
     glue.threshold.value = -14; glue.knee.value = 10; glue.ratio.value = 2; glue.attack.value = 0.025; glue.release.value = 0.3;
     const lim = ctx.createDynamicsCompressor();
@@ -91,7 +91,7 @@ export class Synth {
     // ---------------------------------------------------------- one shared bus per kind of voice, with its own sends
     this.bus = {};
     const arpHP = BQ('highpass', 95, 0.6);
-    this.arpTrim = G(1.2);
+    this.arpTrim = G(1.55);
     arpHP.connect(this.arpTrim); this.arpTrim.connect(this.mix);
     this.arpBus = arpHP;
     for (const [name, trimV] of Object.entries({ glass: 1, bell: 1, pluck: 1, analog: 1, stab: 1, pulse: 1, swell: 1, ping: 1 })) {
@@ -99,7 +99,7 @@ export class Synth {
       b.connect(arpHP); b.connect(d); b.connect(v); d.connect(this.delayIn); v.connect(this.verbIn);
       this.bus[name] = { in: b, delay: d, verb: v };
     }
-    this.lowBus = G(0.34);
+    this.lowBus = G(0.27);
     this.lowBus.connect(this.mix);
 
     this.pulses = [0.5, 0.4, 0.3, 0.22, 0.14].map(d => ({ d, wave: pulseWave(ctx, d) }));
@@ -124,7 +124,7 @@ export class Synth {
     this.padOut = G(1);
     merge.connect(this.padOut);
     const hp = BQ('highpass', 70, 0.6);
-    this.padTrim = G(0.62);
+    this.padTrim = G(0.5);
     this.padOut.connect(hp); hp.connect(this.padTrim); this.padTrim.connect(this.mix);
     this.padVerb = G(0.25); this.padOut.connect(this.padVerb); this.padVerb.connect(this.verbIn);
     this.pad = [];
@@ -238,7 +238,7 @@ export class Synth {
   }
 
   _stab(n) { this._analog(n, { lvl: 0.1, bus: 'stab', sus: 0.3, a: 0.004, q: 3.2, env: 1.5 }); }
-  _pulse(n) { this._analog({ ...n, bright: n.bright * 0.6 }, { lvl: 0.16, bus: 'pulse', sus: 0.4, a: 0.008, q: 3.4, env: 0.7 }); }
+  _pulse(n) { this._analog({ ...n, bright: n.bright * 0.9 }, { lvl: 0.16, bus: 'pulse', sus: 0.4, a: 0.008, q: 3.4, env: 0.7 }); }
 
   // Glass: a sine with a thin FM edge and a soft octave, gone quickly. For arps over the pad.
   _glass({ f, t, vel, dur, pan, bright, cents }) {
@@ -247,10 +247,10 @@ export class Synth {
     const idx = this.G(0), gO = this.G(0.12), gT = this.G(0.5), body = this.G(1);
     mod.connect(idx); idx.connect(car.frequency);
     car.connect(body); oct.connect(gO); gO.connect(body); tri.connect(gT); gT.connect(body); body.connect(out);
-    const I = f * (1.1 + 2.2 * bright) * vel;
+    const I = f * (1.6 + 3 * bright) * vel;
     idx.gain.setValueAtTime(I, t);
     idx.gain.setTargetAtTime(I * 0.12, t + 0.002, 0.11);
-    gO.gain.setValueAtTime(0.12, t);
+    gO.gain.setValueAtTime(0.2, t);
     gO.gain.setTargetAtTime(0.01, t + 0.002, 0.16);
     const g = out.gain, v = 0.15 * vel, tau = 0.14 + 0.28 * Math.min(1, dur * 2);
     g.setValueAtTime(0, t);
@@ -265,10 +265,10 @@ export class Synth {
     const car = this._osc('sine', f, t, cents), mod = this._osc('sine', f * 3.51, t, cents), hi = this._osc('sine', f * 2, t, cents + 3);
     const idx = this.G(0), gH = this.G(0), body = this.G(1);
     mod.connect(idx); idx.connect(car.frequency); car.connect(body); hi.connect(gH); gH.connect(body); body.connect(out);
-    const I = f * (0.8 + 1.8 * bright) * vel;
+    const I = f * (1.2 + 2.4 * bright) * vel;
     idx.gain.setValueAtTime(I, t);
     idx.gain.setTargetAtTime(I * 0.05, t + 0.002, 0.16);
-    gH.gain.setValueAtTime(0.16, t);
+    gH.gain.setValueAtTime(0.24, t);
     gH.gain.setTargetAtTime(0, t, 0.5);
     const g = out.gain, v = 0.15 * vel, tau = 0.45 + 0.5 * Math.min(1.5, dur);
     g.setValueAtTime(0, t);
@@ -282,7 +282,7 @@ export class Synth {
     const out = this._out(this.bus.pluck.in, pan), p = this._pan;
     const A = this._osc('triangle', f, t, cents), B = this._osc('sawtooth', f, t, 5 + cents), gB = this.G(0.55), lp = this.BQ('lowpass', 1000, 1.4);
     A.connect(lp); B.connect(gB); gB.connect(lp); lp.connect(out);
-    const base = clamp(f * 1.8, 160, 2600), peak = clamp(f * (5 + 10 * bright), 800, 6500);
+    const base = clamp(f * 2.4, 160, 3200), peak = clamp(f * (6 + 12 * bright), 900, 8000);
     lp.frequency.setValueAtTime(peak, t);
     lp.frequency.setTargetAtTime(base, t + 0.001, 0.085);
     const g = out.gain, v = 0.24 * vel, tau = 0.18 + 0.32 * Math.min(1, dur);

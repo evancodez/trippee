@@ -99,7 +99,7 @@ export default [
     flow: { 'ripple.ph': TAU, 'f0.ph': -1 },
     arcs: [
       { path: 'cam.pitch', from: 0.2, to: 1.34, ease: 'wave' },
-      { path: 'scale', from: 0.35, to: 2.8, log: true },
+      { path: 'scale', from: 0.35, to: 1.5, log: true },
       { path: 'ripple.a', from: 0.03, to: 0.11 },
     ],
     axes: [
@@ -116,7 +116,7 @@ export default [
     flow: { 'sheet.t': ROLL },
     arcs: [
       { path: 'cam.pitch', from: 0.5, to: 1.36, ease: 'wave' },
-      { path: 'scale', from: 0.17, to: 1.4, log: true, ease: 'wave' },
+      { path: 'scale', from: 0.42, to: 1.4, log: true, ease: 'wave' },
       { path: 'sheet.a', from: 0.04, to: 0.72, ease: 'wave' },
       { path: 'cam.roll', from: 0.12, to: -0.12 },
     ],

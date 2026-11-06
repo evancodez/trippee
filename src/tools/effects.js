@@ -13,8 +13,8 @@ export const EFFECTS = [
 ];
 
 // Ripples: picture units per second, and how long one lasts. Rings run for most of a screen and die away with no edge to them.
-const RING = { speed: 0.3, height: 0.034, life: 13, attack: 0.9, tau: 4.6, slots: 8, die: 0.7, rain: 0.2, step: 0.1 };
-const HAND = { size: 3, turn: 0.15, rest: 0.04, lift: 0.055, up: 1.3, down: 1.1, follow: 14 };
+const RING = { speed: 0.3, height: 0.024, life: 13, attack: 0.9, tau: 4.6, slots: 8, die: 0.7, rain: 0.32, step: 0.14 };
+const HAND = { size: 3, turn: 0.15, rest: 0.04, lift: 0.055, up: 1.8, down: 1.1, follow: 14 };
 const WARP = { r: 0.72, twistHold: 0.7, twistDrag: 0.0085, twistMax: 9, pinch: 1.9, bulge: -0.8, rise: 1.5, relax: 0.42, follow: 9 };
 
 export class Effects {
@@ -116,6 +116,9 @@ export class Effects {
       r.radius = RING.speed * age;
       r.height = RING.height * smoother(age / RING.attack) * Math.exp(-age / RING.tau) * smoother((RING.life - age) / 2.5) * gone;
     }
+    // Rings add up, and enough of them together would fold the sheet into a knot
+    const crowd = 1 / Math.sqrt(Math.max(R.length, 1));
+    for (const r of R) r.height *= crowd;
     this.edits.ripples = R.length ? R : null;
   }
 

@@ -29,6 +29,8 @@ const pathOff = p => { const o = OFF[p]; if (o === undefined) throw new Error('n
 // The film's strength is bold shapes, with hairlines only in passing, and a morph between two fine patterns is only wallpaper. So a
 // gesture rides just the part of its long move that stays this bold. In cycles per picture unit: at 720p that's a period of about 20 px.
 const BOLD = 12;
+const WHIP = 3;   // how far a slide's lines can stray from the steady path between the two sizes
+const GREY_MAX = 0.4;   // in a probe at 180 px high, what share can be edges and lines too fine to tell before a slide counts as going grey
 const lim = new Float32Array(SLOT_FLOATS), lim3 = new Float32Array(SLOT_FLOATS), limR = new Float32Array(SLOT_FLOATS), lensTmp = new Float32Array(12);
 export function boldRange(G) {
   if (G.range) return G.range;
@@ -53,13 +55,21 @@ export function boldRange(G) {
 
 // How far along its long move a gesture is. Held gestures swing; frozen ones stay put.
 export function arcU(G, t) {
-  if (G.freezeU != null) return G.freezeU;
+  if (G.freezeU != null) {
+    // Told to stay, it doesn't stop dead: what it was doing runs out over a moment, and it comes to rest just there.
+    const e = G.freezeEase;
+    if (e && t < e.t0 + e.tau) { const k = 1 - clamp((t - e.t0) / e.tau); return G.freezeU - e.a * k * k; }
+    return G.freezeU;
+  }
   const [lo, hi] = boldRange(G);
   let x;
   if (t <= G.t0) x = 0;
   else if (G.period) { const w = ((t - G.t0) / G.period) % 2; x = smoother(w < 1 ? w : 2 - w); }
   // Arcs run to a fixed horizon, not to t1, so rewriting a gesture's end (the user picked something else) can't make them jump.
   else x = clamp((t - G.t0) / Math.max((G.arcEnd ?? G.t1) - G.t0, 1e-3));
+  // ...and let go, it picks up speed the same way
+  const e = G.thaw;
+  if (e && t < e.t0 + e.tau) { const k = 1 - clamp((t - e.t0) / e.tau); x = Math.min(1, x + e.a * k * k); }
   return lo + (hi - lo) * x;
 }
 
@@ -85,7 +95,7 @@ export function fillSlot(out, G, t, pat, opts = {}) {
 function noHorizon(s, aspect) {
   if (s[OFF['surf.kind']] !== 1) return;
   const q = n => Math.abs(s[OFF[n]]);
-  if (q('q.xx') + q('q.yy') + q('q.zz') + q('q.ww') > 1e-4) return;
+  if (q('q.xx') + q('q.yy') + q('q.xy') > 1e-4) return;     // a plane or a slab: anything that runs off to the horizon, and nothing that curves
   const r = s[OFF['cam.roll']], reach = (Math.abs(Math.cos(r)) + Math.abs(Math.sin(r)) * aspect) * 1.5;   // well past the top of the frame, or the far lines thicken into a grey band
   const max = Math.atan(s[OFF['cam.dist']] / reach);
   s[OFF['cam.pitch']] = clamp(s[OFF['cam.pitch']], -max, max);
@@ -113,8 +123,8 @@ function fineness(s) {
 }
 
 // The biggest element in a small rendering of the pattern, near the middle if it can be: where to fly to, and what colour it is.
-function biggestElement(R, slot, aspect) {
-  const { W, H, px } = R.probe(slot, aspect);
+function biggestElement(R, slot, aspect, seen) {
+  const { W, H, px } = seen ?? R.probe(slot, aspect);
   const best = { r: 0, score: -1, x: 0, y: 0, white: true };
   for (const white of [true, false]) {
     const d = new Float32Array(W * H);
@@ -169,13 +179,18 @@ function makePlan(a, b, ctx) {
   const flat = s => s[OFF['surf.kind']] < 0.5;
   const same = n => a[OFF[n]] === b[OFF[n]];
   const shaped = s => s[OFF['ribbon.on']] > 0.5 || s[OFF['blobs.on']] > 0.5 || s[OFF['matte.kind']] > 0.5;
-  const closeEnough = ratio < 3.2 && ratio > 1 / 3.2;
+  const closeEnough = ratio < 6 && ratio > 1 / 6;
   const allPaired = !close.length && !open.length;
-  const onlyOneExtra = close.length + open.length <= 1 && pair.some(p => p >= 0);
-  const plain = !shaped(a) && !shaped(b) && same('fold.n') && a[OFF['droste.lnS']] === 0 && b[OFF['droste.lnS']] === 0 && a[OFF['conf.amt']] === b[OFF['conf.amt']];
+  const fewExtras = close.length + open.length <= 2 && pair.some(p => p >= 0);
+  // A surface can't glide into a different surface: part way there the rays miss it, or it fills the frame.
+  const sameBody = ['q.xx', 'q.xy', 'q.xz', 'q.xw', 'q.yy', 'q.yz', 'q.yw', 'q.zz', 'q.zw', 'q.ww'].every(n => Math.abs(a[OFF[n]] - b[OFF[n]]) < 1e-3);
+  const plain = !shaped(a) && !shaped(b) && sameBody && same('fold.n') && a[OFF['droste.lnS']] === 0 && b[OFF['droste.lnS']] === 0 && a[OFF['conf.amt']] === b[OFF['conf.amt']];
   // The same kind of thing: its numbers can simply glide. Otherwise lines can bend into lines if they're near enough in size.
   // Otherwise it's a flight, which works between anything.
-  if (plain && same('surf.kind') && a[OFF['surf.map']] < 0.5 && b[OFF['surf.map']] < 0.5 && onlyOneExtra && closeEnough && ctx.D >= 6) return { kind: 'slide', pair, flip, offset, close, open, ratio };
+  if (plain && same('surf.kind') && a[OFF['surf.map']] < 0.5 && b[OFF['surf.map']] < 0.5 && fewExtras && closeEnough && ctx.D >= 6) {
+    const plan = { kind: 'slide', pair, flip, offset, close, open, ratio };
+    if (slideStaysBusy(a, b, plan, ctx)) return plan;
+  }
   if (plain && flat(a) && flat(b) && allPaired && closeEnough && ctx.D >= 8) return { kind: 'bend', pair, flip, offset, close, open, ratio };
   const out = biggestElement(ctx.R, a, ctx.aspect), inn = biggestElement(ctx.R, b, ctx.aspect);
   const diag = Math.hypot(Math.max(ctx.aspect, 1.9), 1);
@@ -191,6 +206,39 @@ function makePlan(a, b, ctx) {
 const easeOut = (t, t0, stop) => (t <= t0 ? t : t0 + stop * (x => x - x * x / 2)(Math.min(1, (t - t0) / stop)));
 const easeIn = (t, t1, stop) => (t >= t1 ? t : t1 - stop * (x => x - x * x / 2)(Math.min(1, (t1 - t) / stop)));
 
+// A slide whose numbers pass through a place with nothing much in it would fill the frame with one colour on the way, and numbers crossing
+// zero would blow the lines up huge and shrink them again. Look before leaving: its size has to stay near the straight path between the two.
+const slA = new Float32Array(SLOT_FLOATS), slB = new Float32Array(SLOT_FLOATS);
+function slideStaysBusy(a, b, plan, ctx) {
+  // Only the lines that go somewhere can whip: a family opening or closing has one size all the way.
+  const fine = (s, i) => {
+    const g = n => Math.abs(s[OFF[`f${i}.${n}`]]);
+    return Math.max(Math.hypot(g('x'), g('y')) + g('r1') + g('r2') + (g('l1') + g('l2')) / 0.7 + (g('t1') + g('t2')) / 4, 1e-3) * Math.max(s[OFF.freq], 1e-3) / Math.max(s[OFF.scale], 1e-4);
+  };
+  for (let i = 0; i < FAMILIES; i++) {
+    const j = plan.pair[i];
+    if (j < 0) continue;
+    const ka = Math.log(fine(a, i)), kb = Math.log(fine(b, j));
+    for (const T of [0.15, 0.3, 0.4, 0.5, 0.6, 0.7, 0.85]) {
+      slA.set(a); slB.set(b);
+      applySlide(slA, slB, plan, T);
+      if (Math.abs(Math.log(fine(slA, i)) - lerp(ka, kb, T)) > Math.log(WHIP)) return false;
+    }
+  }
+  for (const T of [0.2, 0.35, 0.5, 0.65, 0.8, 0.9]) {
+    slA.set(a); slB.set(b);
+    applySlide(slA, slB, plan, T);
+    const { W, H, px } = ctx.R.probe(slA, ctx.aspect);
+    let sum = 0, grey = 0;
+    for (let i = 0; i < W * H; i++) { sum += px[i * 4]; if (px[i * 4] > 40 && px[i * 4] < 215) grey++; }
+    const white = sum / (W * H * 255);
+    if (white < 0.12 || white > 0.88) return false;
+    if (grey / (W * H) > GREY_MAX) return false;
+    if (biggestElement(ctx.R, slA, ctx.aspect, { W, H, px }).r > 0.8) return false;
+  }
+  return true;
+}
+
 const lim2 = new Float32Array(SLOT_FLOATS);
 function applySlide(A, B, plan, T) {
   // Glide A's numbers to B's, family by family, where each family's partner is. B's own numbers are left alone.
@@ -203,14 +251,27 @@ function applySlide(A, B, plan, T) {
     lim2[OFF[`f${i}.d`]] = B[OFF[`f${j}.d`]]; lim2[OFF[`f${i}.on`]] = 1;
   }
   for (const i of plan.close) { for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) lim2[OFF[`f${i}.${n}`]] = A[OFF[`f${i}.${n}`]]; lim2[OFF[`f${i}.d`]] = -1; lim2[OFF[`f${i}.on`]] = 1; }
-  // A new family needs a place of its own, and starts closed
+  // A new family needs a place of its own, and starts closed. A family with a huge duty is only a constant, nothing at all to the XOR, and the dots use one
+  // to lift their level. It keeps its place and stays one: gliding its duty to zero would open it up and flip the whole picture.
+  const NUMS = ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2'];
+  const isConst = (s, i) => s[OFF[`f${i}.on`]] > 0.5 && Math.abs(s[OFF[`f${i}.d`]]) > 1.01;
   const used = new Set(plan.pair.map((j, i) => (j >= 0 ? i : -1)).concat(plan.close));
-  for (const j of plan.open) {
+  const moved = [];
+  const place = (j, closed) => {
     let free = 0; while (used.has(free) && free < FAMILIES - 1) free++;
     used.add(free);
-    for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) { A[OFF[`f${free}.${n}`]] = B[OFF[`f${j}.${n}`]]; lim2[OFF[`f${free}.${n}`]] = B[OFF[`f${j}.${n}`]]; }
-    A[OFF[`f${free}.d`]] = -1; lim2[OFF[`f${free}.d`]] = B[OFF[`f${j}.d`]]; A[OFF[`f${free}.on`]] = 1; lim2[OFF[`f${free}.on`]] = 1;
-  }
+    for (const n of NUMS) { A[OFF[`f${free}.${n}`]] = B[OFF[`f${j}.${n}`]]; lim2[OFF[`f${free}.${n}`]] = B[OFF[`f${j}.${n}`]]; }
+    A[OFF[`f${free}.d`]] = closed; lim2[OFF[`f${free}.d`]] = B[OFF[`f${j}.d`]]; A[OFF[`f${free}.on`]] = 1; lim2[OFF[`f${free}.on`]] = 1;
+    return free;
+  };
+  const keep = [];
+  for (let i = 0; i < FAMILIES; i++) if (!used.has(i) && isConst(A, i)) { keep.push(i); used.add(i); }
+  for (const j of plan.open) moved.push([j, place(j, -1)]);
+  // ...and one the next pattern needs that a family of this one is sitting on goes somewhere else
+  for (let j = 0; j < FAMILIES; j++) if (isConst(B, j) && !keep.includes(j) && (plan.pair[j] >= 0 || plan.close.includes(j))) moved.push([j, place(j, -1)]);
+  for (const [j, at] of moved) if (at !== j && !used.has(j)) lim2[OFF[`f${j}.on`]] = 0;
+  plan.places = moved;   // colour's second plate needs to know where each went
+  for (const i of keep) { for (const n of NUMS) lim2[OFF[`f${i}.${n}`]] = A[OFF[`f${i}.${n}`]]; lim2[OFF[`f${i}.d`]] = A[OFF[`f${i}.d`]]; lim2[OFF[`f${i}.on`]] = 1; }
   const s0 = A[OFF.scale], s1 = B[OFF.scale];
   for (let i = 0; i < FAMILIES; i++) if (lim2[OFF[`f${i}.on`]] > 0.5 && A[OFF[`f${i}.on`]] < 0.5) { A[OFF[`f${i}.d`]] = -1; A[OFF[`f${i}.on`]] = 1; for (const n of ['x', 'y', 'z', 'ph', 'r1', 'l1', 't1', 'r2', 'l2', 't2']) A[OFF[`f${i}.${n}`]] = lim2[OFF[`f${i}.${n}`]]; }
   for (let n = 0; n < SLOT_FLOATS; n++) if (!SNAP.has(n)) A[n] = A[n] + (lim2[n] - A[n]) * T;
@@ -273,7 +334,9 @@ export function frame(score, t, R, edits) {
       fillSlot(lim3, to, tB0, to.pattern, { phi: phiOf(to, tB0) });
       noHorizon(lim, aspect); noHorizon(lim3, aspect);
       lim[OFF.theta] = thetaOf(from, tA0); lim3[OFF.theta] = thetaOf(to, tB0);
-      holder.plan = makePlan(lim, lim3, { R, aspect, D, rise: from.rise });
+      // A handover can only ever fly in. Rising needs the next pattern at rest with its element where the plan found it, and a film's clock doesn't
+      // stop for that: its element would have moved on, and the frame would sit inside whatever had moved there, one flat colour.
+      holder.plan = makePlan(lim, lim3, { R, aspect, D, rise: holder === h ? false : from.rise });
       holder.planFor = to;
     }
     plan = holder.plan; kind = plan.kind;
@@ -288,13 +351,13 @@ export function frame(score, t, R, edits) {
       const k = smoother((x - 0.1) / 0.5);
       theta = thA; solid = sa;
       thetaB = lerp(plan.white ? -sb : sb, thB, k);
-      B[OFF.scale] *= Math.exp(-0.35 * plan.lnZ * (1 - T));
+      B[OFF.scale] *= Math.exp(-Math.min(0.35 * plan.lnZ, 0.7) * (1 - T));     // it grows on the way, but it's never so fine it greys
     } else {
       // Rising out: what's showing closes up to the element's colour and shrinks, until it's one element of the next pattern
       const k = smoother((x - 0.5) / 0.45);
       theta = lerp(thA, plan.white ? -sa : sa, k); solid = sb;
       thetaB = thB;
-      A[OFF.scale] *= Math.exp(-0.35 * plan.lnZ * T);
+      A[OFF.scale] *= Math.exp(-Math.min(0.35 * plan.lnZ, 0.7) * T);
     }
     two = true;
   } else {

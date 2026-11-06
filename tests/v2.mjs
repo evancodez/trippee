@@ -135,8 +135,6 @@ export default async ({ page, log, save }) => {
   // ------------------------------------------------------------------------------------- the hand, through everything
   if (want('hand')) {
     const handHere = async (name, x = 640, y = 520) => { await move(x, y); await sleep(100); log(name, JSON.stringify(await page.eval('__fx()')), JSON.stringify(await page.eval('__st()'))); await page.shot('hand-' + name); };
-    // How much the hand changes the picture, measured on the same frame with and without it
-    await page.eval(() => { window.__handDiff = () => { const was = app.manual; app.manual = true; const e = app.edits.hand; trippee.step(0); const g = document.createElement('canvas').getContext('2d'); g.canvas.width = 320; g.canvas.height = 180; g.drawImage(app.canvas, 0, 0, 320, 180); const a = g.getImageData(0, 0, 320, 180).data; return { e, a }; }; });
     await page.eval(`trippee.load('lines.river');app.t=13;trippee.run()`); await sleep(200);
     await key('2'); await move(640, 520); await sleep(3200);
     await handHere('open');

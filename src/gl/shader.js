@@ -122,10 +122,10 @@ const vec2 H_LEAN=vec2(.30,.40);        // the ray's lean: a point at height z s
 const vec2 H_TIP=vec2(.29552,.95534);   // sin, cos of how far the hand tips back
 const vec3 H_WRIST=vec3(0.,-.1,-.01);   // where the wrist is, on the hand
 const vec3 H_ARM=vec3(0.,-.3,-.42);     // where the forearm goes, down into the sheet
-const float H_FLARE=.3,H_MELT=.045;     // how wide the forearm melts into the sheet, and everything else
+const float H_FLARE=.12,H_MELT=.012;    // how wide the forearm melts into the sheet, and everything else
 const int HSEG=14;
 vec3 hA[HSEG],hB[HSEG]; float hR[HSEG];
-int hAct[HSEG],hN; bool hPalm,hArm; float hOff,hOnHand,hProud=0.;
+int hAct[HSEG],hN; bool hPalm,hArm; float hOff,hOnHand,hBody,hEdge=-1.,hProud=0.;
 
 float smin(float a,float b,float k){ float h=max(k-abs(a-b),0.)/k; return min(a,b)-h*h*k*.25; }
 float capsule(vec3 p,vec3 a,vec3 b,float r){ vec3 pa=p-a,ba=b-a; return length(pa-ba*clamp(dot(pa,ba)/(dot(ba,ba)+1e-9),0.,1.))-r; }
@@ -148,21 +148,22 @@ void handBones(float curl,float spread){
       a=b; r*=.9; seg=j==0?.32:.23;
     }
   }
-  vec3 a=vec3(.07,-.055,.012),dir=normalize(vec3(.85,.6,.3));
-  float r=.03;
+  // the thumb starts inside the palm, so there's no gap to it, and lies in against the side of it
+  vec3 a=vec3(.062,-.05,.012),dir=normalize(vec3(.62,.72,.22));
+  float r=.031;
   mat2 Rx=rot(curl*.6),Ry=rot(curl*.35);
   for(int j=0;j<2;j++){
     dir.xy=Rx*dir.xy; dir.yz=Ry*dir.yz;
-    vec3 b=a+dir*(j==0?.095:.075);
+    vec3 b=a+dir*(j==0?.085:.062);
     hA[12+j]=a; hB[12+j]=b; hR[12+j]=r;
-    a=b; r*=.85;
+    a=b; r*=.86;
   }
 }
 
 // The sheet and the hand as one surface. Only the bones this ray can reach are in the sum.
 float handField(vec3 q){
-  float d=q.y*H_TIP.x+q.z*H_TIP.y+hOff;
-  if(hArm) d=smin(d,capsule(q,H_WRIST,H_ARM,.058),H_FLARE);
+  float d=q.y*H_TIP.x+q.z*H_TIP.y+hOff,d0=d,arm=1e3;
+  if(hArm){ arm=capsule(q,H_WRIST,H_ARM,.058); d=smin(d,arm,H_FLARE); }
   float h=1e3;
   if(hPalm){
     vec3 e=abs(q-vec3(0.,-.01,0.))-vec3(.068,.08,.017);
@@ -171,16 +172,17 @@ float handField(vec3 q){
   }
   for(int n=0;n<hN;n++){ int i=hAct[n]; h=smin(h,capsule(q,hA[i],hB[i],hR[i]),.014); }
   hOnHand=.03-1.2*h;       // above nothing but this bone's own surface: the melt into the sheet takes it down to the sheet's
+  hBody=smin(h,arm,.02); hEdge=d0-hBody;   // nearer the hand than the flat sheet: that's on the hand. It changes sign exactly at the outline, all the way round
   return smin(d,h,H_MELT);
 }
 
 // How high the sheet stands at this pixel, in picture units. 0 away from the hand, and it costs nothing there.
 float handHeight(vec2 p){
   vec4 a=uF[F_HAND],b=uF[F_HAND+1];
-  float s=max(b.w,1e-3),zw=mix(-.75*s,a.z,a.w);
+  float s=max(b.w,1e-3),zw=mix(-.25*s,a.z,a.w);
   vec2 cs=vec2(cos(b.z),sin(b.z));
   vec2 c=p-a.xy; c=vec2(cs.x*c.x+cs.y*c.y,-cs.y*c.x+cs.x*c.y)/s;     // into the hand's own turn, from the wrist
-  hOnHand=-1.; hProud=0.;
+  hOnHand=-1.; hEdge=-1.; hProud=0.;
   if(abs(c.x)>.44||c.y<-.5||c.y>.55) return 0.;
   // from the world to the hand: unturn, untip, unscale
   #define H_IN(v) vec3(cs.x*(v).x+cs.y*(v).y,H_TIP.y*(-cs.y*(v).x+cs.x*(v).y)+H_TIP.x*(v).z,-H_TIP.x*(-cs.y*(v).x+cs.x*(v).y)+H_TIP.y*(v).z)
@@ -210,14 +212,18 @@ float handHeight(vec2 p){
   if(hN==0&&!hPalm&&!hArm) return 0.;
   float t=max(t0,0.);
   bool hit=false;
+  float near=1e3;      // how close this ray came to the hand, in the hand's own units: what a pixel just outside its outline needs to smooth it
   for(int i=0;i<26&&t<t1;i++){
     float d=handField(ro+rd*t);
+    near=min(near,hBody);
     if(d<.0007){ hit=true; break; }
     t+=d*.92;
   }
   // a ray still creeping past a finger at the end of this has missed it: it goes on down to the sheet
   vec3 q=ro+rd*(hit?t:t1);
   handField(q);
+  near=min(near,hBody);
+  hEdge=max(hEdge,0.)>0.?hEdge:-max(near,0.);
   float z=q.y*H_TIP.x+q.z*H_TIP.y+hOff;
   // how far this point stands proud of the bone it's on: nothing at the bone's edge, the bone's radius along its top
   hProud=max(z,0.)*s;
@@ -378,9 +384,9 @@ float prepare(int K,int b,vec2 p){
     if(lensView){ float J=abs(fa.x)*sf0.z; if(J>1e-3) g-=J*round(g/J); }
     else if(wrapped) g-=round(g);
     g+=fb.z*gT1+fc.z*gT2;
-    if(seam){ float gl=length(g); if(gl>.5) g*=.5/gl; }     // the one pixel across a jump between two fields isn't a real gradient
+    if(seam){ float gl=length(g); if(gl>.12) g*=.12/gl; }   // the one pixel across a jump between two fields isn't a real gradient
     if(gBreak){ float gl=length(g); if(gl>.2) g*=.2/gl; }   // nor is the one across a finger's edge, or it would draw an outline
-    sm+=gRing*min(length(g)*uF[8].y*.5,9.);                 // a ring moves a line by the same distance however big it is, up to a point
+    sm+=gRing*clamp(length(g)*uF[8].y*.5,2.5,9.);           // a ring moves a line by the same distance however big it is, up to a point, and even broad shapes slip enough to show it
     gPh[k]=sm+fb.z*b1.z+fc.z*b2.z+fa.w+fa.y*tn.x*slipY;
     if(parity<0.){ gPh[k]+=.5; parity=1.; }                 // half a cycle on one family inverts the whole XOR
     gGr[k]=g; gGn[k]=max(length(g),1e-5); gDu[k]=fb.w;
@@ -466,6 +472,9 @@ float plateDis(int k0,int k1){
 #endif
 
 void main(){
+#ifdef HAND
+  float hInk=0.;
+#endif
   vec2 res=uF[8].xy;
   vec2 p=(gl_FragCoord.xy-.5*res)/res.y*2.;         // frame coordinates: y runs -1..1
   vec2 p0=p;
@@ -485,8 +494,8 @@ void main(){
   for(int i=0;i<NRIP;i++){
     vec4 r=uF[F_RIP+i];
     if(r.w==0.) continue;
-    vec2 d=p-r.xy; float l=length(d),fr=l-r.z,wd=.16+.1*r.z;
-    float wave=sin(fr*21.)*exp(-fr*fr/(wd*wd))*r.w*smoothstep(0.,.12,l);
+    vec2 d=p-r.xy; float l=length(d),fr=l-r.z,wd=.22+.14*r.z;
+    float wave=sin(fr*34.)*exp(-fr*fr/(wd*wd))*r.w*smoothstep(0.,.12,l);
     p+=d/max(l,1e-4)*wave;
     gRing+=wave;
   }
@@ -501,8 +510,9 @@ void main(){
     // Lines ride up over each bone by how proud of it they are, which is nothing at its edge, so at the outline the slip is the same
     // half a cycle whatever the pattern's size, and the two sides never happen to line up.
     p+=H_LEAN*hProud;
-    gLift+=.5*smoothstep(-.03,.03,hOnHand)+.3*hz;
+    gLift+=.3*hz;
     gBreak=sl>36.;
+    hInk=clamp(.5+hEdge*uF[F_HAND+1].w*res.y*.5,0.,1.);
   }
 #endif
 
@@ -540,7 +550,9 @@ void main(){
     float mA=prepare(0,0,bOuter?p:pz),mB=prepare(1,SLOT,bOuter?pz:p);
     float cA=mix(o,inkOf(0,0,FAM,th),mA),cB=mix(oB,inkOf(1,FAM,2*FAM,thB),mB);
     float outer=bOuter?cB:cA,inner=bOuter?cA:cB;
-    c=inWhite?outer*inner:1.-(1.-outer)*(1.-inner);
+    // Each sits in the other's phase: crossing the outer one's edge only flips the inner one, so its element is never a flat shape, only an edge moving through lines.
+    // At the end the frame is wholly inside the element, or the inner one has closed up to that element's colour, and what's left is one pattern alone.
+    c=outer+inner-2.*outer*inner; if(inWhite) c=1.-c;
     c2=c; cP=c;
 #ifdef PLATES
     if(plates){
@@ -549,12 +561,11 @@ void main(){
       plateMove(2*FAM);
       cA=mix(o,inkOf(0,0,FAM,th),mA); cB=mix(oB,inkOf(1,FAM,2*FAM,thB),mB);
       outer=bOuter?cB:cA; inner=bOuter?cA:cB;
-      float o0=bOuter?cA0:cB0,i0=bOuter?cB0:cA0;     // the first plate's, for what each pattern contributes here
-      cP=inWhite?outer*inner:1.-(1.-outer)*(1.-inner);
+      cP=outer+inner-2.*outer*inner; if(inWhite) cP=1.-cP;
       dP=abs(c-cP);
       if(min(c+cP,2.-c-cP)>dP){
         float dOuter=plateDis(bOuter?FAM:0,bOuter?2*FAM:FAM)*(bOuter?mB:mA),dInner=plateDis(bOuter?0:FAM,bOuter?FAM:2*FAM)*(bOuter?mA:mB);
-        dP=inWhite?dInner*outer*o0+dOuter*inner*i0:dInner*(1.-outer)*(1.-o0)+dOuter*(1.-inner)*(1.-i0);
+        dP=dOuter+dInner-2.*dOuter*dInner;           // a disagreement in either one, and not in both, is one in the XOR
       }
     }
 #endif
@@ -594,6 +605,10 @@ void main(){
     }
 #endif
   }
+#ifdef HAND
+  // The hand is the same pattern in negative, so it has a hard outline all the way round on anything, wherever the lines happen to fall
+  if(hInk>0.){ c=mix(c,1.-c,hInk); c2=mix(c2,1.-c2,hInk); cP=mix(cP,1.-cP,hInk); }
+#endif
   // the hand's moire: a lifted copy of the same sheet, XOR-ed on top
   vec4 so=uF[7];
   if(so.w>0.){

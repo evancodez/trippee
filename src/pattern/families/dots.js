@@ -32,7 +32,7 @@ export default [
       { path: 'p1.y', from: -2.1, to: -0.55 },
       { path: 'f1.l1', from: 0, to: -4.4, at: [0.3, 1] },
     ],
-    drive: lift(0.97),
+    drive: lift(0.72),
     axes: [
       { id: 'size', name: 'size', path: 'sum', min: -SUM(3), max: SUM(3) },
       { id: 'px', name: 'point x', path: 'p1.x', min: -2, max: 5 },

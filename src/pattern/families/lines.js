@@ -71,7 +71,7 @@ export default [
       { path: 'bulge.r', from: 0.8, to: 1.5 },
       { path: 'bulge.cx', from: -0.9, to: 0.7 },
       { path: 'bulge.cy', from: 0.25, to: -0.2 },
-      { path: 'freq', from: 0.3, to: 1.05, log: true },
+      { path: 'freq', from: 0.6, to: 1.05, log: true },
       { path: 'rot', from: 0, to: 0.5 },
     ],
     axes: [
@@ -101,33 +101,33 @@ export default [
 
   // Two nearly equal fine families: a huge lattice out of nothing. The fringes are the picture; the carrier never moves much.
   { id: 'lines.ghost', fine: true, name: 'Ghost', family: 'lines',
-    g: { fams: [plane(42, 90), { x: 0, y: 42 }], bulge: { a: 3, r: 0.9, cx: 0.2, cy: 0 } },
+    g: { fams: [plane(22, 90), { x: 0, y: 22 }], bulge: { a: 3, r: 0.9, cx: 0.2, cy: 0 } },
     flow: { 'f0.ph': 1 },
     arcs: [
-      { path: 'f1.y', from: 42.3, to: 47, log: true },
-      { path: 'f1.x', from: 0.3, to: 4.5, log: true },
+      { path: 'f1.y', from: 22.6, to: 26, log: true },
+      { path: 'f1.x', from: 0.6, to: 3.5, log: true },
       { path: 'bulge.a', from: 0.5, to: 6 },
       { path: 'bulge.cx', from: -0.8, to: 0.7 },
     ],
     axes: [
-      { id: 'beat', name: 'beat', path: 'f1.y', min: 42, max: 52 },
+      { id: 'beat', name: 'beat', path: 'f1.y', min: 22, max: 30 },
       { id: 'lean', name: 'lean', path: 'f1.x', min: -6, max: 6 },
       { id: 'swell', name: 'swell', path: 'bulge.a', min: 0, max: 10 },
     ],
     lambda: 0.2 },
 
   // Rings from two poles, slightly different in count: closed moire discs, as on the walls in Black Car.
-  { id: 'lines.discs', name: 'Moire Discs', family: 'lines',
-    g: { fams: [ring(30), ring(30, {}, 2)], 'p1.x': -0.1, 'p2.x': 0.1 },
+  { id: 'lines.discs', fine: true, name: 'Moire Discs', family: 'lines',
+    g: { fams: [ring(17), ring(17, {}, 2)], 'p1.x': -0.1, 'p2.x': 0.1 },
     flow: { 'f0.ph': 1 },
     arcs: [
       { path: 'p1.x', from: -0.015, to: -0.2 },
       { path: 'p2.x', from: 0.015, to: 0.2 },
-      { path: 'f1.r2', from: 30.2, to: 32 },
+      { path: 'f1.r2', from: 17.2, to: 18.4 },
     ],
     axes: [
       { id: 'apart', name: 'apart', path: 'p2.x', min: 0, max: 1.5 },
-      { id: 'count', name: 'count', path: 'f1.r2', min: 28, max: 36 },
+      { id: 'count', name: 'count', path: 'f1.r2', min: 15, max: 21 },
       { id: 'y', name: 'height', path: 'p2.y', min: -1, max: 1 },
     ],
     lambda: 0.2 },

@@ -66,7 +66,7 @@ export default [
     ],
     drive(out, c) {
       // a few rings at first, as many as the eye can read while it's seen from above, and then more again for the foreground
-      const k = chain(c.u, [[0, .12], [.45, .5], [.6, .5], [1, 1.6]]);
+      const k = chain(c.u, [[0, .32], [.45, .5], [.6, .5], [1, 1.6]]);
       out[c.OFF['conf.k']] = k;
       // The far field of 1/z is a constant, which k and the turn would otherwise sweep, flipping the whole frame again and again.
       // Taking it out of the phase leaves only the steady flow out there.
@@ -88,8 +88,8 @@ export default [
     arcs: [
       { path: 'p1.x', from: -.03, to: -1.25 },
       { path: 'p2.x', from: .03, to: 1.25 },
-      { path: 'f0.l1', from: 3.5, to: .9, log: true },
-      { path: 'f0.l2', from: 3.5, to: .9, log: true },
+      { path: 'f0.l1', from: 3.5, to: 1.5, log: true },
+      { path: 'f0.l2', from: 3.5, to: 1.5, log: true },
       { path: 'rot', from: -.5, to: .5 },
     ],
     axes: [
@@ -117,11 +117,11 @@ export default [
 
   // Bipolar checks: circles round two eyes, arcs running from one to the other. The eyes start nearly touching.
   { id: 'pole.dipole', name: 'Dipole', family: 'pole',
-    g: { fams: [{ l1: 1.6, l2: -1.6 }, { t1: 6, t2: -6 }], 'p1.x': -.1, 'p2.x': .1 },
+    g: { fams: [{ l1: 2.6, l2: -2.6 }, { t1: 6, t2: -6 }], 'p1.x': -.1, 'p2.x': .1 },
     flow: { 'f0.ph': -1 },
     arcs: [
-      { path: 'p1.x', from: -.1, to: -1.2, log: true },
-      { path: 'p2.x', from: .1, to: 1.2, log: true },
+      { path: 'p1.x', from: -.42, to: -1.2, log: true },
+      { path: 'p2.x', from: .42, to: 1.2, log: true },
       { path: 'rot', from: .9, to: -.2 },
     ],
     axes: [

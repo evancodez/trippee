@@ -9,7 +9,7 @@
 //   page.shot(name)               saves a screenshot of the whole page to <out>/<name>.png
 //   save(name, dataUrlOrBuffer)   writes a file to <out>
 // Each run gets its own Chrome, profile and debugging port, so runs can overlap safely.
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -47,6 +47,18 @@ async function takeSlot() {
     await new Promise(r => setTimeout(r, 1000));
   }
 }
+// A run that was killed can't close its Chrome, and those pile up and starve the GPU for everyone. The profile folder names its lab.
+function reapOrphans() {
+  try {
+    const out = execSync('ps -axo pid=,command=', { encoding: 'utf8', maxBuffer: 1 << 24 });
+    for (const line of out.split('\n')) {
+      const m = /^\s*(\d+)\s.*--user-data-dir=\S*trippee-lab-(\d+)-/.exec(line);
+      if (!m || line.includes('--type=')) continue;
+      try { process.kill(+m[2], 0); } catch { try { process.kill(+m[1], 'SIGKILL'); } catch {} }
+    }
+  } catch { /* never mind */ }
+}
+reapOrphans();
 const slot = await takeSlot();
 process.on('exit', () => { try { rmSync(slot, { force: true }); } catch {} });
 
@@ -57,7 +69,7 @@ mkdirSync(out, { recursive: true });
 const [w, h] = opt('size', '1280,720').split(',').map(Number);
 const url = opt('url', 'http://localhost:5300/');
 const port = await freePort();
-const profile = mkdtempSync(join(tmpdir(), 'trippee-lab-'));
+const profile = mkdtempSync(join(tmpdir(), `trippee-lab-${process.pid}-`));
 const proc = spawn(chrome, [
   ...(flag('headed') ? [] : ['--headless=new']),
   `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, `--window-size=${w},${h}`,
@@ -69,6 +81,8 @@ const proc = spawn(chrome, [
 let done = false;
 const finish = code => { if (done) return; done = true; try { proc.kill('SIGKILL'); } catch {} sleep(150).then(() => { try { rmSync(profile, { recursive: true, force: true }); } catch {} process.exit(code); }); };
 process.on('SIGINT', () => finish(130));
+process.on('SIGTERM', () => finish(143));
+process.on('SIGHUP', () => finish(129));
 
 for (let i = 0; i < 60; i++) { try { await fetch(`http://127.0.0.1:${port}/json/version`); break; } catch { await sleep(200); } }
 const created = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();

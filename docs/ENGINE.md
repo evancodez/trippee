@@ -1,10 +1,16 @@
 # The engine, as built
 
-**Patterns transform into each other, never through a solid and never laid over each other.** In the last `morph` seconds of a gesture
+**Patterns transform into each other, never through a solid and never through a flat shape.** In the last `morph` seconds of a gesture
 `frame.js` plans one of: `slide` (same kind of pattern: its numbers glide to the next one's), `bend` (flat patterns whose families all
 have partners: each line travels to its partner, phase by phase), or `dive` / `rise` (the general case: a flight into one element of the
-pattern, found by rendering it small, with the next pattern inside that element; or the reverse). While it happens both patterns' clocks
-ease to rest, so only the transformation moves. `tests/pops.mjs` looks for pops across many pairs.
+pattern, found by rendering it small, with the next pattern inside that element; or the reverse). In a flight the two are XOR-ed, so the outer
+pattern's edge is only a flip in the inner one's phase, and its element is never a slab of one colour: the inner pattern opens out of a solid
+everywhere at once, and by the end the frame is wholly in the element and one pattern is left. While it happens both patterns' clocks
+ease to rest, so only the transformation moves. A handover (a song arriving, another take, a seek) only ever flies in, because a film's clock
+can't stop for a rise. A slide looks before it leaves: its lines can't stray more than 3 times from the steady path between the two sizes, and
+at no point can it be mostly one colour, mostly grey or have a big element in it (`slideStaysBusy`), or it's a flight. Surfaces only slide between
+the same surface. A family with a huge duty is a constant (the dots' lift): it stays one through a slide. `tests/pops.mjs` looks for pops and the biggest step in a morph,
+`tests/flat.mjs` for large joined areas of one colour with room for a big disc.
 
 **The song acts on the sheet** (`src/score/react.js`, built by the composer, read in `frame()`): flow surges on the beat, lines fatten on
 it and the middle swells; the melody travels out through the lines; each chord is three lenses that arrive exactly with it; brightness
@@ -13,7 +19,7 @@ moves line density. `edits.reactAmt` scales all of it. A song moves through up t
 `pol0`, `pol1`,
 `inDur` and `outDur` below no longer exist. `stage.go`, `stage.snapshot` + `stage.morphFrom`, and `stage.setStatic` are how anything
 changes what's showing. Nothing is ever empty: past a surface or matte the same lines carry on flat, turned by `bg.rot` (`bg.on` 1 by
-default). Flat floors can't tip far enough to show their horizon. A gesture only rides the part of its long move that stays bold
+default). Floors (a plane or a slab) can't tip far enough to show their horizon. A gesture only rides the part of its long move that stays bold
 (`BOLD` in frame.js; a pattern with `fine: true` is exempt).
 
 **Version 2 adds** the effects bar, static, the hand, colour and pattern music, all below in "The modes".
@@ -110,15 +116,15 @@ shader goes behind its own `#ifdef`. `R.whenReady()` means the plain and flight 
 which is what `trippee.ready` waits for.
 
 **Static** (`stage.setStatic`). `stage.staticG` is a gesture with `freezeU` set; `frame()` shows it instead of the score, whatever the time is.
-It still flows, and a song's film carries on underneath it. `stage.go` while static morphs by handover and stays. Asked for mid-morph, the
+It still flows, and a song's film carries on underneath it. Its long move runs out over 1.5 s going in, and picks up over 1.5 s coming out (`freezeEase`, `thaw`). `stage.go` while static morphs by handover and stays. Asked for mid-morph, the
 morph finishes within 4 seconds first. The hand's zoom and line weight don't ease back in static, even with a song.
 
 **Effects** (`src/tools/effects.js`, `src/ui/effects.js`). `edits.ripples` (up to 8 `{x, y, radius, height}`), `edits.warp` (`{x, y, r, twist, pinch}`)
 and `edits.hand` (`{x, y, on, height, curl, spread, turn, size}`). All run through springs and real seconds, so they work while paused, static or
-in a song. The hand is applied once, to the coordinates, before the slots, so it survives a morph.
+in a song. The hand is applied once, to the coordinates, before the slots, so it survives a morph. It is the same pattern in negative across its whole silhouette, with a hard edge on anything; the outline is smoothed from how close each ray came to it.
 
 **Colour** (`src/beyond/beyond.js`, `app.beyond`). A second plate made from phases already computed, with no family evaluated again. `plate.y` 0
-takes the plain path, byte-identical to black and white. It can rest the picture's clock for a few seconds (the quadrature stop), which is only
+takes the plain path, byte-identical to black and white. The plates open to an eighth of a period at most: a misregistered print, never a poster. It can rest the picture's clock for a few seconds (the quadrature stop), which is only
 ever a lag: `edits.beyond.time(t, score)`. **The stage runs on that clock, so anything that plans a change uses `app.pictureT()`, not `app.t`.**
 A stop only counts if it starts after colour came on and after this score came up, and turning colour off in a stop waits for the clock to catch up.
 
@@ -156,7 +162,7 @@ node tools/lab.mjs tests/atlas.mjs --out lab-out/<you>                          
 
 Also `tests/v2.mjs` (`STAGE=boot,static,hand,music,clock,film,fps`: the bar and every mode together, with real input), `tests/effects.mjs`, `tests/beyond.mjs`,
 `tests/sound.mjs`, `tests/integrate.mjs` (boot, a real song through a real file drop, a recording), `tests/hand.mjs` (every verb), `tests/songend.mjs`,
-`tests/pops.mjs` (pops at the ends of morphs), `tests/fps.mjs`, `tests/governor.mjs` and `tests/film.mjs` (a film in real time, as a sheet). The lab always mutes Chrome.
+`tests/pops.mjs` (pops at the ends of morphs), `tests/flat.mjs` (morphs passing through one colour), `tests/fps.mjs`, `tests/governor.mjs` and `tests/film.mjs` (a film in real time, as a sheet). The lab always mutes Chrome.
 Then look at the image with the Read tool. `tools/look.mjs` gives contact sheets, time-slices and measurements; write your own lab
 script when you need to. Always use your own `--out lab-out/<you>` folder. Local songs for testing are in `media/` and served at
 `/media/ppp.mp3`, `/media/wildflower.mp3`, `/media/disclosure.mp3`, `/media/mgmt.mp3`. Never commit songs or video.

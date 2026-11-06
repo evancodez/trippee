@@ -3,6 +3,7 @@
 import { EFFECTS } from '../tools/effects.js';
 
 const AWAKE_MS = 2200;
+const NEAR = 124;       // how close to the bottom of the window the pointer has to be, with an effect in use, to bring the bar back
 const svg = body => `<svg viewBox="0 0 22 22" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const ICONS = {
   ripple: svg('<circle cx="11" cy="11" r="1.6" fill="currentColor"/><circle cx="11" cy="11" r="5.2"/><circle cx="11" cy="11" r="9"/>'),
@@ -34,8 +35,12 @@ export class EffectsBar {
 
     this.lastMove = -1e9; this.over = false;
     addEventListener('pointermove', e => {
-      this.lastMove = performance.now();
       this.over = !!e.target?.closest?.('#fx');
+      // In use, an effect has the picture to itself: the bar only comes up when the pointer goes to where it is, with nothing else floating about.
+      const quiet = !!hand.effect() && !this.over && innerHeight - e.clientY > NEAR;
+      document.body.classList.toggle('fx-quiet', quiet);
+      if (quiet) { if (el.classList.contains('awake') && performance.now() - this.lastMove > 500) this.wake(false); return; }
+      this.lastMove = performance.now();
       this.refresh();
       this.wake(true);
     }, { passive: true });

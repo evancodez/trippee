@@ -142,9 +142,10 @@ export class Stage {
     // Pick up the long move from where it was frozen. A gesture rides only the bold part of its move, so that's what u is measured in.
     const G = { ...held, freezeU: null, period: 0, plan: null };
     const [lo, hi] = boldRange(G);
-    const u = hi > lo ? Math.min(1, Math.max(0, ((held.freezeU ?? lo) - lo) / (hi - lo))) : 0;
-    const len = 30;
-    G.t0 = t - u * len; G.arcEnd = G.t0 + len; G.t1 = t + Math.max(10, len * (1 - u)); G.morph = 10;
+    const u = hi > lo ? Math.min(1, Math.max(0, (arcU(held, t) - lo) / (hi - lo))) : 0;
+    const len = 30, ease = 1.5 / len / 2;
+    G.t0 = t - (u - ease) * len; G.arcEnd = G.t0 + len; G.t1 = t + Math.max(10, len * (1 - u)); G.morph = 10;
+    G.thaw = { t0: t, tau: 1.5, a: ease };
     const g = this.score.gestures;
     g.length = 0; g.push(G);
     this.hold = false;
@@ -167,8 +168,8 @@ export class Stage {
 
   _enterStatic(t) {
     this._wantStatic = false;
-    const G = this.current(t);
-    this.staticG = { ...G, freezeU: arcU(G, t), morph: 0, plan: null };
+    const G = this.current(t), u = arcU(G, t), a = (arcU(G, t + 0.1) - u) / 0.1 * 0.75;    // 0.75: half the seconds it takes to come to rest
+    this.staticG = { ...G, freezeU: Math.min(1, Math.max(0, u + a)), freezeEase: { t0: t, tau: 1.5, a }, morph: 0, plan: null };
   }
 
   _handover(from, t, dur, dt = 0, phi = null) {

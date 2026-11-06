@@ -173,6 +173,7 @@ export class Renderer {
       const fbo = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      gl.bindTexture(gl.TEXTURE_2D, null);     // still bound on unit 0 it would be read while drawn to, and the draw fails
       this.probeT = { tex, fbo };
     }
     const saved = this.block.slice();
@@ -184,6 +185,8 @@ export class Renderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.probeT.fbo);
     gl.viewport(0, 0, W, H);
     gl.useProgram(this.prog);
+    gl.activeTexture(gl.TEXTURE0);
+    if (this.brushOk) gl.bindTexture(gl.TEXTURE_2D, this.brushA.tex);
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.block);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

@@ -25,9 +25,9 @@ export const palettes = [
 const lin = c => c.map(v => Math.pow(v / 255, 2.2));   // the shader raises to .4545, so a flat area comes back as exactly this byte
 for (const p of palettes) p.lin = [...lin(p.paper), ...lin(p.dark), ...lin(p.ink), ...lin(p.light)];
 
-const R_MAX = 0.25;       // a quarter period: the bands are all as wide as each other, and the staircase is even
-const SHIFT = 0.0035;     // the plate's actual shift, as a share of the frame's height. Gives fine lines their wash
-const FLOOR = 0.12;       // in a song's quietest sections: all but shut, a hairline of ink on each edge, so the mode is still plainly on
+const R_MAX = 0.12;       // an eighth of a period at most: a misregistered print, with the black and white still the picture, and never a four-band poster
+const SHIFT = 0.0016;     // the plate's actual shift, as a share of the frame's height. Gives fine lines their wash
+const FLOOR = 0.25;       // in a song's quietest sections: all but shut, a hairline of ink on each edge, so the mode is still plainly on
 
 // ---------------------------------------------------------------- how far each family's second plate runs ahead
 const weightCache = new WeakMap();
@@ -76,8 +76,7 @@ function weightsOf(pat) {
 function slideWeights(wa, wb, plan) {
   const w = wa.slice();
   plan.pair.forEach((j, i) => { if (j >= 0) w[i] = plan.flip[j] ? -wb[j] : wb[j]; });
-  const used = new Set(plan.pair.map((j, i) => (j >= 0 ? i : -1)).concat(plan.close));
-  for (const j of plan.open) { let free = 0; while (used.has(free) && free < FAMILIES - 1) free++; used.add(free); w[free] = wb[j]; }
+  for (const [j, at] of plan.places || []) w[at] = wb[j];
   return w;
 }
 // Four weights in one number, whole steps of 1/14, for one float of the block
@@ -123,7 +122,7 @@ function songTable(A) {
 }
 
 // With no song they breathe, on two slow waves that never quite line up. They never quite shut: this is the mode you asked for.
-const breath = t => 0.16 + 0.84 * smoother(0.5 + 0.5 * (0.72 * Math.sin(t * 2 * Math.PI / 47 - 0.8) + 0.28 * Math.sin(t * 2 * Math.PI / 71 + 1.4)));
+const breath = t => 0.3 + 0.7 * smoother(0.5 + 0.5 * (0.72 * Math.sin(t * 2 * Math.PI / 47 - 0.8) + 0.28 * Math.sin(t * 2 * Math.PI / 71 + 1.4)));
 
 // ---------------------------------------------------------------- the quadrature stop
 // Everything comes to rest for a few seconds with the plates at exactly a quarter period, then catches up. Only ever a lag, so nothing
@@ -241,10 +240,10 @@ export function init(app) {
     snap(open = null) { level = active ? 1 : 0; force = open; fade = 1; fadeFrom = null; if (active) app.edits.beyond = engine; else app.edits.beyond = null; },
   };
 
-  // How far "on" this is, and any pick by hand, move a little each frame: about six seconds, whatever the clock is doing.
+  // How far "on" this is moves a little each frame, about six seconds, and any pick by hand about two, so the mix of two inks doesn't linger.
   app.onFrame.push(() => {
     level = clamp(level + (active ? 1 : -1) / 360);
-    if (fade < 1) { fade = Math.min(1, fade + 1 / 420); if (fade === 1) fadeFrom = null; }
+    if (fade < 1) { fade = Math.min(1, fade + 1 / 130); if (fade === 1) fadeFrom = null; }
     paused = clamp(paused + (active && app.paused && !app.clock ? 1 : -1) / 180);
     // Turned off in the middle of a stop, its clock still has to catch up before it can let go, or the picture would jump.
     app.edits.beyond = active || level > 0 || (app.edits.beyond && engine.time(app.t, app.stage.score) !== app.t) ? engine : null;
