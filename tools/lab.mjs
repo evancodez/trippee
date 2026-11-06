@@ -2,6 +2,8 @@
 //
 //   node tools/lab.mjs <script.mjs> [--size 1280,720] [--url http://localhost:5300/] [--out lab-out] [--headed]
 //
+//   --strict-autoplay keeps Chrome's normal rule that sound needs a user gesture first
+//
 // The script is an ES module whose default export receives { page, save, sleep, out, log }:
 //   page.eval(fnOrExpr, ...args)  evaluates in the page (async is fine) and returns the JSON result
 //   page.shot(name)               saves a screenshot of the whole page to <out>/<name>.png
@@ -38,8 +40,8 @@ const profile = mkdtempSync(join(tmpdir(), 'trippee-lab-'));
 const proc = spawn(chrome, [
   ...(flag('headed') ? [] : ['--headless=new']),
   `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, `--window-size=${w},${h}`,
-  '--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--no-first-run', '--no-default-browser-check',
-  '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling',
+  '--mute-audio', '--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--no-first-run', '--no-default-browser-check',
+  ...(flag('strict-autoplay') ? [] : ['--autoplay-policy=no-user-gesture-required']), '--disable-background-timer-throttling',
   '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', 'about:blank',
 ], { stdio: 'ignore' });
 

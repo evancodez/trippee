@@ -55,6 +55,11 @@ says what shows beyond it (0 black, 1 white, 2 the other slot). `G.matte(t, G)` 
 interpolate), 2 room. `cam.pitch yaw roll dist`. `surf.map` 0 solid texture, 1 wrap round z (tunnel), 2 Mercator (sphere; lattices stay
 conformal), 3 wrap round y (tube). When wrapped, make the around-count a whole number of cycles: x coefficient times `surf.mapR` must be an integer.
 
+On a surface wrapped by angle (`surf.kind` 1 with `surf.map` 1, 2 or 3) the view acts on the camera like a lens, not on the texture, so
+`scale`, `rot`, `tx`, `ty`, a film's "turn" and the hand's zoom can't break the whole-number count and open a seam. `freq` only changes
+what runs along the surface. Mattes on those patterns stay on the lens with it. Where any surface gets finer than a pixel, its lines close up
+into solid black instead of averaging to grey; exact solids aren't affected.
+
 There is no lighting anywhere and there never will be. Depth comes only from how the pattern foreshortens.
 
 ## Scores
@@ -89,6 +94,9 @@ Three modules start themselves: `src/music/song.js`, `src/tools/input.js` and `s
 `over` (path→value, the knobs), `pressX pressY press pressR` (the ball under the sheet), `sheetX sheetY sheetRot sheet` (a lifted copy
 XOR-ed on top), `plate`, `invert`. `app.brush` = `{ x, y, r, dx, dy, on, heal }` paints a push for one frame (x, y in 0..1 from bottom left).
 
+`app.governor` (`src/gl/governor.js`) lowers `R.drawScale` through tiers if the frame rate stays under 55 fps, and raises it again during a
+solid frame. `R.draw` then renders to a smaller target and stretches it to fill. `canvas.width` and `canvas.height` never change for this.
+
 ## Testing
 
 `http://localhost:5300` is served already. `tools/lab.mjs` drives a real GPU-backed Chrome:
@@ -98,6 +106,8 @@ PATTERN=lattice.master node tools/lab.mjs tests/pattern.mjs --out lab-out/<you> 
 node tools/lab.mjs tests/atlas.mjs --out lab-out/<you>                            # all patterns at once
 ```
 
+Also `tests/integrate.mjs` (boot, a real song through a real file drop, a recording), `tests/hand.mjs` (every verb), `tests/songend.mjs`,
+`tests/solids.mjs` (every pattern lands exactly solid), `tests/fps.mjs`, `tests/governor.mjs` and `tests/film.mjs` (a film in real time, as a sheet).
 Then look at the image with the Read tool. `tools/look.mjs` gives contact sheets, time-slices and measurements; write your own lab
 script when you need to. Always use your own `--out lab-out/<you>` folder. Local songs for testing are in `media/` and served at
 `/media/ppp.mp3`, `/media/wildflower.mp3`, `/media/disclosure.mp3`, `/media/mgmt.mp3`. Never commit songs or video.

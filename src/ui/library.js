@@ -1,0 +1,115 @@
+// Every pattern by family, as real thumbnails. They're drawn by a second small renderer on a canvas nobody sees, one pattern
+// at a time between frames, so the main picture never hitches. The tile under the pointer plays.
+import { Renderer } from '../gl/renderer.js';
+import { frame } from '../score/frame.js';
+
+const TW = 264, TH = 148;
+const BODY = { pol0: 0, pol1: 0, inDur: 1, outDur: 1 };
+const scoreFor = p => ({ gestures: [{ t0: 0, t1: 26, arcEnd: 26, pattern: p, ...BODY, ...(p.gesture || {}) }], phi: t => t * 0.3 });
+
+export class Library {
+  constructor(app, hand, el) {
+    this.app = app; this.hand = hand; this.el = el;
+    this.tiles = new Map(); this.queue = []; this.R = null; this.hover = null;
+    el.innerHTML = `<header><span>patterns</span><span><button data-wander></button>&nbsp;&nbsp;&nbsp;<button data-close>close</button></span></header><div class="scroll"></div>`;
+    this.wanderBtn = el.querySelector('[data-wander]');
+    this.wanderBtn.onclick = () => { hand.wander(); this.mark(); };
+    el.querySelector('[data-close]').onclick = () => this.show(false);
+    const scroll = el.querySelector('.scroll');
+    for (const fam of app.families) {
+      const h = document.createElement('h3'); h.textContent = fam; scroll.appendChild(h);
+      const grid = document.createElement('div'); grid.className = 'grid'; scroll.appendChild(grid);
+      for (const p of app.patterns.filter(q => q.family === fam)) {
+        const b = document.createElement('button');
+        b.className = 'tile'; b.title = p.name;
+        const c = document.createElement('canvas'); c.width = TW; c.height = TH;
+        const s = document.createElement('span'); s.textContent = p.name.toLowerCase();
+        b.append(c, s); grid.appendChild(b);
+        b.onclick = () => { hand.go(p.id); this.mark(p); };
+        b.onpointerenter = () => this.play(p);
+        b.onpointerleave = () => { if (this.hover?.p === p) this.stopPlaying(true); };
+        this.tiles.set(p.id, { b, c, g: c.getContext('2d', { alpha: false }), p, done: false });
+      }
+    }
+    hand.on('pattern', () => this.mark());
+    hand.on('going', p => this.mark(p));
+    hand.on('wander', () => { this.heading = null; this.mark(); });
+    this.mark();
+  }
+
+  get open() { return !this.el.hidden; }
+  show(on = !this.open) {
+    this.el.hidden = !on;
+    if (on) { this.mark(); this.begin(); const here = this.tiles.get(this.app.lastFrame?.G?.pattern?.id); here?.b.scrollIntoView({ block: 'nearest' }); }
+  }
+
+  mark(p) {
+    if (p) this.heading = p;
+    const cur = this.app.lastFrame?.G?.pattern;
+    if (!p && this.heading === cur) this.heading = null;
+    const id = (this.heading ?? cur)?.id;
+    for (const t of this.tiles.values()) t.b.classList.toggle('here', t.p.id === id);
+    const held = this.hand.isHeld();
+    this.wanderBtn.textContent = 'wander';
+    this.wanderBtn.classList.toggle('on', !held);
+  }
+
+  // The second renderer only exists once someone wants to look.
+  async begin() {
+    if (this.started) return;
+    this.started = true;
+    try {
+      const cv = document.createElement('canvas');
+      this.R = new Renderer(cv);
+      this.R.resize(TW, TH, 1);
+      await this.R.whenReady();
+    } catch (e) { console.warn('thumbnails unavailable', e); return; }
+    this.queue = [...this.tiles.values()];
+    // nearest the visible part first would be nicer; top to bottom reads as it arrives
+    this.pump();
+  }
+
+  drawTile(t, time) {
+    frame(scoreFor(t.p), time, this.R, null);
+    this.R.draw();
+    t.g.drawImage(this.R.canvas, 0, 0);
+  }
+
+  pump() {
+    const t = this.queue.shift();
+    if (!t) return;
+    if (!t.done) {
+      try { this.drawTile(t, 13); t.done = true; } catch (e) { console.warn('thumbnail failed', t.p.id, e); }
+    }
+    this.lastDraw = performance.now();
+    // one per pause; never two in a row, whatever the frame rate
+    setTimeout(() => requestAnimationFrame(() => this.pump()), 24);
+  }
+
+  play(p) {
+    if (!this.R?.ready) return;
+    this.stopPlaying(false);
+    const t = this.tiles.get(p.id);
+    const start = performance.now();
+    const run = now => {
+      if (this.hover !== h) return;
+      // the whole long move in about nine seconds, and back
+      const s = (now - start) / 1000, w = (0.5 + s / 9) % 2, u = w < 1 ? w : 2 - w;
+      if (!t.skip) { try { frame(this.scoreForPlay(t.p, u, s), 0, this.R, null); this.R.draw(); t.g.drawImage(this.R.canvas, 0, 0); } catch { /* the still stays */ } }
+      t.skip = !t.skip;
+      requestAnimationFrame(run);
+    };
+    const h = this.hover = { p, t };
+    requestAnimationFrame(run);
+  }
+
+  scoreForPlay(p, u, s) {
+    return { gestures: [{ t0: -u * 26, t1: 26 - u * 26, arcEnd: 26 - u * 26, pattern: p, ...BODY, ...(p.gesture || {}) }], phi: () => 3.9 + s * 0.3 };
+  }
+
+  stopPlaying(redraw) {
+    const h = this.hover;
+    this.hover = null;
+    if (redraw && h && this.R?.ready) requestAnimationFrame(() => { if (!this.hover) { try { this.drawTile(h.t, 13); } catch { /* keep what's there */ } } });
+  }
+}

@@ -1,11 +1,22 @@
 // Waves: rolling sheets of lines and checks, in pure black and white. The surface reads as water or silk only from how the lines crowd.
 import { plane, ring } from '../kit.js';
 import { Q } from '../genome.js';
+import { thetaAt } from '../../score/frame.js';
+import { lerp, smoother } from '../../score/curves.js';
 
 const TAU = Math.PI * 2;
 const lam = k => (1 / k) / 3.56;
 // The sheet's three waves all close when sheet.t has advanced by 10 pi, so a half turn per cycle returns every ten cycles, at the film's speed.
 const ROLL = Math.PI;
+
+// The sky beyond a floor's horizon stays black whatever the threshold does, so a floor can't close to white with its horizon up.
+// If the frame closes towards white while the sky is showing, the camera tips down and takes the horizon out of frame first.
+const CLEAR_PITCH = 0.98;   // at the default camera distance, no sky is in frame below this pitch
+function tipDown(out, { t, OFF, G }) {
+  if (!G) return;
+  const k = smoother(-thetaAt(G, t, 1) * 1.2);
+  if (k > 0) out[OFF['cam.pitch']] = Math.min(out[OFF['cam.pitch']], lerp(out[OFF['cam.pitch']], CLEAR_PITCH, k));
+}
 
 export default [
   // A sheet of lines rolling under its own weight: the parallax map folds, and lines hide behind the crests.
@@ -44,6 +55,7 @@ export default [
       { id: 'chop', name: 'chop', path: 'sheet.a', min: 0, max: 0.3 },
       { id: 'lines', name: 'lines', path: 'freq', min: 0.3, max: 6, log: true },
     ],
+    drive: tipDown,
     lambda: lam(2) },
 
   // A flag of checks: the same rolling sheet with a second family, so it reads as cloth.
@@ -66,7 +78,7 @@ export default [
   // Riley's Current: one wave repeated at an angle to itself, so the lines crowd along false ridges and the flat sheet looks corrugated.
   { id: 'waves.current', name: 'Current', family: 'waves',
     g: { fams: [plane(5, 0)], bend1: { a: 0.3, f: 6, ang: Math.PI / 4 } },
-    flow: { 'bend1.ph': TAU },
+    flow: { 'bend1.ph': ROLL },   // a half turn per cycle: it closes every two
     arcs: [
       { path: 'bend1.a', from: 0.05, to: 0.44 },
       { path: 'bend1.f', from: 7, to: 3.5 },
@@ -95,6 +107,7 @@ export default [
       { id: 'steep', name: 'steep', path: 'ripple.a', min: 0, max: 0.13 },
       { id: 'lines', name: 'rings', path: 'f0.r1', min: 0.5, max: 12, log: true },
     ],
+    drive: tipDown,
     lambda: lam(3) },
 
   // Dunes: a check floor rolled into hills that hide behind each other, going away to a hard black sky.
@@ -113,6 +126,7 @@ export default [
       { id: 'length', name: 'length', path: 'sheet.f', min: 0.5, max: 5, log: true },
       { id: 'checks', name: 'checks', path: 'freq', min: 0.3, max: 6, log: true },
     ],
+    drive: tipDown,
     lambda: lam(1.4) },
 
   // Silk: fine lines draped in long folds. The lines stay fine, so the fold lines are drawn by nothing but crowding.

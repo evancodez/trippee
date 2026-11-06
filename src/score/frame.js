@@ -42,13 +42,26 @@ export function fillSlot(out, G, t, pat, opts = {}) {
   if (G.over) for (const p in G.over) out[pathOff(p)] = G.over[p];
 }
 
+// Leaves the solid at a finite rate. Nothing can be seen until the threshold enters the field's range, so the kink is hidden,
+// and the first speck comes exactly when it's asked for, rather than after a second of nothing moving.
+const CRISP_A = 0.5, CRISP_S = smoother(CRISP_A);
+const crispEase = u => (smoother(CRISP_A + (1 - CRISP_A) * clamp(u)) - CRISP_S) / (1 - CRISP_S);
+
 // The threshold for a gesture: out of a solid, a long body, into the next solid.
+// holdIn and holdOut keep the solid on screen: the sweep out starts holdIn after t0, the sweep in finishes holdOut before t1.
 export function thetaAt(G, t, solid) {
   const body = G.thetaBody ? evalTrack(G.thetaBody, t) : 0;
   const s0 = (G.pol0 || 0) * solid, s1 = (G.pol1 || 0) * solid;
+  const hi = G.holdIn || 0, ho = G.holdOut || 0;
   let th = body;
-  if (t < G.t0 + G.inDur && G.pol0) th = lerp(s0, body, smoother((t - G.t0) / G.inDur));
-  if (t > G.t1 - G.outDur && G.pol1) th = lerp(body, s1, smoother((t - (G.t1 - G.outDur)) / G.outDur));
+  if (G.pol0 && t < G.t0 + hi + G.inDur) {
+    const u = (t - G.t0 - hi) / G.inDur;
+    th = lerp(s0, body, G.crisp ? crispEase(u) : smoother(u));
+  }
+  if (G.pol1 && t > G.t1 - ho - G.outDur) {
+    const u = (t - (G.t1 - ho - G.outDur)) / G.outDur;
+    th = lerp(th, s1, G.crisp ? 1 - crispEase(1 - u) : smoother(u));
+  }
   return th;
 }
 

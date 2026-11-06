@@ -18,8 +18,8 @@ export default [
     flow: { 'f0.ph': 1, 'f1.ph': -1 },
     arcs: [
       { path: 'scale', from: 0.2, to: 6, log: true },
-      { path: 'wob', from: 0.01, to: 0.085 },
-      { path: 'wobF', from: 0.5, to: 15, log: true },
+      { path: 'wob', from: 0.01, to: 0.055 },
+      { path: 'wobF', from: 0.5, to: 10, log: true },
       { path: 'wobT', from: 0, to: 5 },
       { path: 'rot', from: -0.1, to: 0.32 },
     ],
@@ -85,8 +85,8 @@ export default [
     arcs: [
       { path: 'teeth.v', from: 0, to: 3.75 },
       { path: 'bowtie.a', from: 0, to: 0.97 },
-      { path: 'bowtie.x0', from: -4, to: -0.45 },
-      { path: 'scale', from: 0.42, to: 2.1, log: true },
+      { path: 'bowtie.x0', from: -5, to: -0.8 },
+      { path: 'scale', from: 0.3, to: 2.1, log: true },
     ],
     axes: [
       { id: 'slide', name: 'slide', path: 'teeth.v', min: -5, max: 5 },

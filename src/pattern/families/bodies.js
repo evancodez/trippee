@@ -14,7 +14,9 @@ function surround(out, { G, t, OFF }, cover) {
   const k = G.pol1 === land ? smoother((t - (G.t1 - (G.outDur || 1))) / (G.outDur || 1)) : 0;
   if (k > 0) cover(k);
 }
-const swellTo = (out, OFF, ww) => k => { out[OFF['q.ww']] = lerp(out[OFF['q.ww']], ww, k); };
+// log, so the apparent growth is steady rather than a rush at the start
+const logLerp = (a, b, k) => a * Math.pow(b / a, k);
+const swellTo = (out, OFF, ww) => k => { out[OFF['q.ww']] = logLerp(out[OFF['q.ww']], ww, k); };
 
 // Dots from a product of waves. A constant third family, let in by a tiny `sum`, lifts the field's level without changing its
 // shape: white dots below 0, plain checks at 0, black dots above. At level 0 the sweeps at each end are still only specks.
@@ -28,13 +30,13 @@ export default [
   { id: 'body.planet', name: 'Planet', family: 'body',
     g: {
       round: 1, fams: [plane(1, 0), plane(1, 90), LIFT],
-      surf: { kind: 1, map: 2, mapR: 36 }, q: Q.sphere(.3), cam: { pitch: .5, roll: .4, dist: 2.4 },
+      surf: { kind: 1, map: 2, mapR: 28 }, q: Q.sphere(.3), cam: { pitch: .5, roll: .4, dist: 2.4 },
     },
-    flow: { 'surf.spin': TAU / 36 * 2 },
+    flow: { 'surf.spin': TAU / 28 * 2 },
     arcs: [
-      { path: 'q.ww', from: -.05, to: -2.8, log: true, at: [0, .72] },
-      { path: 'cam.pitch', from: .6, to: -.55 },
-      { path: 'cam.roll', from: .5, to: -.2 },
+      { path: 'q.ww', from: -.1, to: -2.8, log: true, at: [0, .72] },
+      { path: 'cam.pitch', from: .6, to: -1.2 },
+      { path: 'cam.roll', from: .5, to: -.35 },
     ],
     drive(out, c) {
       surround(out, c, swellTo(out, c.OFF, -2.8));
@@ -74,13 +76,13 @@ export default [
     },
     flow: { 'f0.ph': -1 },
     arcs: [
-      { path: 'q.ww', from: -.012, to: -.56, log: true },
+      { path: 'q.ww', from: -.03, to: -.56, log: true },
       { path: 'cam.pitch', from: 0, to: 1.22 },
       { path: 'cam.roll', from: 1, to: .3 },
     ],
     drive(out, c) {
       // it can't swell into the camera, so it comes back upright as it fills the frame
-      surround(out, c, k => { out[c.OFF['q.ww']] = lerp(out[c.OFF['q.ww']], -3.4, k); out[c.OFF['cam.pitch']] = lerp(out[c.OFF['cam.pitch']], .5, k); });
+      surround(out, c, k => { out[c.OFF['q.ww']] = logLerp(out[c.OFF['q.ww']], -3.4, k); out[c.OFF['cam.pitch']] = lerp(out[c.OFF['cam.pitch']], .5, k); });
     },
     axes: [
       { id: 'size', name: 'girth', path: 'q.ww', min: -.9, max: -.005 },
@@ -116,8 +118,8 @@ export default [
     },
     flow: { 'f0.ph': -1 },
     arcs: [
-      { path: 'f0.y', from: .02, to: 1.5, log: true },
-      { path: 'cam.pitch', from: .8, to: -.3 },
+      { path: 'f0.y', from: .02, to: 1.15, log: true },
+      { path: 'cam.pitch', from: .62, to: -.3 },      // past .79 the camera would be through the wall
     ],
     axes: [
       { id: 'pitch', name: 'look aside', path: 'cam.pitch', min: -1.2, max: 1.2 },
@@ -138,7 +140,7 @@ export default [
       { path: 'scale', from: .65, to: 1.3, log: true },
     ],
     drive(out, c) {
-      surround(out, c, k => { out[c.OFF['q.zw']] = lerp(out[c.OFF['q.zw']], -9, k); out[c.OFF['cam.pitch']] = lerp(out[c.OFF['cam.pitch']], .2, k); });
+      surround(out, c, k => { out[c.OFF['q.zw']] = logLerp(out[c.OFF['q.zw']], -9, k); out[c.OFF['cam.pitch']] = lerp(out[c.OFF['cam.pitch']], .2, k); });
     },
     axes: [
       { id: 'c', name: 'flatness', path: 'q.zw', min: -8, max: -.5 },
@@ -147,20 +149,21 @@ export default [
     ],
     lambda: .1 },
 
-  // Inside a bowl with rings and rays on it, looking further and further up its far wall.
+  // Inside a bowl with rings and rays on it. The camera swings from over the bottom right round to look up and out of the
+  // mouth, where the rings run away to a point. The vertex sits well below the camera's orbit, so it can never leave the bowl.
   { id: 'body.bowl', name: 'Bowl', family: 'body',
     g: {
       fams: [{ r1: 1.2 }, { t1: 12 }],
-      surf: { kind: 1 }, q: Q.bowl(2.5), cam: { pitch: .35, dist: 1.6 },
+      surf: { kind: 1 }, q: { xx: 1, yy: 1, zw: -1, ww: -4 }, cam: { pitch: .2, dist: 1 },
     },
     flow: { 'f0.ph': -1 },
     arcs: [
-      { path: 'cam.pitch', from: .35, to: 1.25 },
-      { path: 'q.zw', from: -6, to: -2.5, log: true },
+      { path: 'cam.pitch', from: .2, to: 2.65 },
+      { path: 'f0.r1', from: 2.6, to: .5, log: true },
     ],
     axes: [
-      { id: 'pitch', name: 'tilt', path: 'cam.pitch', min: 0, max: 1.25 },
-      { id: 'c', name: 'steep', path: 'q.zw', min: -8, max: -2.4 },
+      { id: 'pitch', name: 'look round', path: 'cam.pitch', min: 0, max: 3.14 },
+      { id: 'roll', name: 'lean', path: 'cam.roll', min: -3.14, max: 3.14 },
       { id: 'rings', name: 'rings', path: 'f0.r1', min: .3, max: 5, log: true },
     ],
     lambda: .1 },
@@ -187,14 +190,14 @@ export default [
   // A zebra ball that lets out its waist: ball, then tube, then hourglass, on a single number.
   { id: 'body.vase', name: 'Vase', family: 'body',
     g: {
-      fams: [{ y: 5 }],
-      surf: { kind: 1, map: 3, mapR: 8 }, q: { xx: 1, zz: 1, yy: 1, ww: -.5, zw: 0 }, cam: { pitch: .3, dist: 2.6 },
+      fams: [{ x: 1, y: 5 }],
+      surf: { kind: 1, map: 3, mapR: 2 }, q: { xx: 1, zz: 1, yy: 1, ww: -.5, zw: 0 }, cam: { pitch: .3, dist: 2.6 },
     },
     flow: { 'f0.ph': -1 },
     arcs: [
       { path: 'q.yy', from: 1, to: -1 },
-      { path: 'q.ww', from: -.08, to: -.5, log: true },
-      { path: 'cam.pitch', from: .45, to: -.15 },
+      { path: 'q.ww', from: -.13, to: -.5, log: true },
+      { path: 'cam.pitch', from: .55, to: -.35 },
     ],
     drive(out, c) { surround(out, c, swellTo(out, c.OFF, -3)); },
     axes: [

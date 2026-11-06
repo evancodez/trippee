@@ -24,14 +24,14 @@ export default [
   // The film's own, 262 to 280 s. Dots huge far from a pole and tiny at it. The pole comes in from outside the frame, so one big
   // dot becomes a whole falling field, while the spokes wind up into a spiral. They inflate, merge, flip, and shrink on the clock.
   { id: 'dots.inflate', name: 'Inflate', family: 'dots',
-    g: { round: 1, fams: [{ l1: 4.775 }, { t1: 30 }, LIFT], 'p1.x': 3.8, 'p1.y': -2.3 },
+    g: { round: 1, fams: [{ l1: 3.82 }, { t1: 24 }, LIFT], 'p1.x': 3.8, 'p1.y': -2.3 },
     flow: { 'f0.ph': 1 },
     arcs: [
       { path: 'p1.x', from: 3.4, to: 1.05 },
       { path: 'p1.y', from: -2.1, to: -0.55 },
-      { path: 'f1.l1', from: 0, to: -5.5, at: [0.3, 1] },
+      { path: 'f1.l1', from: 0, to: -4.4, at: [0.3, 1] },
     ],
-    drive: lift(1.03),
+    drive: lift(0.97),
     axes: [
       { id: 'size', name: 'size', path: 'sum', min: -SUM(3), max: SUM(3) },
       { id: 'px', name: 'point x', path: 'p1.x', min: -2, max: 5 },
@@ -62,13 +62,12 @@ export default [
   // power map from a pole beyond the left edge, so they stay round. The gradient grows out of a flat field and then spirals.
   { id: 'dots.gradient', name: 'Gradient', family: 'dots',
     g: { round: 1, fams: [plane(3.2, 45), plane(3.2, 135), LIFT],
-      conf: { amt: 1, lam: 1, gam: 0, k: 1, x1: -2.05, y1: 0, c1: 1 } },
+      conf: { amt: 1, lam: 1, gam: 0, k: 1, x1: -2.05, y1: -0.3, c1: 1 } },
     flow: { 'f0.ph': 1 },
     arcs: [
       { path: 'conf.lam', from: 0.95, to: 0.08 },
       { path: 'conf.gam', from: 0, to: 1.25, at: [0.35, 1] },
-      { path: 'conf.y1', from: -0.9, to: 0.7 },
-    ],
+          ],
     drive: lift(0.95, 1, 0.5),
     axes: [
       { id: 'size', name: 'size', path: 'sum', min: -SUM(3), max: SUM(3) },
@@ -86,8 +85,7 @@ export default [
     arcs: [
       { path: 'q.ww', from: -1.5, to: -0.6, log: true },
       { path: 'cam.pitch', from: -0.08, to: 0.48 },
-      { path: 'cam.yaw', from: 0, to: 0.6 },
-    ],
+          ],
     drive(out, { u, phi, OFF }) {
       out[OFF.sum] = sumFor(breathe(phi, u, 0.85, 1, 0.75));
       // the far end of the tunnel is a black hole rather than grey dust. It closes before the landing, so a white solid is white.
@@ -108,14 +106,17 @@ export default [
   // Curved surfaces in black: a flat sheet swells, tears down the middle, and pulls back as two lobes crowding towards their limbs.
   { id: 'dots.lobes', name: 'Lobes', family: 'dots',
     g: { round: 1, fams: [{ y: 3.4 }, { r1: 3.4, z: 3 }, LIFT], 'p1.ay': 0, surf: { kind: 1 },
-      q: { xx: 0, yy: 0, zz: 0, ww: 0, zw: 0.5 }, cam: { dist: 2.4 } },
+      q: { xx: 0, yy: 0, zz: 0, ww: 0, zw: -0.5 }, cam: { dist: 2.4 } },
     flow: { 'f0.ph': 1 },
     drive(out, { u, phi, OFF }) {
-      // the plane z=0 slides into the two-sheet hyperboloid x² - y² - z² = r² and back, as one quadric, so it never jumps
-      const k = smoother((u - 0.12) / 0.33) * smoother((0.96 - u) / 0.34);
-      const r2 = 0.05 + 0.5 * u;
+      // The plane z=0 slides into the two-sheet hyperboloid x² - y² - z² = r² and back, as one quadric. The linear term is negative so
+      // the sheet sags away from the camera into a well; the other sign sends its far sheet through the lens, and that's a jump cut.
+      // The well tears open at k = 0.54, and k is eased to creep through there so the tear takes seconds.
+      const creep = v => { const y = 2 * smoother(v) - 1; return 0.54 + (y < 0 ? 0.54 : 0.46) * (0.15 * y + 0.85 * y * y * y); };
+      const k = creep((u - 0.1) / 0.36) * creep((0.98 - u) / 0.36);
+      const r2 = 0.3;
       out[OFF['q.xx']] = k; out[OFF['q.yy']] = -k * 0.6; out[OFF['q.zz']] = -k * 0.6;
-      out[OFF['q.ww']] = -k * r2; out[OFF['q.zw']] = 0.5 * (1 - k);
+      out[OFF['q.ww']] = -k * r2; out[OFF['q.zw']] = -0.5 * (1 - k);
       out[OFF.sum] = sumFor(breathe(phi, u, 0.7, 1, 0.25));
     },
     axes: [

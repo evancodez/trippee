@@ -6,6 +6,13 @@ import { smoother, clamp, lerp } from '../../score/curves.js';
 
 const PI = Math.PI;
 const smoothMax = (a, b) => Math.pow(a ** 4 + b ** 4, 1 / 4);
+// A number that makes several eased moves in a row: [u, value] knots, smooth at each.
+const chain = (u, knots) => {
+  let i = 0;
+  while (i < knots.length - 2 && u > knots[i + 1][0]) i++;
+  const [u0, v0] = knots[i], [u1, v1] = knots[i + 1];
+  return lerp(v0, v1, smoother((u - u0) / (u1 - u0)));
+};
 
 // How far into the way out towards a white solid. A sky can't go white, so the horizon lifts off the top of the frame instead.
 const toWhite = (G, t) => G.pol1 === -1 ? smoother((t - (G.t1 - (G.outDur || 1))) / (G.outDur || 1)) : 0;
@@ -22,7 +29,7 @@ export default [
   // One number, lambda, runs parallel stripes through confocal parabolas and rings to circles tangent at the poles.
   { id: 'pole.garden', name: 'Garden', family: 'pole',
     g: {
-      fams: [{ y: 1.1 }], rot: PI / 2,
+      fams: [{ y: 1.1 }],
       conf: { amt: 1, lam: 1, gam: 0, k: 1.4, c1: 1, c2: 1, x1: -.42, y1: 0, x2: .42, y2: 0 },
     },
     flow: { 'f0.ph': -1 },
@@ -31,6 +38,7 @@ export default [
       { path: 'conf.k', from: 2.4, to: .5, log: true },
       { path: 'conf.x1', from: -.9, to: -.26 },
       { path: 'conf.x2', from: .9, to: .26 },
+      { path: 'rot', from: .35, to: -.2 },
     ],
     axes: [
       { id: 'lam', name: 'stripes to rings to circles', path: 'conf.lam', min: -1, max: 1 },
@@ -45,19 +53,26 @@ export default [
   { id: 'pole.woo', name: 'Pools', family: 'pole',
     g: {
       fams: [{ x: 1 }],
-      conf: { amt: 1, lam: -1, gam: 0, k: .12, c1: 1, c2: 1, x1: 0, y1: .2, x2: 0, y2: -.2, x3: 0, y3: .2 },
+      conf: { amt: 1, lam: -1, gam: 0, k: .12, c1: 1, c2: 1, x1: 0, y1: .32, x2: 0, y2: -.32, x3: 0, y3: .32 },
       surf: { kind: 1 }, q: Q.plane, cam: { pitch: 0, dist: 2.4 },
     },
     flow: { 'f0.ph': -1 },
     arcs: [
-      { path: 'conf.k', from: .12, to: 1.1, log: true, at: [0, .55] },
-      { path: 'conf.gam', from: 0, to: 1.1, at: [.3, .75] },
+            { path: 'conf.gam', from: 0, to: 1.1, at: [.3, .75] },
       { path: 'conf.x3', from: 0, to: .85, at: [.4, .85] },
-      { path: 'conf.y3', from: .2, to: 1.3, at: [.4, .85] },
+      { path: 'conf.y3', from: .32, to: 1.5, at: [.4, .85] },
       { path: 'cam.pitch', from: 0, to: 1.36, at: [.42, 1] },
       { path: 'ty', from: 0, to: -1.25, at: [.5, 1] },
     ],
-    drive(out, c) { horizon(out, c, .92); },
+    drive(out, c) {
+      // a few rings at first, as many as the eye can read while it's seen from above, and then more again for the foreground
+      const k = chain(c.u, [[0, .12], [.45, .5], [.6, .5], [1, 1.6]]);
+      out[c.OFF['conf.k']] = k;
+      // The far field of 1/z is a constant, which k and the turn would otherwise sweep, flipping the whole frame again and again.
+      // Taking it out of the phase leaves only the steady flow out there.
+      out[c.OFF['f0.ph']] += 3 * k * Math.sin(out[c.OFF['conf.gam']]);
+      horizon(out, c, .92);
+    },
     axes: [
       { id: 'pitch', name: 'tilt', path: 'cam.pitch', min: 0, max: 1.5 },
       { id: 'k', name: 'how many', path: 'conf.k', min: .03, max: 3, log: true },

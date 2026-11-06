@@ -1,8 +1,577 @@
-// The hand. Placeholder keys until the verbs land.
-export function init(app) {
+// The hand. Every verb writes to app.edits through a spring, once a frame, and the picture does all the moving.
+//
+//   move            Press    a ball under the sheet, about 250 ms behind the cursor
+//   drag            Push     comb the sheet; dents stay and relax slowly
+//   scroll, pinch   Journey  log zoom about the cursor
+//   sideways, shift+scroll   Duty, an endless corridor: past each solid is the next pattern
+//   alt+drag        Sheet    a lifted copy XOR-ed on top, with detents where the fringes lock into rosettes
+import { OFF, SNAP } from '../pattern/layout.js';
+import { clamp, smoother } from '../score/curves.js';
+import { fillSlot, thetaAt } from '../score/frame.js';
+import { Spring } from './spring.js';
+import { detentsFor, magnet } from './moire.js';
+
+const PRESS_AMOUNT = -0.46, PRESS_R = 0.46, PRESS_LAG = 8, PRESS_IDLE = 3;   // lag: a critical spring trails a moving target by 2/w
+const MEMORY = 20;                  // seconds for a dent to relax by 1/e
+const HEAL_TICK = 1 / 6;            // the push texture is half-float, so it heals in steps big enough to register
+const BRUSH_R = 0.1;                // in fractions of the picture's height
+const J_RATE = 2.2;                 // ln-units per second, Journey's top speed
+const DUTY_RATE = 0.95;             // corridor units per second. One room is 2 units.
+const DWELL = 0.07;                 // how far either side of a room's end the frame sits exactly solid
+const SHEET_LIFT = 0.55;            // seconds for the copy to come up or go down
+const ARC_SWING = 44;               // a held pattern swings through its long move with this period
+
+const hand = {
+  app: null,
+  listeners: {},
+  on(name, fn) { (this.listeners[name] ||= []).push(fn); },
+  emit(name, ...a) { for (const f of this.listeners[name] || []) f(...a); },
+  calm: false,
+  corridor: false,    // the hand has taken the threshold; the pattern is held
+  speed: 1,           // flow, the knob
+  spinRate: 0,        // radians per second, the knob
+  readout: null,      // what the sheet's doing, for the interface
+  dragging: false,
+};
+export { hand };
+
+let app, canvas, stage, R, edits;
+const scratch = new Float32Array(4096);
+
+// where the hand is
+const m = { cx: 0, cy: 0, over: false, last: -1e9, seen: false, shift: false };
+const press = { x: new Spring(0, PRESS_LAG), y: new Spring(0, PRESS_LAG), a: new Spring(0, 5) };
+
+// Push
+const push = { on: false, x: new Spring(0, 40), y: new Spring(0, 40), px: 0, py: 0, healAcc: 0, boostUntil: 0 };
+
+// Journey
+const J = { s: new Spring(0, 7), target: 0, lo: -3, hi: 5, jx: 0, jy: 0, touched: -1e9, lift: new Spring(0, 1.2), prev: 0, clearing: false };
+
+// Duty: the corridor. Room r spans w in [2r-1, 2r+1]. Past each end is the next room, through a solid that both rooms share.
+const D = { s: new Spring(0, 7), target: 0, room: 0, base: 0, touched: -1e9 };
+
+// Sheet
+const S = {
+  active: false, on: false, k: 0, lift: 0,
+  rotH: 0, rot: new Spring(0, 30), rx: 0, ry: 0,
+  shiftH: 0, perpH: 0, sx: new Spring(0, 30), sy: new Spring(0, 30),
+  pivot: [0, 0], detents: [], lastCx: 0, lastCy: 0, dir: [1, 0],
+};
+
+// Knobs: path -> { s: Spring, target, release }
+const knobs = new Map();
+const speedS = new Spring(1, 5), spinS = new Spring(0, 2);
+let clearingSpin = false;
+
+let lastAsked = null, curPat = null, curG = null, lastNow = 0, lastT = 0, wheelAxis = null, wheelLast = -1e9;
+
+// A veil: the threshold closes to a solid, something is swapped unseen, and it opens again. Works whatever the film is doing.
+const V = { phase: 0, t: 0, pol: 1, fn: null, close: 1.5, open: 2.4 };
+const nowS = () => performance.now() / 1000;
+
+function toPicture(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  return [(cx - r.left - r.width / 2) / r.height * 2, -(cy - r.top - r.height / 2) / r.height * 2];
+}
+
+// The finest cycle the current numbers draw, in cycles per picture unit, before the view's scale. An estimate is enough.
+function fineness(A) {
+  let k = 0;
+  for (let i = 0; i < 4; i++) {
+    if (!A[OFF[`f${i}.on`]]) continue;
+    const g = n => Math.abs(A[OFF[`f${i}.${n}`]]);
+    k = Math.max(k, Math.hypot(g('x'), g('y')) + g('r1') + g('r2') + (g('l1') + g('l2')) / 0.5 + (g('t1') + g('t2')) / 3.14);
+  }
+  return Math.max(k * Math.max(A[OFF.freq], 1e-3), 0.2);
+}
+const periodPx = A => (canvas.height / 2) * Math.max(A[OFF.scale], 1e-5) / fineness(A);
+
+// ------------------------------------------------------------------------------------------------- taking hold of a pattern
+// The hand takes the threshold from whatever the gesture was doing, and nothing on screen moves as it does.
+function takeHold(t) {
+  if (hand.corridor || stage.score.song) return;
+  const G = stage.current(t), th = app.lastFrame?.theta ?? 0, solid = app.lastFrame?.solid ?? 1;
+  const end = G.arcEnd ?? G.t1;
+  if (!G.period) {
+    // Keep the long move exactly where it is and let it swing from here.
+    const u = clamp((t - G.t0) / Math.max(end - G.t0, 1e-3));
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (smoother(mid) < u) lo = mid; else hi = mid; }
+    G.period = ARC_SWING; G.t0 = t - lo * ARC_SWING;
+  }
+  G.pol0 = 0; G.pol1 = 0; G.t1 = t + 3600; G.arcEnd = G.t1;
+  const g = stage.score.gestures;
+  g.splice(0, g.indexOf(G)); g.length = 1;
+  stage.hold = true;
+  hand.corridor = true;
+  curG = G;
+  D.room = 0;
+  D.base = Math.max(0, app.patterns.indexOf(G.pattern));
+  const w = clamp(th / solid, -1, 1) * (1 - DWELL);
+  D.s.set(w); D.target = w;
+  edits.duty = th;      // now, not at the end of this frame: the very next picture has to be the same picture
+}
+
+function swapRoom(nr, t) {
+  const n = app.patterns.length, idx = ((D.base + nr) % n + n) % n, pat = app.patterns[idx];
+  const g = stage.score.gestures, cur = stage.current(t);
+  cur.t1 = t; g.length = g.indexOf(cur) + 1;
+  g.push({ t0: t, t1: t + 3600, arcEnd: t + ARC_SWING, period: ARC_SWING, pattern: pat, pol0: 0, pol1: 0, inDur: 0, outDur: 6 });
+  curG = g[g.length - 1];
+  stage.hold = true; stage._last = pat;
+  D.room = nr;
+  resetForPattern(pat);
+}
+
+function resetForPattern(pat, announce = true) {
+  curPat = pat; lastAsked = null;
+  J.s.set(0); J.target = 0; J.jx = 0; J.jy = 0; J.prev = 0; J.clearing = false;
+  knobs.clear();
+  edits.over = {};
+  if (announce) hand.emit('pattern', pat);
+}
+
+// ----------------------------------------------------------------------------------------------------------------- verbs
+function dutyWheel(dx) {
+  const t = app.t;
+  D.touched = nowS();
+  if (stage.score.song) { D.target = clamp(D.target + dx * 0.0022, -1.1, 1.1); return; }
+  takeHold(t);
+  D.target = clamp(D.target + dx * 0.0022, D.s.x - 1.1, D.s.x + 1.1);
+}
+
+function journeyWheel(dy, pinch) {
+  J.touched = nowS(); J.clearing = false;
+  let d = -dy * (pinch ? 0.012 : 0.002);
+  // There's no wall. It just gets reluctant, and turning round is immediate because no slack is kept.
+  const room = d > 0 ? J.hi - J.target : J.target - J.lo;
+  d *= Math.max(0.015, smoother(room / 1.4));
+  J.target += d;
+}
+
+function beginSheet(e) {
+  const A = R.slotA;
+  S.active = true;
+  S.lastCx = e.clientX; S.lastCy = e.clientY;
+  S.detents = detentsFor(A);
+  const f = [A[OFF['f0.x']], A[OFF['f0.y']]], l = Math.hypot(f[0], f[1]);
+  S.dir = l > 1e-3 ? [f[0] / l, f[1] / l] : [1, 0];
+  const a = A[OFF.rot];
+  S.dir = [Math.cos(a) * S.dir[0] - Math.sin(a) * S.dir[1], Math.sin(a) * S.dir[0] + Math.cos(a) * S.dir[1]];
+  if (!S.on) {
+    // First lift: pivot under the hand, already turned enough to show a fringe about a third of the frame across.
+    S.on = true;
+    S.pivot = toPicture(e.clientX, e.clientY);
+    const a0 = clamp(periodPx(A) / (0.33 * canvas.height), 2 * Math.PI / 180, 0.4);
+    let best = a0, bd = 9;
+    for (const d of S.detents) { if (d.a > 0 && Math.abs(d.a - a0) < bd) { bd = Math.abs(d.a - a0); best = d.a; } }
+    S.rotH = best; S.rot.set(best); S.shiftH = 0; S.perpH = 0; S.sx.set(0); S.sy.set(0);
+    hand.emit('sheet', true);
+  }
+}
+
+function moveSheet(e) {
+  const dx = e.clientX - S.lastCx, dy = e.clientY - S.lastCy;
+  S.lastCx = e.clientX; S.lastCy = e.clientY;
+  const h = canvas.clientHeight;
+  // Vertical turns it, horizontal slides it along the lines' own normal. A pixel is a fringe's long way, so both are fine-geared.
+  S.rotH += -dy * 0.0014;
+  if (e.shiftKey) S.perpH += dx * (2 / h) * 0.3;
+  else S.shiftH += dx * (2 / h) * 0.3;
+}
+
+function dropSheet() {
+  if (!S.on) return;
+  S.on = false; S.active = false;
+  hand.emit('sheet', false);
+}
+
+function tickPress(dt, now) {
+  const [x, y] = toPicture(m.cx, m.cy);
+  const alive = m.over && now - m.last < PRESS_IDLE && !S.active;
+  const k = push.on ? 0.45 : 1;
+  press.x.step(x, dt); press.y.step(y, dt);
+  press.a.step(alive ? PRESS_AMOUNT * k : 0, dt, alive ? 5 : 1.6);
+  if (Math.abs(press.a.x) < 1e-4 && !alive) press.a.set(0);
+  edits.pressX = press.x.x; edits.pressY = press.y.x; edits.press = press.a.x; edits.pressR = PRESS_R;
+}
+
+function tickPush(dt, now) {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (push.on) {
+    const tx = m.cx, ty = m.cy;
+    push.x.step(tx, dt); push.y.step(ty, dt);
+    const dx = push.x.x - push.px, dy = push.y.x - push.py, len = Math.hypot(dx, dy);
+    if (len > 0.01) {
+      const n = clamp(Math.ceil(len / (BRUSH_R * h * 0.4)), 1, 12);
+      for (let i = 1; i <= n; i++) {
+        const u = i / n, cx = push.px + dx * u, cy = push.py + dy * u;
+        R.brush({ x: cx / w, y: 1 - cy / h, r: BRUSH_R, dx: -(dx / n) * (2 / h), dy: (dy / n) * (2 / h), on: true, heal: 0 });
+      }
+      push.px = push.x.x; push.py = push.y.x;
+    }
+  }
+  // Relaxing, in steps a half-float can hold
+  push.healAcc += dt;
+  let heal = 0;
+  if (!push.on && push.healAcc >= HEAL_TICK) {
+    const mem = now < push.boostUntil ? 0.5 : MEMORY;
+    heal = 1 - Math.exp(-push.healAcc / mem);
+    push.healAcc = 0;
+  }
+  app.brush = { on: false, heal };
+}
+
+function tickJourney(dt, now, A) {
+  const song = !!stage.score.song;
+  // Overlay during a film: it eases back on its own.
+  if (song && now - J.touched > 2) J.target += (0 - J.target) * (1 - Math.exp(-dt / 2.5));
+  const period = periodPx(A);
+  const here = J.s.x + J.lift.x;
+  const floor = hand.calm ? 12 : 2.6;
+  J.lo = here - Math.log(Math.max(period / floor, 1e-3));
+  J.hi = here + Math.log(2.5 * canvas.height / period);
+  J.lo = Math.min(J.lo, here); J.hi = Math.max(J.hi, here);
+  const before = J.s.x;
+  J.s.step(J.target, dt, J.clearing ? 2.2 : 7, J_RATE);
+  // Calm keeps fine lines at a comfortable size, whatever the pattern's own move is doing.
+  const unlifted = period * Math.exp(-J.lift.x);
+  J.lift.step(hand.calm ? Math.max(0, Math.log(12 / unlifted)) : 0, dt, 1.2);
+  const dJ = J.s.x - before;
+  if (J.clearing || song && now - J.touched > 2) {
+    const k = Math.exp(-dt * (J.clearing ? 1.8 : 0.4));
+    J.jx *= k; J.jy *= k;
+    if (J.clearing && Math.abs(J.s.x) < 1e-3 && Math.abs(J.jx) + Math.abs(J.jy) < 1e-4) { J.s.set(0); J.target = 0; J.jx = 0; J.jy = 0; J.clearing = false; }
+  } else if (dJ !== 0) {
+    // about the cursor: keep the point under it where it is
+    const s = Math.max(A[OFF.scale], 1e-5), a = -A[OFF.rot], [cx, cy] = m.over ? toPicture(m.cx, m.cy) : [0, 0];
+    const f = 1 / s - 1 / (s * Math.exp(dJ));
+    J.jx += (Math.cos(a) * cx - Math.sin(a) * cy) * f;
+    J.jy += (Math.sin(a) * cx + Math.cos(a) * cy) * f;
+  }
+  const total = J.s.x + J.lift.x;
+  edits.journey = total || (J.jx || J.jy ? 1e-9 : 0);
+  edits.jx = J.jx; edits.jy = J.jy;
+}
+
+function tickDuty(dt, now, t, G, solid) {
+  const song = !!stage.score.song;
+  if (song && now - D.touched > 2) D.target += (0 - D.target) * (1 - Math.exp(-dt / 2.5));
+  const rate = hand.calm ? DUTY_RATE * 0.5 : DUTY_RATE;
+  D.s.step(D.target, dt, 7, rate);
+  let duty;
+  // Something else is landing this gesture (a song arriving, say): give it the threshold, closing whatever the hand had added.
+  if (hand.corridor && G.pol1) {
+    const sign = D.room % 2 === 0 ? 1 : -1, w = sign * clamp((D.s.x - 2 * D.room) / (1 - DWELL), -1, 1);
+    hand.corridor = false; D.room = 0; D.s.set(w); D.target = w;
+  }
+  if (hand.corridor) {
+    while (D.s.x > 2 * D.room + 1) swapRoom(D.room + 1, t);
+    while (D.s.x < 2 * D.room - 1) swapRoom(D.room - 1, t);
+    const sign = D.room % 2 === 0 ? 1 : -1;
+    duty = sign * clamp((D.s.x - 2 * D.room) / (1 - DWELL), -1, 1) * solid;
+    if (curPat !== G.pattern) duty = sign * clamp((D.s.x - 2 * D.room) / (1 - DWELL), -1, 1) * (curPat?.solid ?? 1);
+  } else {
+    duty = D.s.x * solid;
+    // Whatever the hand has added closes as the gesture lands, so every solid is exactly solid.
+    const start = G.t1 - (G.holdOut || 0) - G.outDur;
+    if (G.pol1 && t > start) duty *= 1 - smoother((t - start) / G.outDur);
+  }
+  // the veil sits on top of everything; twice the solid is past any threshold
+  if (V.phase) {
+    V.t += dt;
+    const sol = curPat?.solid ?? solid;
+    if (V.phase === 1) {
+      const u = V.t / V.close;
+      duty += V.pol * 2 * sol * smoother(u);
+      if (u >= 1) { const fn = V.fn; V.fn = null; V.phase = 2; V.t = 0; try { fn?.(); } catch (e) { console.error(e); } }
+    } else {
+      const u = V.t / V.open;
+      duty += V.pol * 2 * sol * (1 - smoother(u));
+      if (u >= 1) V.phase = 0;
+    }
+  }
+  edits.duty = duty;
+}
+
+function tickSheet(dt) {
+  // It arrives in a set time and exactly, because this mixes ink: a spring's long tail would hang about as a grey ghost.
+  S.k = clamp(S.k + (S.on ? dt : -dt) / SHEET_LIFT);
+  S.lift = smoother(S.k);
+  if (!S.on && S.k <= 0) { edits.sheet = 0; hand.readout = null; return; }
+  const mg = magnet(S.rotH, S.detents.length ? S.detents : [{ a: 0, w: 0.002 }]);
+  S.rot.step(mg.x, dt);
+  // A shift of nothing is a detent too, a few hairs wide
+  const dz = v => { const w = 0.004, a = Math.abs(v); if (a >= w) return v; const u = a / w; return Math.sign(v) * w * u * u * (2 - u); };
+  const sh = dz(S.shiftH), pe = dz(S.perpH);
+  S.sx.step(S.dir[0] * sh - S.dir[1] * pe, dt); S.sy.step(S.dir[1] * sh + S.dir[0] * pe, dt);
+  const a = S.rot.x, c = Math.cos(a), s = Math.sin(a), [px, py] = S.pivot;
+  // rotate about the pivot, then slide
+  edits.sheetRot = a;
+  edits.sheetX = px - (c * px - s * py) + S.sx.x;
+  edits.sheetY = py - (s * px + c * py) + S.sy.x;
+  edits.sheet = S.lift;
+  hand.readout = S.active ? { deg: a * 180 / Math.PI, locked: mg.locked } : null;
+}
+
+function tickKnobs(dt) {
+  if (!knobs.size) return;
+  const nat = knobs.size ? naturals() : null;
+  for (const [path, k] of knobs) {
+    const off = OFF[path];
+    if (k.release) {
+      k.s.step(nat[off], dt, 3);
+      if (Math.abs(k.s.x - nat[off]) < 1e-3 * (1 + Math.abs(nat[off]))) { knobs.delete(path); delete edits.over[path]; continue; }
+    } else if (SNAP.has(off)) k.s.set(k.target);
+    else k.s.step(k.target, dt, 16);
+    // a knob on the view still rides the hand's zoom and spin, which frame() would otherwise overwrite
+    (edits.over ||= {})[path] = path === 'scale' ? k.s.x * Math.exp(edits.journey || 0) : path === 'rot' ? k.s.x + (edits.spin || 0) : k.s.x;
+  }
+}
+
+function tickSpeed(dt, t, G) {
+  const eff = hand.speed * (hand.calm ? 0.4 : 1);
+  speedS.step(eff, dt, 4);
+  const sc = stage.score;
+  if (!sc.phi) return;
+  let st = sc.__hand;
+  if (!st || sc.phi !== st.fn) {
+    if (Math.abs(speedS.x - 1) < 1e-3 && eff === 1) return;
+    const orig = sc.phi;
+    st = sc.__hand = { orig, a: orig(t, G), t, s: 1, fn: null };
+    st.fn = sc.phi = (tt, g) => st.a + (st.orig(tt, g) - st.orig(st.t, g)) * st.s;
+  }
+  if (st.s !== speedS.x) { st.a = sc.phi(t, G); st.t = t; st.s = speedS.x; }
+}
+
+function tickSpin(dt, dtApp) {
+  if (clearingSpin) {
+    spinS.step(0, dt, 1.5);
+    if (Math.abs(spinS.x) < 1e-3) { spinS.set(0); clearingSpin = false; }
+  } else spinS.x += hand.spinRate * dtApp;
+  edits.spin = spinS.x;
+}
+
+function naturals() {
+  const G = app.lastFrame?.G;
+  if (G) fillSlot(scratch, G, app.t, G.pattern, { phi: app.lastFrame.phi });
+  return scratch;
+}
+
+// ----------------------------------------------------------------------------------------------------------------- frames
+function tick(t) {
+  const now = nowS(), dt = clamp(now - lastNow, 0, 0.05), dtApp = t - lastT;
+  lastNow = now; lastT = t;
+  const f = app.lastFrame;
+  if (!f) return;
+  const A = R.slotA, G = f.G, solid = f.solid;
+  if (G !== curG) {
+    // A new gesture arrived. If the frame's solid, everything can change unseen; if it isn't, ease.
+    curG = G;
+    const changed = G.pattern !== curPat;
+    if (Math.abs(f.theta) >= solid - 1e-3) {
+      resetForPattern(G.pattern, changed);
+      D.s.set(0); D.target = 0; D.room = 0;
+      hand.corridor = false;
+    } else if (changed) {
+      curPat = G.pattern; J.target = 0; J.clearing = true; D.target = 0;
+      for (const k of knobs.values()) k.release = true;
+      hand.emit('pattern', G.pattern);
+    }
+  }
+  tickPress(dt, now);
+  tickPush(dt, now);
+  tickJourney(dt, now, A);
+  tickDuty(dt, now, t, G, solid);
+  tickSheet(dt);
+  tickKnobs(dt);
+  tickSpeed(dt, t, G);
+  tickSpin(dt, dtApp);
+}
+
+// ----------------------------------------------------------------------------------------------------------------- actions
+hand.setKnob = (path, value) => {
+  let k = knobs.get(path);
+  if (!k) {
+    const nat = naturals();
+    k = { s: new Spring(nat[OFF[path]], 16), target: value };
+    knobs.set(path, k);
+  }
+  k.target = value; k.release = false;
+};
+hand.releaseKnob = path => { const k = knobs.get(path); if (k) k.release = true; };
+hand.knobValue = path => {
+  const k = knobs.get(path);
+  return k && !k.release ? k.target : null;
+};
+hand.natural = path => naturals()[OFF[path]];
+hand.liveValue = path => knobs.get(path)?.s.x ?? naturals()[OFF[path]];
+
+// Go somewhere: the threshold carries on from wherever it is, closes to a solid, and the new pattern grows out of it.
+hand.go = (id, opts = {}) => {
+  const t = app.t, f = app.lastFrame, th = f?.theta ?? 0, solid = f?.solid ?? 1;
+  const pat = typeof id === 'string' ? app.byId[id] : id;
+  if (!pat) return;
+  // With a song playing, the film carries on with this pattern as its motif. The clock doesn't stop, and the change is under a solid.
+  if (stage.score.song && app.song?.rebuild) { hand.veil(() => app.song.rebuild({ pattern: pat })); hand.emit('going', pat); return; }
+  if (app.paused && !app.clock) app.paused = false;
+  hand.corridor = false;
+  const pol = Math.abs(th) > 0.02 * solid ? Math.sign(th) : undefined;
+  stage.go(pat, t, { pol, ...opts });
+  // Whatever the threshold is at now and the sweep doesn't account for is carried as a duty that closes over the sweep.
+  const w = clamp((th - thetaAt(stage.current(t), t, solid)) / solid, -2, 2);
+  D.s.set(w); D.target = w; D.room = 0;
+  edits.duty = w * solid;
+  hand.emit('going', pat);
+};
+
+hand.veil = (fn, { close = 1.5, open = 2.4 } = {}) => {
+  // already closing: just do this one too when it gets there
+  if (V.phase === 1) { const prev = V.fn; V.fn = () => { prev?.(); fn?.(); }; return; }
+  const th = app.lastFrame?.theta ?? 0;
+  V.phase = 1; V.t = 0; V.fn = fn; V.pol = th < 0 ? -1 : 1; V.close = close; V.open = open;
+};
+
+// What the hand has made of the current pattern, as a pattern a song can be composed from.
+hand.mine = () => {
+  const pat = curPat ?? app.lastFrame?.G?.pattern;
+  if (!pat) return null;
+  const over = {};
+  for (const [path, k] of knobs) if (!k.release) over[path] = k.target;
+  const j = J.s.x, jx = J.jx, jy = J.jy, spin = spinS.x;
+  if (!Object.keys(over).length && !j && !spin) return pat;
+  return {
+    ...pat,
+    drive(out, ctx) {
+      pat.drive?.(out, ctx);
+      out[OFF.scale] *= Math.exp(j); out[OFF.tx] += jx; out[OFF.ty] += jy; out[OFF.rot] += spin;
+      for (const p in over) out[OFF[p]] = over[p];
+    },
+  };
+};
+
+hand.step = dir => {
+  // from wherever it's already heading, so tapping N walks along the list
+  const from = lastAsked ?? curPat ?? app.lastFrame.G.pattern;
+  const n = app.patterns.length, i = Math.max(0, app.patterns.indexOf(from));
+  const pat = app.patterns[((i + dir) % n + n) % n];
+  hand.go(pat);
+  lastAsked = pat;
+};
+
+hand.wander = () => {
+  if (stage.score.song && app.song?.rebuild) { hand.veil(() => app.song.rebuild({ pattern: null })); hand.emit('wander'); return; }
+  const t = app.t, cur = stage.current(t), f = app.lastFrame, th = f?.theta ?? 0;
+  if (app.paused && !app.clock) app.paused = false;
+  const g = stage.score.gestures;
+  const wasHeld = stage.hold || hand.corridor;
+  stage.hold = false;
+  hand.corridor = false;
+  if (wasHeld) {
+    const earliest = (cur.pol0 ? cur.t0 + (cur.inDur || 0) : t) + 6.5;
+    cur.pol1 = cur.pol1 || (th >= 0 ? 1 : -1);
+    cur.outDur = 6;
+    cur.t1 = Math.max(t + 8, earliest);
+    g.length = g.indexOf(cur) + 1;
+  }
+  D.target = D.s.x;
+  hand.emit('wander');
+};
+
+hand.offsets = OFF;
+hand.isHeld = () => stage.hold || hand.corridor;
+
+hand.clear = () => {
+  J.target = 0; J.clearing = true; J.touched = nowS();
+  D.target = hand.corridor ? 2 * D.room : 0;
+  for (const k of knobs.values()) k.release = true;
+  dropSheet();
+  push.boostUntil = nowS() + 2.5;
+  hand.speed = 1; hand.spinRate = 0; clearingSpin = true;
+  hand.emit('cleared');
+};
+
+hand.togglePause = () => {
+  const s = app.song;
+  // The song has finished and the wander has taken over: play goes back to the film, under a solid.
+  if (s?.resting) { hand.veil(() => s.play(), { close: 0.6, open: 1.2 }); return; }
+  if (app.clock && s) {
+    if (s.playing ?? (s.isPlaying && s.isPlaying())) s.pause?.();
+    else (s.play || s.resume)?.call(s);
+  } else app.paused = !app.paused;
+  hand.emit('pause', app.paused);
+};
+
+hand.setCalm = on => { hand.calm = !!on; hand.emit('calm', hand.calm); };
+hand.sheetOn = () => S.on;
+hand.dropSheet = dropSheet;
+hand.state = () => ({
+  J: J.s.x, Jtarget: J.target, jx: J.jx, jy: J.jy, w: D.s.x, room: D.room, corridor: hand.corridor,
+  sheet: S.on, sheetRot: S.rot.x, sheetLift: S.lift, press: press.a.x, pressX: press.x.x, pressY: press.y.x, pattern: curPat?.id,
+  speed: speedS.x, knobs: [...knobs.keys()],
+});
+
+// ----------------------------------------------------------------------------------------------------------------- init
+export function init(a) {
+  if (hand.app) return;     // the interface starts it too, whichever gets here first
+  app = a; hand.app = a; canvas = a.canvas; stage = a.stage; R = a.R;
+  edits = a.edits; edits.over = {};
+  a.hand = hand;
+  lastNow = nowS(); lastT = a.t;
+  curG = a.lastFrame?.G ?? null;
+  curPat = curG?.pattern ?? null;
+  a.onFrame.unshift(tick);
+
+  addEventListener('pointermove', e => {
+    m.cx = e.clientX; m.cy = e.clientY; m.seen = true;
+    m.over = e.target === canvas || hand.dragging;
+    if (m.over) m.last = nowS();
+    if (hand.dragging && S.active) moveSheet(e);
+  }, { passive: true });
+  document.addEventListener('pointerleave', () => { m.over = false; });
+  document.documentElement.addEventListener('mouseleave', () => { m.over = false; });
+
+  canvas.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    canvas.setPointerCapture?.(e.pointerId);
+    hand.dragging = true;
+    m.cx = e.clientX; m.cy = e.clientY;
+    if (e.altKey) { beginSheet(e); return; }
+    push.on = true; push.boostUntil = 0;
+    push.x.set(e.clientX); push.y.set(e.clientY);
+    push.px = e.clientX; push.py = e.clientY;
+  });
+  const end = () => { hand.dragging = false; push.on = false; S.active = false; };
+  addEventListener('pointerup', end);
+  addEventListener('pointercancel', end);
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('dblclick', e => { if (e.altKey) dropSheet(); });
+
+  addEventListener('wheel', e => {
+    // A panel scrolls itself. Only the picture takes the hand's wheel.
+    if (e.target !== canvas) return;
+    e.preventDefault();
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+    const dx = e.deltaX * unit, dy = e.deltaY * unit, now = nowS();
+    if (e.altKey && S.on) { S.rotH += -(dy + dx) * 0.00012; return; }
+    if (e.shiftKey) { dutyWheel(dx || dy); return; }
+    if (now - wheelLast > 0.2) wheelAxis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'duty' : 'journey';
+    wheelLast = now;
+    if (e.ctrlKey || wheelAxis === 'journey') journeyWheel(dy, e.ctrlKey);
+    else dutyWheel(dx);
+  }, { passive: false });
+
   addEventListener('keydown', e => {
-    if (e.key === ' ') { app.paused = !app.paused; e.preventDefault(); }
-    if (e.key === 'ArrowRight' || e.key === 'n') app.stage.go(app.patterns[(app.patterns.indexOf(app.lastFrame.G.pattern) + 1) % app.patterns.length], app.t);
-    if (e.key === 'w') app.stage.wander(app.t);
+    if (e.metaKey || e.ctrlKey || e.repeat) return;
+    const tag = e.target?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    switch (e.key) {
+      case ' ': hand.togglePause(); e.preventDefault(); break;
+      case 'n': case 'N': case 'ArrowRight': case 'ArrowDown': hand.step(1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': hand.step(-1); e.preventDefault(); break;
+      case 'w': case 'W': hand.wander(); break;
+      case 'z': case 'Z': hand.clear(); break;
+    }
   });
 }

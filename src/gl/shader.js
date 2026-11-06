@@ -94,11 +94,16 @@ vec3 poleOf(vec4 P,vec2 x){
 }
 
 float gPh[3*FAM],gGn[3*FAM],gDu[3*FAM]; vec2 gGr[3*FAM];
-int gN[3]; float gPar[3],gRnd[3],gSum[3],gInv[3];
+int gN[3]; float gPar[3],gRnd[3],gSum[3],gInv[3],gFar[3];
 
 // Everything up to the threshold: where this pixel lands, what each family's phase and gradient are. Returns coverage of the surface.
 float prepare(int K,int b,vec2 p){
   float cover=1.,parity=1.,slipY=0.;
+  // On a surface wrapped by angle the around-count has to stay a whole number, or there's a seam. So the view can't scale or turn
+  // the texture there. It acts on the camera instead, like a lens: zoom and roll, about the same point as everywhere else.
+  vec4 v=uG[b+I_view],sf0=uG[b+I_surf];
+  bool lensView=sf0.x>.5&&sf0.x<1.5&&sf0.y>.5;
+  if(lensView) p=rot(-v.y)*p/max(v.x,1e-5)+v.zw;
   vec3 X=surface(b,p,cover,parity);
 
   // cloth: a rippled sheet seen at an angle, so it hides behind itself where it folds
@@ -110,8 +115,7 @@ float prepare(int K,int b,vec2 p){
   }
 
   // the view: this zooms everything including the warps below
-  vec4 v=uG[b+I_view];
-  X.xy=rot(-v.y)*X.xy/max(v.x,1e-5)+v.zw;
+  if(!lensView) X.xy=rot(-v.y)*X.xy/max(v.x,1e-5)+v.zw;
 
   // mattes that also wrap the pattern
   vec4 rb=uG[b+I_mRibbon];
@@ -192,21 +196,29 @@ float prepare(int K,int b,vec2 p){
   vec2 gT1=vec2(v1.x*dXx.y*P1.w-v1.y*dXx.x,v1.x*dXy.y*P1.w-v1.y*dXy.x)*i1;
   vec2 gT2=vec2(v2.x*dXx.y*P2.w-v2.y*dXx.x,v2.x*dXy.y*P2.w-v2.y*dXy.x)*i2;
   bool wrapped=uG[b+I_surf].y>.5;
-  int n=0;
+  vec2 fq=lensView?vec2(1.,tn.x):vec2(tn.x);          // and the lines knob only changes what runs along it
+  int n=0; float finest=0.;
   for(int i=0;i<FAM;i++){
     vec4 fa=uG[b+3*i],fb=uG[b+3*i+1],fc=uG[b+3*i+2];
     if(fc.w<.5) continue;
     // the smooth part of the phase; angles are added afterwards, with their exact gradient, so a wrap never shows
-    float sm=dot(fa.xyz,vec3(X.xy*tn.x,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
+    float sm=dot(fa.xyz,vec3(X.xy*fq,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
     if(tn.y!=0.) sm+=tn.y*boil(X.xy*tn.z,tn.w,float(i)*2.3+.7);
     vec2 g=vec2(dFdx(sm),dFdy(sm));
-    if(wrapped) g-=round(g);
+    // Across the wrap the phase jumps by the around-count, which only that one pixel's gradient sees. Take off exactly that, so a
+    // real gradient too fine to draw stays too fine, and doesn't alias into specks at the far end of a tunnel.
+    if(lensView){ float J=abs(fa.x)*sf0.z; if(J>1e-3) g-=J*round(g/J); }
+    else if(wrapped) g-=round(g);
     g+=fb.z*gT1+fc.z*gT2;
     int k=K*FAM+n;
     gPh[k]=sm+fb.z*b1.z+fc.z*b2.z+fa.w+fa.y*tn.x*slipY;
     gGr[k]=g; gGn[k]=max(length(g),1e-5); gDu[k]=fb.w;
+    finest=max(finest,gGn[k]);
     n++;
   }
+  // A surface going away from the camera reaches a place finer than a pixel (a horizon, the end of a tunnel). True area there is
+  // a band of flat grey, which the film never shows: its lines close up into solid instead.
+  gFar[K]=sf0.x>.5&&sf0.x<1.5?smoothstep(.3,.7,finest):0.;
   gN[K]=n; gPar[K]=parity; gRnd[K]=uG[b+I_shape].x; gSum[K]=uG[b+I_shape].y; gInv[K]=uG[b+I_shape].w;
   return cover;
 }
@@ -264,13 +276,15 @@ float inkOf(int K,float th){
   if(gN[K]==0) c=th>=0.?0.:1.;
   else if(gRnd[K]>0.||gSum[K]>0.){ float f,g1,g2; vec2 gf; softF(K,f,gf,g1,g2); c=inkSoft(K,f,gf,g1,g2,th); }
   else c=inkBand(K,th);
+  c=mix(c,smoothstep(.62,.82,c),gFar[K]);     // exact solids stay exact: 0 and 1 go nowhere
   if(gInv[K]>.5) c=1.-c;
   if(gPar[K]<0.) c=1.-c;
   return c;
 }
 
 float matteOf(int b,vec2 p){
-  vec4 m=uG[b+I_matte];
+  vec4 m=uG[b+I_matte],sf0=uG[b+I_surf];
+  if(sf0.x>.5&&sf0.x<1.5&&sf0.y>.5){ vec4 v=uG[b+I_view]; p=rot(-v.y)*p/max(v.x,1e-5)+v.zw; }   // it stays on the lens with the surface
   if(m.x<.5) return 1.;
   vec4 m2=uG[b+I_matte2],m3=uG[b+I_matte3];
   vec2 q=rot(-m3.x)*(p-m2.xy);

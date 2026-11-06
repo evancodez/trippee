@@ -17,7 +17,7 @@ export default [
   // Stripes pinched towards a black door. It grows out of the waist and either shuts over everything or closes up to nothing.
   { id: 'void.door', name: 'Door', family: 'void',
     g: {
-      fams: [plane(4.2, 90)], bowtie: { a: 1, eps: .3, x0: 0, ang: 0 },
+      fams: [plane(4.2, 90)], bowtie: { a: 1, eps: .3, x0: 0, ang: 0 }, wob: .05, wobF: 1.3,
       matte: { kind: 1, q: 7, invert: 1, outside: 0, rx: .05, ry: .03 },
     },
     flow: { 'f0.ph': 1 },
@@ -26,10 +26,11 @@ export default [
       { path: 'bowtie.eps', from: 1.1, to: .1, log: true },
       { path: 'matte.rx', from: .05, to: 1.25, log: true, at: [0, .8] },
       { path: 'matte.ry', from: .03, to: .74, log: true, at: [0, .8] },
+      { path: 'wobT', from: 0, to: 4 },
     ],
     drive(out, { G, t, OFF }) {
       const shut = toSolid(G, t, 1), gone = Math.max(toSolid(G, t, -1), fromSolid(G, t, -1));
-      for (const p of ['matte.rx', 'matte.ry']) out[OFF[p]] = out[OFF[p]] * (1 + 3.5 * shut) * (1 - gone);
+      for (const p of ['matte.rx', 'matte.ry']) out[OFF[p]] = Math.max(.002, out[OFF[p]] * (1 + .85 * shut) * (1 - gone));
     },
     axes: [
       { id: 'door', name: 'door', path: 'matte.rx', min: .02, max: 2.5, log: true },
@@ -41,7 +42,7 @@ export default [
   // A hairline crack in a solid widens into a band of herringbone, then into the whole field, and the zigzags swell.
   { id: 'void.crack', name: 'Crack', family: 'void',
     g: {
-      fams: [plane(7, 62)], zig: { a: .12, c: 3, b: 0, n: 0 }, bowtie: { a: 0, eps: .35, x0: 1.2, ang: 0 },
+      fams: [plane(7, 62)], zig: { a: .12, c: 3, b: 0, n: 0 }, bowtie: { a: 0, eps: .35, x0: 1.2, ang: 0 }, wob: .06, wobF: 1.2,
       matte: { kind: 2, outside: 0, eps: .004, rot: -.6 },
     },
     flow: { 'f0.ph': 1 },
@@ -49,6 +50,7 @@ export default [
       { path: 'matte.t', from: 0, to: 3.5 },
       { path: 'scale', from: .4, to: 4.5, log: true },
       { path: 'bowtie.a', from: 0, to: 1, at: [.45, 1] },
+      { path: 'wobT', from: 0, to: 4 },
     ],
     drive(out, { u, G, OFF }) {
       voidFromEntry(out, G, OFF);
@@ -64,21 +66,21 @@ export default [
   // Stripes bending over lumps that float in the void and shear where they merge. The lump is only the stripes stopping.
   { id: 'void.zebra', name: 'Zebra', family: 'void',
     g: {
-      fams: [{ y: 11, z: 1.1 }],
-      blobs: { on: 1, beta: 1, x1: -.42, y1: .05, r1: .34, a1: .3, x2: .38, y2: -.12, r2: .3, a2: -.7, x3: .05, y3: .36, r3: .2, a3: 1.2 },
+      fams: [{ y: 11, z: .55 }],
+      blobs: { on: 1, beta: 1, x1: -.42, y1: .05, r1: .42, a1: .3, x2: .38, y2: -.12, r2: .36, a2: -.7, x3: .05, y3: .4, r3: .3, a3: 1.2 },
     },
     flow: { 'f0.ph': 1 },
     arcs: [
-      { path: 'scale', from: .5, to: 3.4, log: true },
+      { path: 'scale', from: .42, to: 3.5, log: true },
       { path: 'blobs.a1', from: .3, to: 1.3 },
       { path: 'blobs.a2', from: -.7, to: -2 },
       { path: 'blobs.x1', from: -.7, to: -.25 },
       { path: 'blobs.x2', from: .7, to: .22 },
     ],
     drive(out, { G, t, OFF }) {
-      // the void has to be gone before a white solid: the lumps swell until nothing else is left
-      const k = Math.max(fromSolid(G, t, -1), toSolid(G, t, -1));
-      if (k > 0) { const c = 2.6 / out[OFF.scale]; for (const p of ['blobs.r1', 'blobs.r2', 'blobs.r3']) out[OFF[p]] += k * c; }
+      // landing on the other solid, the void has to be gone first: the lumps swell until nothing else is left
+      const k = toSolid(G, t, -polOf(voidFromEntry(out, G, OFF)));
+      if (k > 0) { const c = 3.4 / out[OFF.scale]; for (const p of ['blobs.r1', 'blobs.r2', 'blobs.r3']) out[OFF[p]] *= Math.pow(c / out[OFF[p]], k * k); }
     },
     axes: [
       { id: 'r', name: 'lump', path: 'blobs.r1', min: .05, max: 1.2 },
@@ -104,14 +106,16 @@ export default [
     ],
     drive(out, { G, t, OFF }) {
       const v = voidFromEntry(out, G, OFF);
-      // landing on the other solid: the ribbon widens until it has covered the frame, with its twist straightened out
-      const k = toSolid(G, t, -polOf(v));
-      if (k > 0) {
-        out[OFF['ribbon.w']] = lerp(out[OFF['ribbon.w']], 6, k);
-        out[OFF['ribbon.sig']] = lerp(out[OFF['ribbon.sig']], 0, k);
+      // The back of a twist is the inverse, so it would never reach a solid: the ribbon untwists at both ends of the gesture.
+      const e = Math.max(fromSolid(G, t, 1), fromSolid(G, t, -1), toSolid(G, t, 1), toSolid(G, t, -1));
+      if (e > 0) {
+        out[OFF['ribbon.sig']] = lerp(out[OFF['ribbon.sig']], 0, e);
         const T = out[OFF['ribbon.t']], whole = Math.round(T * .6 / TAU) * TAU / .6;
-        out[OFF['ribbon.t']] = lerp(T, whole, k);
+        out[OFF['ribbon.t']] = lerp(T, whole, e);
       }
+      // landing on the other solid: it widens until it has covered the frame
+      const k = toSolid(G, t, -polOf(v));
+      if (k > 0) out[OFF['ribbon.w']] *= Math.pow(6 / out[OFF['ribbon.w']], k * k);
     },
     axes: [
       { id: 'w', name: 'width', path: 'ribbon.w', min: .03, max: 1.2, log: true },
@@ -148,7 +152,7 @@ export default [
   // A black disc drifts through stripes and the lines part round it like water round a stone.
   { id: 'void.eclipse', name: 'Eclipse', family: 'void',
     g: {
-      fams: [plane(5, 90)], bulge: { a: 3, r: .6 },
+      fams: [plane(5, 90)], bulge: { a: 3, r: .6 }, wob: .05, wobF: 1.3,
       matte: { kind: 1, q: 2, invert: 1, outside: 0, rx: .1, ry: .1 },
     },
     flow: { 'f0.ph': 1 },
@@ -159,10 +163,11 @@ export default [
       { path: 'scale', from: .75, to: 1.4, log: true },
       { path: 'bulge.cx', from: -.75, to: .25 },
       { path: 'matte.cx', from: -.56, to: .35 },
+      { path: 'wobT', from: 0, to: 4 },
     ],
     drive(out, { G, t, OFF }) {
       const shut = toSolid(G, t, 1), gone = Math.max(toSolid(G, t, -1), fromSolid(G, t, -1));
-      for (const p of ['matte.rx', 'matte.ry']) out[OFF[p]] = out[OFF[p]] * (1 + 3 * shut) * (1 - gone);
+      for (const p of ['matte.rx', 'matte.ry']) out[OFF[p]] = Math.max(.002, out[OFF[p]] * (1 + 3 * shut) * (1 - gone));
     },
     axes: [
       { id: 'r', name: 'disc', path: 'matte.rx', min: .02, max: 2.5, log: true },

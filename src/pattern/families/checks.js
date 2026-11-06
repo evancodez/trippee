@@ -13,7 +13,7 @@ export default [
     arcs: [
       { path: 'squeeze.a', from: 0, to: 2.4 },
       { path: 'squeeze.x0', from: 1.8, to: -0.35 },
-      { path: 'scale', from: 0.28, to: 2.4, log: true },
+      { path: 'scale', from: 0.36, to: 3.2, log: true },
     ],
     axes: [
       { id: 'crush', name: 'crush', path: 'squeeze.a', min: 0, max: 2 },
@@ -106,7 +106,6 @@ export default [
       { id: 'zoom', name: 'zoom', path: 'scale', min: 0.15, max: 5, log: true },
       { id: 'square', name: 'square', path: 'p1.q', min: -1, max: 1 },
       { id: 'x', name: 'centre', path: 'tx', min: -2, max: 2 },
-      { id: 'lens', name: 'lens', path: 'lens.c', min: 0.3, max: 1 },
     ],
     lambda: 0.2 },
 

@@ -86,9 +86,9 @@ export default [
     g: { fams: [plane(5, 0)], squeeze: { a: 1.4, x0: -1.25, b: 0.3, ang: Math.PI / 2 }, bend1: { a: 0.14, f: 2.4, ang: Math.PI / 2 } },
     flow: { 'bend1.ph': Math.PI },   // a half turn per cycle: it closes every two
     arcs: [
-      { path: 'squeeze.a', from: 0.1, to: 2.2 },
+      { path: 'squeeze.a', from: 0.9, to: 2.2 },
       { path: 'squeeze.x0', from: 1.2, to: -1.2 },
-      { path: 'bend1.a', from: 0.04, to: 0.19 },
+      { path: 'bend1.a', from: 0.09, to: 0.19 },
       { path: 'scale', from: 0.3, to: 2.4, log: true },
     ],
     axes: [

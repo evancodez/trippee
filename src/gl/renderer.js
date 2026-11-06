@@ -142,14 +142,39 @@ export class Renderer {
   draw() {
     const gl = this.gl, c = this.canvas;
     const F = this.frame, res = FRAME.res * 4;
-    F[res] = c.width; F[res + 1] = c.height; F[res + 2] = c.width / c.height; F[res + 3] = this.pushOn ? 1 : 0;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, c.width, c.height);
+    const low = this.drawScale < 1 ? this._lowTarget() : null;
+    const w = low ? low.w : c.width, h = low ? low.h : c.height;
+    F[res] = w; F[res + 1] = h; F[res + 2] = w / h; F[res + 3] = this.pushOn ? 1 : 0;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, low ? low.fbo : null);
+    gl.viewport(0, 0, w, h);
     gl.useProgram(this.prog);
     gl.activeTexture(gl.TEXTURE0);
     if (this.brushOk) gl.bindTexture(gl.TEXTURE_2D, this.brushA.tex);
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.block);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (low) {
+      // Stretched back up to fill a canvas that hasn't changed size
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, low.fbo);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      gl.blitFramebuffer(0, 0, w, h, 0, 0, c.width, c.height, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+  }
+
+  // The smaller picture the governor draws into, remade when the size it wants changes
+  _lowTarget() {
+    const gl = this.gl, c = this.canvas;
+    const w = Math.max(2, Math.round(c.width * this.drawScale)), h = Math.max(2, Math.round(c.height * this.drawScale));
+    let t = this.low;
+    if (t && t.w === w && t.h === h) return t;
+    if (!t) { t = this.low = { fbo: gl.createFramebuffer(), rb: gl.createRenderbuffer() }; }
+    gl.bindRenderbuffer(gl.RENDERBUFFER, t.rb);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, w, h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, t.rb);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    t.w = w; t.h = h;
+    return t;
   }
 }

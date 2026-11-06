@@ -44,7 +44,12 @@ export class Stage {
   update(t) {
     if (this.score.song) return;
     const g = this.score.gestures;
-    if (this.hold) { const cur = this.current(t); if (cur.t1 < t + 30) { cur.t1 = t + 600; cur.arcEnd = cur.arcEnd ?? cur.t1; g.length = g.indexOf(cur) + 1; } return; }
+    if (this.hold) {
+      // A held pattern never runs out. Only the last gesture can: one that's been told to land has its successor queued behind it.
+      const cur = this.current(t);
+      if (cur === g[g.length - 1] && cur.t1 < t + 30) { cur.t1 = t + 600; cur.arcEnd = cur.arcEnd ?? cur.t1; }
+      return;
+    }
     this._extend(t);
   }
 
