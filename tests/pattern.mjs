@@ -1,5 +1,5 @@
 // Look at one pattern: PATTERN=<id> node tools/lab.mjs tests/pattern.mjs --out lab-out/me
-// Writes <id>.sheet.jpg (one whole gesture out of a solid and into the other) and prints measurements.
+// Writes <id>.sheet.jpg (one whole gesture) and prints measurements.
 import { watch, analyse } from '../tools/look.mjs';
 export default async ({ page, save, log }) => {
   const id = process.env.PATTERN;

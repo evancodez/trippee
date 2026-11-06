@@ -1,13 +1,22 @@
 # The engine, as built
 
-**Patterns change by morphing, never through a solid.** In the last `morph` seconds of a gesture the next gesture is evaluated in
-slot B, and `frame.js` makes a plan: families with a partner bend into it phase by phase (whole-cycle offsets keep lines from whipping,
-and both patterns zoom towards the same element size); families with nowhere to go, or with an angle in their phase that would show a
-cut, stay XOR-ed in and open or close as slits. New ones open before old ones close, so the frame stays half and half. `pol0`, `pol1`,
+**Patterns transform into each other, never through a solid and never laid over each other.** In the last `morph` seconds of a gesture
+`frame.js` plans one of: `slide` (same kind of pattern: its numbers glide to the next one's), `bend` (flat patterns whose families all
+have partners: each line travels to its partner, phase by phase), or `dive` / `rise` (the general case: a flight into one element of the
+pattern, found by rendering it small, with the next pattern inside that element; or the reverse). While it happens both patterns' clocks
+ease to rest, so only the transformation moves. `tests/pops.mjs` looks for pops across many pairs.
+
+**The song acts on the sheet** (`src/score/react.js`, built by the composer, read in `frame()`): flow surges on the beat, lines fatten on
+it and the middle swells; the melody travels out through the lines; each chord is three lenses that arrive exactly with it; brightness
+moves line density. `edits.reactAmt` scales all of it. A song moves through up to three families, one per kind of section.
+
+`pol0`, `pol1`,
 `inDur` and `outDur` below no longer exist. `stage.go`, `stage.snapshot` + `stage.morphFrom`, and `stage.setStatic` are how anything
 changes what's showing. Nothing is ever empty: past a surface or matte the same lines carry on flat, turned by `bg.rot` (`bg.on` 1 by
 default). Flat floors can't tip far enough to show their horizon. A gesture only rides the part of its long move that stays bold
 (`BOLD` in frame.js; a pattern with `fine: true` is exempt).
+
+**Version 2 adds** the effects bar, static, the hand, colour and pattern music, all below in "The modes".
 
 This overrides section 2 of `DESIGN.md` wherever they differ. The rest of `DESIGN.md` (music, transition grammar, pattern
 ideas, tools, acceptance tests) is still the intent, adapted to what's here.
@@ -90,21 +99,51 @@ Gesture = { t0, t1,       // seconds. Gestures run end to end, no gaps.
 
 `src/score/frame.js` evaluates this. `src/score/curves.js` has `smoother`, `evalTrack` (C2 quintic tracks) and `rng`.
 `src/stage.js` holds the current score: an endless wander with no song, a song's film when given one (`stage.setScore`), and
-`stage.go(id, t)`, which takes the picture to a pattern through a solid.
+`stage.go(id, t)`, which takes the picture to a pattern by morphing there.
+
+## The modes
+
+**One shader, built eight ways** (`src/gl/renderer.js`). `#ifdef HAND`, `PLATES` and `FLIGHT` in `shader.js` decide what's in a program, and
+`R.draw` picks the smallest one this frame's numbers need (`R.variant`). This matters a lot: a GPU pays for what a program declares on every
+pixel, drawn from or not. At 1080p on an M4 the flight branch alone took a plain frame from 60 fps to 24. Anything new and expensive in the
+shader goes behind its own `#ifdef`. `R.whenReady()` means the plain and flight programs are built; `R.whenAllReady()` means all eight are,
+which is what `trippee.ready` waits for.
+
+**Static** (`stage.setStatic`). `stage.staticG` is a gesture with `freezeU` set; `frame()` shows it instead of the score, whatever the time is.
+It still flows, and a song's film carries on underneath it. `stage.go` while static morphs by handover and stays. Asked for mid-morph, the
+morph finishes within 4 seconds first. The hand's zoom and line weight don't ease back in static, even with a song.
+
+**Effects** (`src/tools/effects.js`, `src/ui/effects.js`). `edits.ripples` (up to 8 `{x, y, radius, height}`), `edits.warp` (`{x, y, r, twist, pinch}`)
+and `edits.hand` (`{x, y, on, height, curl, spread, turn, size}`). All run through springs and real seconds, so they work while paused, static or
+in a song. The hand is applied once, to the coordinates, before the slots, so it survives a morph.
+
+**Colour** (`src/beyond/beyond.js`, `app.beyond`). A second plate made from phases already computed, with no family evaluated again. `plate.y` 0
+takes the plain path, byte-identical to black and white. It can rest the picture's clock for a few seconds (the quadrature stop), which is only
+ever a lag: `edits.beyond.time(t, score)`. **The stage runs on that clock, so anything that plans a change uses `app.pictureT()`, not `app.t`.**
+A stop only counts if it starts after colour came on and after this score came up, and turning colour off in a stop waits for the clock to catch up.
+
+**Pattern music** (`src/sound/`, `app.sound`). `read.js` copies the picture down to 64 x 36 through the GPU with no stall, `brain.js` turns a read line
+crossing it into notes, `theory.js` keeps one key signature per session with a mode per family, and `synth.js` is the Web Audio graph. It only
+reads the picture; it never writes to it. `g` makes the AudioContext, so nothing can sound before that. While it's on, a loaded song is
+`app.song.aside`: paused, and the wander takes the screen. `standDown` puts back the latest take and the song's clock, unless it was ejected or ran
+out meanwhile. A song that starts playing any other way wins, and the music steps aside.
+
+**Recording** (`src/tools/record.js`). One audio track, mixed from the song and the music as each turns up, so a recording can start before either.
 
 ## The app object
 
-`window.app` (see `src/main.js`): `R` (renderer), `stage`, `patterns`, `byId`, `families`, `canvas`, `t`, `paused`, `manual`, `clock`
-(when a song plays, a function returning its seconds), `edits` (below), `brush`, `onFrame` (callbacks per frame).
+`window.app` (see `src/main.js`): `R` (renderer), `stage`, `patterns`, `byId`, `families`, `canvas`, `t`, `pictureT()`, `paused`, `manual`, `clock`
+(when a song plays, a function returning its seconds), `edits` (below), `brush`, `onFrame` (callbacks per frame), `song`, `sound`, `beyond`, `hand`, `ui`.
 
-Three modules start themselves: `src/music/song.js`, `src/tools/input.js` and `src/ui/ui.js` each `export function init(app)`.
+These modules start themselves: `src/music/song.js`, `src/tools/input.js`, `src/ui/ui.js`, `src/beyond/beyond.js` and `src/sound/sound.js` each `export function init(app)`.
 
 `app.edits`, read by `frame()` every frame: `journey` (log zoom), `jx jy` (pan, in pattern units), `spin`, `duty` (added to theta),
 `over` (path→value, the knobs), `pressX pressY press pressR` (the ball under the sheet), `sheetX sheetY sheetRot sheet` (a lifted copy
-XOR-ed on top), `plate`, `invert`. `app.brush` = `{ x, y, r, dx, dy, on, heal }` paints a push for one frame (x, y in 0..1 from bottom left).
+XOR-ed on top), `ripples`, `warp`, `hand`, `staticG`, `beyond`, `plate`, `invert`. `app.brush` = `{ x, y, r, dx, dy, on, heal }` paints a push for one frame (x, y in 0..1 from bottom left).
 
-`app.governor` (`src/gl/governor.js`) lowers `R.drawScale` through tiers if the frame rate stays under 55 fps, and raises it again during a
-solid frame. `R.draw` then renders to a smaller target and stretches it to fill. `canvas.width` and `canvas.height` never change for this.
+`app.governor` (`src/gl/governor.js`) lowers `R.drawScale` if the frame rate stays under 55 fps, straight to the tier its measurement says will fit,
+and tries going back up after 30 calm seconds. Each program variant remembers its own tier, so a plain picture stays sharp and a flight draws smaller only
+while it's flying. `R.draw` then renders to a smaller target and stretches it to fill. `canvas.width` and `canvas.height` never change for this.
 
 ## Testing
 
@@ -115,8 +154,9 @@ PATTERN=lattice.master node tools/lab.mjs tests/pattern.mjs --out lab-out/<you> 
 node tools/lab.mjs tests/atlas.mjs --out lab-out/<you>                            # all patterns at once
 ```
 
-Also `tests/integrate.mjs` (boot, a real song through a real file drop, a recording), `tests/hand.mjs` (every verb), `tests/songend.mjs`,
-`tests/solids.mjs` (every pattern lands exactly solid), `tests/fps.mjs`, `tests/governor.mjs` and `tests/film.mjs` (a film in real time, as a sheet).
+Also `tests/v2.mjs` (`STAGE=boot,static,hand,music,clock,film,fps`: the bar and every mode together, with real input), `tests/effects.mjs`, `tests/beyond.mjs`,
+`tests/sound.mjs`, `tests/integrate.mjs` (boot, a real song through a real file drop, a recording), `tests/hand.mjs` (every verb), `tests/songend.mjs`,
+`tests/pops.mjs` (pops at the ends of morphs), `tests/fps.mjs`, `tests/governor.mjs` and `tests/film.mjs` (a film in real time, as a sheet). The lab always mutes Chrome.
 Then look at the image with the Read tool. `tools/look.mjs` gives contact sheets, time-slices and measurements; write your own lab
 script when you need to. Always use your own `--out lab-out/<you>` folder. Local songs for testing are in `media/` and served at
 `/media/ppp.mp3`, `/media/wildflower.mp3`, `/media/disclosure.mp3`, `/media/mgmt.mp3`. Never commit songs or video.

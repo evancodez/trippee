@@ -5,11 +5,13 @@
 //   scroll, pinch   Journey  log zoom about the cursor
 //   sideways, shift+scroll   Duty: thinner or fatter lines, stopping short of solid
 //   alt+drag        Sheet    a lifted copy XOR-ed on top, with detents where the fringes lock into rosettes
+// and whatever's chosen on the effects bar (./effects.js) takes the place of Press and Push.
 import { OFF, SNAP } from '../pattern/layout.js';
 import { clamp, smoother } from '../score/curves.js';
 import { fillSlot } from '../score/frame.js';
 import { Spring } from './spring.js';
 import { detentsFor, magnet } from './moire.js';
+import { Effects } from './effects.js';
 
 const PRESS_AMOUNT = -0.46, PRESS_R = 0.46, PRESS_LAG = 8, PRESS_IDLE = 3;   // lag: a critical spring trails a moving target by 2/w
 const MEMORY = 20;                  // seconds for a dent to relax by 1/e
@@ -35,7 +37,7 @@ const hand = {
 };
 export { hand };
 
-let app, canvas, stage, R, edits;
+let app, canvas, stage, R, edits, fx;
 const scratch = new Float32Array(4096);
 
 // where the hand is
@@ -153,7 +155,7 @@ function dropSheet() {
 
 function tickPress(dt, now) {
   const [x, y] = toPicture(m.cx, m.cy);
-  const alive = m.over && now - m.last < PRESS_IDLE && !S.active;
+  const alive = m.over && now - m.last < PRESS_IDLE && !S.active && !fx.current;   // the ball is the plain hand's
   const k = push.on ? 0.45 : 1;
   press.x.step(x, dt); press.y.step(y, dt);
   press.a.step(alive ? PRESS_AMOUNT * k : 0, dt, alive ? 5 : 1.6);
@@ -171,7 +173,7 @@ function tickPush(dt, now) {
       const n = clamp(Math.ceil(len / (BRUSH_R * h * 0.4)), 1, 12);
       for (let i = 1; i <= n; i++) {
         const u = i / n, cx = push.px + dx * u, cy = push.py + dy * u;
-        R.brush({ x: cx / w, y: 1 - cy / h, r: BRUSH_R, dx: -(dx / n) * (2 / h), dy: (dy / n) * (2 / h), on: true, heal: 0 });
+        R.brush({ x: cx / w, y: 1 - cy / h, r: BRUSH_R * (fx.current === 'comb' ? 1.8 : 1), dx: -(dx / n) * (2 / h), dy: (dy / n) * (2 / h), on: true, heal: 0 });
       }
       push.px = push.x.x; push.py = push.y.x;
     }
@@ -188,8 +190,8 @@ function tickPush(dt, now) {
 }
 
 function tickJourney(dt, now, A) {
-  const song = !!stage.score.song;
-  // Overlay during a film: it eases back on its own.
+  const song = !!stage.score.song && !stage.staticOn;
+  // Overlay during a film: it eases back on its own. In static nothing goes back on its own.
   if (song && now - J.touched > 2) J.target += (0 - J.target) * (1 - Math.exp(-dt / 2.5));
   const period = periodPx(A);
   const here = J.s.x + J.lift.x;
@@ -221,7 +223,7 @@ function tickJourney(dt, now, A) {
 
 function tickDuty(dt, now, t, G, solid) {
   // The threshold under the hand: thinner or fatter lines, short of solid. It eases back on its own with a song playing.
-  if (stage.score.song && now - D.touched > 2) D.target += (0 - D.target) * (1 - Math.exp(-dt / 2.5));
+  if (stage.score.song && !stage.staticOn && now - D.touched > 2) D.target += (0 - D.target) * (1 - Math.exp(-dt / 2.5));
   D.target = clamp(D.target, -0.85, 0.85);
   D.s.step(D.target, dt, 7, hand.calm ? DUTY_RATE * 0.5 : DUTY_RATE);
   edits.duty = D.s.x * solid;
@@ -312,6 +314,7 @@ function tick(t) {
       hand.emit('pattern', G.pattern);
     }
   }
+  fx.tick(dt, m.over);
   tickPress(dt, now);
   tickPush(dt, now);
   tickJourney(dt, now, A);
@@ -342,10 +345,10 @@ hand.liveValue = path => knobs.get(path)?.s.x ?? naturals()[OFF[path]];
 
 // Go somewhere: what's showing bends into it. With a song playing, the film carries on with this pattern as its motif.
 hand.go = (id, opts = {}) => {
-  const t = app.t;
+  const t = app.pictureT();
   const pat = typeof id === 'string' ? app.byId[id] : id;
   if (!pat) return;
-  if (stage.score.song && app.song?.rebuild && !stage.staticG) { hand.veil(() => app.song.rebuild({ pattern: pat })); hand.emit('going', pat); return; }
+  if (stage.score.song && app.song?.rebuild && !stage.staticOn) { hand.veil(() => app.song.rebuild({ pattern: pat })); hand.emit('going', pat); return; }
   if (app.paused && !app.clock) app.paused = false;
   stage.go(pat, t, opts);
   hand.emit('going', pat);
@@ -353,10 +356,10 @@ hand.go = (id, opts = {}) => {
 
 // Do something that changes what's showing (another take, a seek, a song going away), and have the old picture bend into the new one.
 hand.veil = (fn, { dur = 6 } = {}) => {
-  const snap = stage.snapshot(app.t);
+  const snap = stage.snapshot(app.pictureT());
   try { fn?.(); } catch (e) { console.error(e); }
   // A seek's new time only shows on the next frame, so ask the clock
-  stage.morphFrom(snap, app.clock ? app.clock() : app.t, dur);
+  stage.morphFrom(snap, app.pictureT(app.clock ? app.clock() : app.t), dur);
 };
 
 // What the hand has made of the current pattern, as a pattern a song can be composed from.
@@ -387,14 +390,19 @@ hand.step = dir => {
 };
 
 hand.wander = () => {
-  if (stage.score.song && app.song?.rebuild) { hand.veil(() => app.song.rebuild({ pattern: null })); hand.emit('wander'); return; }
+  if (stage.score.song && app.song?.rebuild) { hand.veil(() => { stage.setStatic(false, app.pictureT()); app.song.rebuild({ pattern: null }); }); hand.emit('static', false); hand.emit('wander'); return; }
   if (app.paused && !app.clock) app.paused = false;
-  stage.wander(app.t);
+  stage.wander(app.pictureT());
   hand.emit('wander');
 };
 
 // Static: what's showing stays. No more automatic transitions until it's turned off.
-hand.setStatic = on => { stage.setStatic(on, app.t); hand.emit('static', on); };
+hand.setStatic = on => { stage.setStatic(on, app.pictureT()); hand.emit('static', on); };
+hand.isStatic = () => stage.staticOn;
+
+// What the mouse does on the picture. Choosing the current one again goes back to the plain hand.
+hand.setEffect = id => fx.select(id);
+hand.effect = () => fx.current;
 
 hand.offsets = OFF;
 hand.isHeld = () => stage.hold || hand.corridor;
@@ -404,6 +412,7 @@ hand.clear = () => {
   D.target = hand.corridor ? 2 * D.room : 0;
   for (const k of knobs.values()) k.release = true;
   dropSheet();
+  fx.clear();
   push.boostUntil = nowS() + 2.5;
   hand.speed = 1; hand.spinRate = 0; clearingSpin = true;
   hand.emit('cleared');
@@ -435,6 +444,7 @@ export function init(a) {
   app = a; hand.app = a; canvas = a.canvas; stage = a.stage; R = a.R;
   edits = a.edits; edits.over = {};
   a.hand = hand;
+  fx = hand.fx = new Effects(a, hand, toPicture);
   lastNow = nowS(); lastT = a.t;
   curG = a.lastFrame?.G ?? null;
   curPat = curG?.pattern ?? null;
@@ -445,6 +455,7 @@ export function init(a) {
     m.over = e.target === canvas || hand.dragging;
     if (m.over) m.last = nowS();
     if (hand.dragging && S.active) moveSheet(e);
+    else if (m.over) fx.move(e.clientX, e.clientY);
   }, { passive: true });
   document.addEventListener('pointerleave', () => { m.over = false; });
   document.documentElement.addEventListener('mouseleave', () => { m.over = false; });
@@ -455,11 +466,12 @@ export function init(a) {
     hand.dragging = true;
     m.cx = e.clientX; m.cy = e.clientY;
     if (e.altKey) { beginSheet(e); return; }
+    if (fx.takes()) { fx.down(e.clientX, e.clientY); return; }
     push.on = true; push.boostUntil = 0;
     push.x.set(e.clientX); push.y.set(e.clientY);
     push.px = e.clientX; push.py = e.clientY;
   });
-  const end = () => { hand.dragging = false; push.on = false; S.active = false; };
+  const end = () => { hand.dragging = false; push.on = false; S.active = false; fx.up(); };
   addEventListener('pointerup', end);
   addEventListener('pointercancel', end);
   canvas.addEventListener('contextmenu', e => e.preventDefault());

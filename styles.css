@@ -71,12 +71,14 @@ body.idle .box { pointer-events: none; }
 
 /* First run, the bar, help */
 #hints { left: 16px; bottom: 16px; padding: 9px 14px 10px; max-width: min(760px, calc(100vw - 32px)); }
-#library:not([hidden]) ~ #hints, #library:not([hidden]) ~ #bar { left: 344px; }
-#song:not([hidden]) ~ #hints, #song:not([hidden]) ~ #bar { bottom: 106px; }
+#library:not([hidden]) ~ #hints { left: 344px; }
+#library:not([hidden]) ~ #bar, #library:not([hidden]) ~ #fx { left: calc(50% + 164px); }
+#song:not([hidden]) ~ #hints, #song:not([hidden]) ~ #bar, #song:not([hidden]) ~ #fx { bottom: 106px; }
+#hints:not([hidden]) ~ #fx { bottom: 92px; }
 #hints p { margin: 0; }
 #hints p + p { color: var(--quiet); margin-top: 3px; }
 #hints .acts { display: inline-flex; gap: 14px; margin-left: 14px; color: var(--ink); }
-#bar { left: 16px; bottom: 16px; padding: 7px 14px 8px; display: flex; gap: 18px; align-items: baseline; }
+#bar { left: 50%; transform: translateX(-50%); bottom: 88px; padding: 7px 14px 8px; display: flex; gap: 18px; align-items: baseline; white-space: nowrap; width: max-content; }
 #bar .name { color: var(--quiet); padding-right: 6px; }
 #help { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 500px; max-width: calc(100vw - 32px); padding: 14px 20px 18px; }
 #help header { display: flex; justify-content: space-between; margin-bottom: 10px; }
@@ -85,9 +87,32 @@ body.idle .box { pointer-events: none; }
 #help dd { margin: 0; color: var(--quiet); }
 #help hr { grid-column: 1 / 3; border: 0; border-top: 1px solid #fff; width: 100%; margin: 8px 0; }
 
+/* The effects bar: up when the mouse moves, gone when it stops */
+#fx { left: 50%; transform: translateX(-50%); bottom: 16px; padding: 5px 7px; display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: 2px; width: max-content; max-width: calc(100vw - 32px);
+  opacity: 0; pointer-events: none; transition: opacity .8s linear; }
+#fx.awake { opacity: 1; pointer-events: auto; transition: opacity .15s linear; }
+body.idle #fx { pointer-events: none; }
+#fx button { margin: 0; padding: 5px 7px 2px; min-width: 42px; text-align: center; line-height: 1; box-sizing: border-box; }
+#fx button svg { display: block; margin: 0 auto 4px; }
+#fx button span { display: block; line-height: 1.5; font-size: 10px; color: var(--quiet); }
+#fx button span b { font-weight: normal; color: var(--ink); margin-right: 4px; }
+#fx button:hover span, #fx button.now span { color: inherit; }
+#fx button:hover span b, #fx button.now span b { color: inherit; }
+#fx button.now { background: var(--ink); color: var(--paper); }
+#fx .rule { width: 1px; background: var(--rule); margin: 2px 6px; flex: none; }
+body.fx-hand canvas#c { cursor: none; }
+
 /* While something's happening */
 #note { left: 50%; top: 16px; transform: translateX(-50%); padding: 3px 11px 4px; white-space: pre; }
 #rec { right: 16px; bottom: 16px; padding: 3px 11px 4px; display: flex; gap: 14px; }
 body.idle #rec { opacity: 1; }
 #drop { position: fixed; inset: 12px; border: 1px solid #fff; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 #drop span { background: #000; border: 1px solid #fff; padding: 3px 11px 4px; }
+
+.balance { margin-top: 10px; gap: 18px; flex-wrap: wrap; }
+.balance label { display: inline-flex; align-items: center; gap: 8px; }
+.balance input[type=range] { -webkit-appearance: none; appearance: none; width: 120px; height: 11px; background: transparent; cursor: ew-resize; }
+.balance input[type=range]::-webkit-slider-runnable-track { height: 1px; background: rgba(255,255,255,.5); }
+.balance input[type=range]::-moz-range-track { height: 1px; background: rgba(255,255,255,.5); }
+.balance input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 2px; height: 11px; margin-top: -5px; background: #fff; }
+.balance input[type=range]::-moz-range-thumb { width: 2px; height: 11px; border: 0; border-radius: 0; background: #fff; }

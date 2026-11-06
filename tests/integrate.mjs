@@ -113,7 +113,7 @@ export default async ({ page, log, save, out }) => {
     const afterSeek = await st();
     log('seek to half: t', beforeSeek.t, '->', afterSeek.t, 'of', afterSeek.d, 'heard', afterSeek.heard, 'playing', afterSeek.playing);
     await page.shot('song-4-seeked');
-    // Another take: seed changes, music doesn't stop, passes under a solid
+    // Another take: seed changes, music doesn't stop, the old film bends into the new
     const seed0 = await page.eval('app.song.score.seed');
     const h0 = await page.eval('app.song.time()');
     await page.eval(() => { __tr.length = 0; });

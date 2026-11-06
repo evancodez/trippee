@@ -27,11 +27,11 @@ export default async ({ page, log }) => {
   await page.eval(() => app.song.seek(app.song.duration - 6)); await sleep(1500);
   log('near the end', await st());
   await sleep(5500); log('song over', await st());
-  await sleep(1500); await page.shot('end-1-solid'); log('holding', await st());
+  await sleep(1500); await page.shot('end-1-holding'); log('holding', await st());
   await sleep(2500); log('wander should be opening', await st());
   await sleep(6000); await page.shot('end-2-wander'); log('wander', await st());
   log('frames moving', await page.eval(async () => { const a = app.t; await new Promise(r => setTimeout(r, 500)); return app.t > a; }));
-  // Space: back to the film from the start, under a solid
+  // Space: back to the film from the start, bending into it
   await page.eval(() => { window.__tr = []; window.__on = () => __tr.push([+app.t.toFixed(3), +app.lastFrame.theta.toFixed(3), +app.lastFrame.solid.toFixed(2), app.lastFrame.G.pattern.id]); app.onFrame.push(__on); });
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', text: ' ', windowsVirtualKeyCode: 32 });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });

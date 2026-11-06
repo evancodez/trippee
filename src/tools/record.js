@@ -42,7 +42,7 @@ export class Recorder {
     };
     this.draw();
     const stream = copy.captureStream(60);
-    const audio = this.audioTracks();
+    const audio = this.openMix();
     for (const tr of audio) stream.addTrack(tr);
     const mimeType = TYPES.find(t => MediaRecorder.isTypeSupported(t)) || '';
     const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 16e6, audioBitsPerSecond: 256e3 });
@@ -61,23 +61,41 @@ export class Recorder {
       };
     });
     app.onFrame.push(this.draw);
+    app.onFrame.push(this.listen);
     rec.start(1000);
     this.rec = rec; this.frames = 0; this.started = performance.now();
   }
 
   stop() {
     if (!this.rec) return Promise.resolve(null);
-    const app = this.app, i = app.onFrame.indexOf(this.draw);
-    if (i >= 0) app.onFrame.splice(i, 1);
+    const app = this.app;
+    for (const fn of [this.draw, this.listen]) { const i = app.onFrame.indexOf(fn); if (i >= 0) app.onFrame.splice(i, 1); }
     const f = this.finished;
     if (this.rec.state !== 'inactive') this.rec.stop();
     this.rec = null;
+    f.then(() => { this.mix?.close?.().catch(() => {}); this.mix = null; });
     return f;
   }
 
-  audioTracks() {
-    try { return this.app.song?.audioStream?.()?.getAudioTracks() ?? []; }
-    catch (e) { console.warn('no song audio for the recording:', e); return []; }
+  // What a recording hears: one track, because a recorder only takes the first. The song and the picture's own music come into it as
+  // they turn up, so a recording can start before either, and a track can't be added once it's going.
+  openMix() {
+    try {
+      const mix = this.mix = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
+      const out = mix.createMediaStreamDestination();
+      if (mix.state !== 'running') mix.resume();
+      // Silence from the first moment, or the sound would start late in the file and sit out of step with the picture.
+      const hush = mix.createConstantSource();
+      hush.offset.value = 0; hush.connect(out); hush.start();
+      const heard = new Set();
+      const hear = stream => { if (stream && !heard.has(stream)) { heard.add(stream); mix.createMediaStreamSource(stream).connect(out); } };
+      this.listen = () => {
+        hear(this.app.song?.audioStream?.());
+        if (this.app.sound?.active) hear(this.app.sound.stream());
+      };
+      this.listen();
+      return out.stream.getAudioTracks();
+    } catch (e) { console.warn('no sound for the recording:', e); this.listen = () => {}; return []; }
   }
 
   // The drawing buffer only holds the picture in the task that drew it, so a still is taken in the frame callback.

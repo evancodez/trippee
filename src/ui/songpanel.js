@@ -19,21 +19,38 @@ export class SongPanel {
       </div>
       <div class="progress" data-progress hidden><i></i></div>
       <div class="strip" data-strip hidden><div class="head"></div></div>
+      <div class="row balance">
+        <span class="quiet">the picture follows</span>
+        <label>melody <input type="range" min="0" max="2" step="0.01" data-react="reactMelody"></label>
+        <label>pulse <input type="range" min="0" max="2" step="0.01" data-react="reactPulse"></label>
+        <label>tone <input type="range" min="0" max="2" step="0.01" data-react="reactTone"></label>
+      </div>
       <input type="file" accept="audio/*,video/*" hidden data-file>`;
     const $ = s => el.querySelector(s);
     this.$ = $;
     this.head = $('.head');
+    // How much the melody, the pulse and the tone each move the picture. Kept between visits; 1 is the balance as composed.
+    const edits = app.edits;
+    for (const input of el.querySelectorAll('[data-react]')) {
+      const key = input.dataset.react;
+      let saved = null;
+      try { saved = localStorage.getItem('trippee.' + key); } catch { /* it just won't be remembered */ }
+      const v = saved === null || !Number.isFinite(+saved) ? 1 : +saved;
+      input.value = v; edits[key] = v;
+      input.oninput = () => { edits[key] = +input.value; try { localStorage.setItem('trippee.' + key, input.value); } catch {} };
+      input.ondblclick = () => { input.value = 1; input.oninput(); };
+    }
     $('[data-pick]').onclick = () => $('[data-file]').click();
     $('[data-file]').onchange = e => { const f = e.target.files?.[0]; if (f) this.load(f); e.target.value = ''; };
     $('[data-close]').onclick = () => this.show(false);
-    $('[data-play]').onclick = () => hand.togglePause();
+    $('[data-play]').onclick = () => { if (app.song?.aside) app.sound?.handBack?.(); else hand.togglePause(); };
     $('[data-take]').onclick = () => this.take();
     $('[data-mine]').onclick = () => this.toggleMine();
     $('[data-eject]').onclick = () => this.eject();
     $('[data-strip]').onclick = e => {
       const b = e.currentTarget.getBoundingClientRect(), d = this.duration();
-      // seeking is a cut in the music, so it goes under a solid too
-      if (d) { const at = (e.clientX - b.left) / b.width * d; this.hand.veil(() => this.app.song?.seek?.(at), { close: 0.5, open: 1.2 }); }
+      // seeking is a cut in the music, so the picture bends into the new place. A song that's waiting just moves its place.
+      if (d) { const at = (e.clientX - b.left) / b.width * d; if (this.app.song?.aside) this.app.song.seek(at); else this.hand.veil(() => this.app.song?.seek?.(at)); }
     };
     app.onFrame.push(() => this.update());
   }
@@ -138,19 +155,11 @@ export class SongPanel {
       n.title = name;
       strip.insertBefore(n, this.head);
     });
-    // where the film lands in a solid: a black or a white square
-    for (const g of song?.score?.gestures || []) {
-      if (!g.pol1 || g.t1 >= d) continue;
-      const n = document.createElement('div');
-      n.className = 'mark ' + (g.pol1 > 0 ? 'black' : 'white');
-      n.style.left = `calc(${(g.t1 / d * 100)}% - 2px)`;
-      strip.insertBefore(n, this.head);
-    }
   }
 
   update() {
     if (!this.open || this.state !== 'ready') return;
-    const d = this.duration(), t = this.app.song?.resting ? d : this.app.t;
+    const s = this.app.song, d = this.duration(), t = s?.resting ? d : s?.aside ? s.time() : this.app.t;
     if (d) {
       this.head.style.left = Math.min(100, t / d * 100) + '%';
       this.$('[data-time]').textContent = `${clock(t)} / ${clock(d)}`;

@@ -4,7 +4,7 @@
 // each kind of section, and sections that come back move for move with one thing changed. Flow is locked to the beat clock and surges
 // on it. Moment by moment the pulse, the melody and the tone act on the sheet (see react.js).
 import { rng, clamp, lerp, smoother, evalTrack } from './curves.js';
-import { buildReact } from './react.js';
+import { buildReact, surgedBeats } from './react.js';
 
 const AFFINITY = {          // slide, perc, tempo, harmRate
   lattice: [0, 0.8, 0.6, 0.5], poles: [1, 0, 0.3, 0.2], pole: [1, 0, 0.3, 0.2], rooms: [0.2, 0.7, 0.8, 0.6], room: [0.2, 0.7, 0.8, 0.6],
@@ -421,8 +421,8 @@ export function compose(A, seed = 1, opts = {}) {
   const finalPat = gestures.length ? gestures[gestures.length - 1].pattern : pool[0];
   gestures.push({ t0: tEnd, t1: tEnd + 3600, pattern: finalPat, arcs: [], phiTrack: [{ t: tau(tEnd), x: 0, v: 1 / 16 }], gears: [] });
 
-  const SURGE = 0.78;
-  const surged = t => { const b = tau(t), i = Math.floor(b), x = b - i; return i + x + (SURGE / (2 * Math.PI)) * Math.sin(2 * Math.PI * x); };
+  const react = buildReact(A, seed);
+  const surged = t => surgedBeats(react, tau, t);
   const landings = L.slice(1).map((l, j) => ({ B: +l.B.toFixed(3), kind: l.kind, form: l.form, pol: l.pol, holdOut: l.holdOut, holdIn: l.holdIn, dE: +(l.dE ?? 0).toFixed(3) }));
   const lens = gestures.slice(0, -1).map(g => g.t1 - g.t0);
   const plain = landings.filter(l => l.form === 'duty').length;
@@ -436,9 +436,9 @@ export function compose(A, seed = 1, opts = {}) {
   };
   return {
     gestures, landings, stats, tau, rate, family, pool: pool.map(p => p.id), seed,
-    // Flow surges on the beat and glides between, arriving at the same place every beat, so it stays locked and never jolts
+    // Flow surges on the strong beats and glides between, so it stays locked and never jolts
     phi: (t, G) => { const s = surged(t); return G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8; },
-    react: buildReact(A, seed),
+    react,
     song: { duration, bpm: A.bpm, hash: A.hash, meter, phraseBars: A.phraseBars },
   };
 }

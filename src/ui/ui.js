@@ -4,6 +4,7 @@ import { Recorder } from '../tools/record.js';
 import { Library } from './library.js';
 import { Knobs } from './knobs.js';
 import { SongPanel } from './songpanel.js';
+import { EffectsBar } from './effects.js';
 
 const IDLE_MS = 3500;
 const store = {
@@ -43,6 +44,15 @@ export function init(app) {
       <dt>alt double-click</dt><dd>lay the copy back down</dd>
       <dt>drop a song</dt><dd>anywhere. on a pattern you're holding, it uses yours</dd>
       <hr>
+      <dt>1 ripple</dt><dd>click drops a ring. hold and move to rain them</dd>
+      <dt>2 hand</dt><dd>a hand comes up through the sheet. hold to make a fist</dd>
+      <dt>3 twist</dt><dd>drag to wind the lines round the cursor</dd>
+      <dt>4 pinch &nbsp;5 bulge</dt><dd>hold to draw the lines in, or swell them out</dd>
+      <dt>6 comb</dt><dd>drag to comb. the same number again goes back to the plain hand</dd>
+      <dt>l</dt><dd>static: it stays and only flows, until you turn it off</dd>
+      <dt>b</dt><dd>colour: the pattern printed twice, in two inks. shift b for the next inks</dd>
+      <dt>g</dt><dd>make music: the picture plays itself. a song waits while it does</dd>
+      <hr>
       <dt>p</dt><dd>patterns</dd>
       <dt>k</dt><dd>knobs: the pattern's own, and speed, rotation, lines</dd>
       <dt>s</dt><dd>song</dd>
@@ -61,8 +71,10 @@ export function init(app) {
   root.appendChild(dropMark);
 
   // ------------------------------------------------------------------------ first run
-  const hints = box('hints', `<p>move · drag · scroll · sideways · alt-drag · drop a song · p patterns · k knobs · ? keys</p>
+  const hints = box('hints', `<p>move · drag · scroll · 1-6 effects · l static · b colour · g make music · drop a song · p patterns · ? keys</p>
     <p>flickering line patterns can trigger seizures in people with photosensitive epilepsy.<span class="acts"><button data-calm>calm</button><button data-ok>got it</button></span></p>`);
+  const fxBar = new EffectsBar(app, hand, box('fx'), (...a) => ui.say?.(...a));
+  ui.effects = fxBar;
   const dismiss = () => { hints.hidden = true; store.set('seen', '1'); placeBar(); };
   hints.querySelector('[data-ok]').onclick = dismiss;
   hints.querySelector('[data-calm]').onclick = () => hand.setCalm(!hand.calm);
@@ -107,7 +119,7 @@ export function init(app) {
   let lastMove = performance.now(), pointer = { x: 0, y: 0, target: null };
   const wake = () => { lastMove = performance.now(); document.body.classList.remove('idle'); };
   function placeBar() {
-    const nearBottom = innerHeight - pointer.y < 72;
+    const nearBottom = innerHeight - pointer.y < 124;     // it sits just above the effects bar
     const blocked = !hints.hidden || song.open;
     bar.hidden = !(nearBottom && !blocked);
     if (!bar.hidden) bar.querySelector('[data-name]').textContent = (app.lastFrame?.G?.pattern?.name || '').toLowerCase();
@@ -143,7 +155,9 @@ export function init(app) {
     const tag = e.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     switch (e.key.toLowerCase()) {
-      case 'p': case 'l': library.show(); break;
+      case 'p': library.show(); break;
+      case 'l': fxBar.toggleStatic(); break;
+      case '1': case '2': case '3': case '4': case '5': case '6': fxBar.key(e.key); break;
       case 'k': knobs.show(); break;
       case 's': song.show(); break;
       case 'r': toggleRecord(); break;

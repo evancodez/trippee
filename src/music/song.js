@@ -5,7 +5,7 @@ import { ANALYSIS_VERSION, SR, analyse } from './analysis.js';
 import { rehearse } from './rehearse.js';
 
 const VISUAL_LEAD = 0.025;      // the picture a touch ahead: an edge seen just before it's heard reads as on time
-const END_HOLD = 2.5;           // seconds the film's last solid holds after the song has finished
+const END_HOLD = 2.5;           // seconds the film's last picture holds after the song has finished
 
 // ---------------------------------------------------------------- the analysis cache: a song is only analysed once
 const DB = 'trippee', STORE = 'analysis';
@@ -166,6 +166,7 @@ export function init(app) {
 
   const song = app.song = {
     analysis: null, score: null, fromCache: false, analyseSeconds: 0, hash: null, rehearsal: null,
+    aside: false,     // the picture is making its own music, and this song waits
     get playing() { return playing; },
     get resting() { return resting; },
     get duration() { return duration; },
@@ -258,7 +259,7 @@ export function init(app) {
       if (family !== undefined) { next.family = family; next.pattern = undefined; }
       if (pattern !== undefined) next.pattern = pattern;
       composeNow(next);
-      if (!resting) app.stage.setScore(score);
+      if (!resting && !song.aside) app.stage.setScore(score);
       // It's called from under a solid, so it answers now; what this rehearsal learns is for the next take.
       rehearse(score, Math.min(analysis.duration, 1200)).then(r => {
         song.rehearsal = r;
@@ -273,7 +274,7 @@ export function init(app) {
       loadToken++;
       stopSource();
       endedAt = 0; resting = false;
-      playing = false; buffer = null; analysis = null; score = null; duration = 0; offset = 0;
+      playing = false; buffer = null; analysis = null; score = null; duration = 0; offset = 0; song.aside = false;
       song.analysis = null; song.score = null;
       app.clock = null;
       app.stage.score = { ...app.stage.score, song: null, gestures: [], phi: t => (t * 76 / 60) / 8 };

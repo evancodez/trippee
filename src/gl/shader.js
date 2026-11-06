@@ -114,8 +114,139 @@ float matteOf(int b,vec2 p){
   return aaOf(sd);
 }
 
+#ifdef HAND
+// ---------------------------------------------------------------- the hand, coming up through the sheet
+// A shape and nothing else: no lighting, no look of its own. It only says how high the sheet is at this pixel. main() turns that into
+// where the pattern lands and how far its phase has slipped, once, for whichever slots are showing, so it survives a morph.
+const vec2 H_LEAN=vec2(.30,.40);        // the ray's lean: a point at height z shows the sheet's point further along by this times z
+const vec2 H_TIP=vec2(.29552,.95534);   // sin, cos of how far the hand tips back
+const vec3 H_WRIST=vec3(0.,-.1,-.01);   // where the wrist is, on the hand
+const vec3 H_ARM=vec3(0.,-.3,-.42);     // where the forearm goes, down into the sheet
+const float H_FLARE=.3,H_MELT=.045;     // how wide the forearm melts into the sheet, and everything else
+const int HSEG=14;
+vec3 hA[HSEG],hB[HSEG]; float hR[HSEG];
+int hAct[HSEG],hN; bool hPalm,hArm; float hOff,hOnHand,hProud=0.;
+
+float smin(float a,float b,float k){ float h=max(k-abs(a-b),0.)/k; return min(a,b)-h*h*k*.25; }
+float capsule(vec3 p,vec3 a,vec3 b,float r){ vec3 pa=p-a,ba=b-a; return length(pa-ba*clamp(dot(pa,ba)/(dot(ba,ba)+1e-9),0.,1.))-r; }
+
+// Where the bones are for this much curl: four fingers of three bones, and a thumb of two
+void handBones(float curl,float spread){
+  for(int i=0;i<4;i++){
+    float fi=float(i);
+    float len=(i==0?.78:i==1?.99:i==2?1.06:.95)*.245;
+    float c=curl*(1.+.12*(1.5-fi));
+    vec3 a=vec3(-.066+fi*.044,.085,0.);
+    vec3 dir=normalize(vec3((fi-1.5)*spread*.2,1.,0.));
+    float r=.0225+fi*.0013,seg=.46;
+    mat2 R0=rot(c*.55),R1=rot(c*.95);
+    for(int j=0;j<3;j++){
+      dir.yz=(j==0?R0:R1)*dir.yz;
+      vec3 b=a+dir*len*seg;
+      int n=i*3+j;
+      hA[n]=a; hB[n]=b; hR[n]=r;
+      a=b; r*=.9; seg=j==0?.32:.23;
+    }
+  }
+  vec3 a=vec3(.07,-.055,.012),dir=normalize(vec3(.85,.6,.3));
+  float r=.03;
+  mat2 Rx=rot(curl*.6),Ry=rot(curl*.35);
+  for(int j=0;j<2;j++){
+    dir.xy=Rx*dir.xy; dir.yz=Ry*dir.yz;
+    vec3 b=a+dir*(j==0?.095:.075);
+    hA[12+j]=a; hB[12+j]=b; hR[12+j]=r;
+    a=b; r*=.85;
+  }
+}
+
+// The sheet and the hand as one surface. Only the bones this ray can reach are in the sum.
+float handField(vec3 q){
+  float d=q.y*H_TIP.x+q.z*H_TIP.y+hOff;
+  if(hArm) d=smin(d,capsule(q,H_WRIST,H_ARM,.058),H_FLARE);
+  float h=1e3;
+  if(hPalm){
+    vec3 e=abs(q-vec3(0.,-.01,0.))-vec3(.068,.08,.017);
+    h=length(max(e,0.))+min(max(e.x,max(e.y,e.z)),0.)-.03;
+    h=smin(h,capsule(q,vec3(-.035,-.08,0.),vec3(.04,-.085,0.),.045),.04);
+  }
+  for(int n=0;n<hN;n++){ int i=hAct[n]; h=smin(h,capsule(q,hA[i],hB[i],hR[i]),.014); }
+  hOnHand=.03-1.2*h;       // above nothing but this bone's own surface: the melt into the sheet takes it down to the sheet's
+  return smin(d,h,H_MELT);
+}
+
+// How high the sheet stands at this pixel, in picture units. 0 away from the hand, and it costs nothing there.
+float handHeight(vec2 p){
+  vec4 a=uF[F_HAND],b=uF[F_HAND+1];
+  float s=max(b.w,1e-3),zw=mix(-.75*s,a.z,a.w);
+  vec2 cs=vec2(cos(b.z),sin(b.z));
+  vec2 c=p-a.xy; c=vec2(cs.x*c.x+cs.y*c.y,-cs.y*c.x+cs.x*c.y)/s;     // into the hand's own turn, from the wrist
+  hOnHand=-1.; hProud=0.;
+  if(abs(c.x)>.44||c.y<-.5||c.y>.55) return 0.;
+  // from the world to the hand: unturn, untip, unscale
+  #define H_IN(v) vec3(cs.x*(v).x+cs.y*(v).y,H_TIP.y*(-cs.y*(v).x+cs.x*(v).y)+H_TIP.x*(v).z,-H_TIP.x*(-cs.y*(v).x+cs.x*(v).y)+H_TIP.y*(v).z)
+  vec3 rd=H_IN(normalize(vec3(-H_LEAN,-1.)));
+  float ztop=zw+.62*s;
+  vec3 w0=vec3(p+H_LEAN*ztop-(a.xy+H_LEAN*zw),ztop-zw);
+  vec3 ro=H_IN(w0)/s+H_WRIST;
+  hOff=(zw/s)-(H_WRIST.y*H_TIP.x+H_WRIST.z*H_TIP.y);                 // the sheet, from the hand
+  float t0=1e3,t1=(ro.y*H_TIP.x+ro.z*H_TIP.y+hOff)/max(-(rd.y*H_TIP.x+rd.z*H_TIP.y),1e-3);     // t1: where it reaches the sheet
+  // which parts can this ray touch at all. Mostly none, and then it's the sheet.
+  vec3 A=H_WRIST-ro,B=H_ARM-ro; float ta=dot(A,rd),tb=dot(B,rd);
+  hArm=capsule(vec3(0.),A-rd*ta,B-rd*tb,.058)<H_FLARE+.01;
+  if(hArm) t0=t1-H_FLARE;
+  vec3 pc=vec3(0.,-.03,0.)-ro; float tp=dot(pc,rd);
+  hPalm=length(pc-rd*tp)<.2;
+  if(hPalm) t0=min(t0,tp-.2);
+  hN=0;
+  if(abs(c.x-.03)<.3&&c.y>-.05&&c.y<.52){
+    handBones(b.x,b.y);
+    for(int i=0;i<HSEG;i++){
+      A=hA[i]-ro; B=hB[i]-ro; ta=dot(A,rd); tb=dot(B,rd);
+      if(capsule(vec3(0.),A-rd*ta,B-rd*tb,hR[i])>H_MELT+.012) continue;
+      hAct[hN++]=i;
+      t0=min(t0,min(ta,tb)-hR[i]-H_MELT);
+    }
+  }
+  if(hN==0&&!hPalm&&!hArm) return 0.;
+  float t=max(t0,0.);
+  bool hit=false;
+  for(int i=0;i<26&&t<t1;i++){
+    float d=handField(ro+rd*t);
+    if(d<.0007){ hit=true; break; }
+    t+=d*.92;
+  }
+  // a ray still creeping past a finger at the end of this has missed it: it goes on down to the sheet
+  vec3 q=ro+rd*(hit?t:t1);
+  handField(q);
+  float z=q.y*H_TIP.x+q.z*H_TIP.y+hOff;
+  // how far this point stands proud of the bone it's on: nothing at the bone's edge, the bone's radius along its top
+  hProud=max(z,0.)*s;
+  if(hOnHand>-.03){
+    // the bones nearest this point, each by how near it is, so the lines don't step where one bone gives way to the next
+    float sw=0.,sa=0.;
+    if(hPalm){
+      vec3 e=vec3(clamp(q.x,-.068,.068),clamp(q.y,-.09,.07),0.);
+      float w=exp(-max(length(q-e)-.047,0.)*140.);
+      sw=w; sa=w*(e.y*H_TIP.x+e.z*H_TIP.y);
+    }
+    for(int n=0;n<hN;n++){
+      int i=hAct[n]; vec3 pa=q-hA[i],ba=hB[i]-hA[i];
+      vec3 k=hA[i]+ba*clamp(dot(pa,ba)/(dot(ba,ba)+1e-9),0.,1.);
+      float w=exp(-max(length(q-k)-hR[i],0.)*140.);
+      sw+=w; sa+=w*(k.y*H_TIP.x+k.z*H_TIP.y);
+    }
+    if(sw>1e-6) hProud=mix(hProud,max(z-sa/sw-hOff,0.)*s,smoothstep(-.03,.03,hOnHand));
+  }
+  return max(z,0.)*s;
+}
+#endif
+
 float gPh[3*FAM],gGn[3*FAM],gDu[3*FAM]; vec2 gGr[3*FAM]; bool gOn[3*FAM];
 float gRnd[3],gSum[3];
+bool gBreak=false;
+float gRing=0.;                  // what the ripples have done at this pixel, in picture units
+float gLift=0.;                  // how far the sheet's phase has slipped at this pixel, in cycles. Each family takes its own share, or a check slipping by half a cycle both ways would look the same
+const vec4 LIFT=vec4(1.,.5,.75,.25);
 
 // Everything up to the threshold: where this pixel lands, what each family's phase and gradient are. Returns coverage of the surface.
 float prepare(int K,int b,vec2 p){
@@ -240,6 +371,7 @@ float prepare(int K,int b,vec2 p){
     // the smooth part of the phase; angles are added afterwards, with their exact gradient, so a wrap never shows
     float sm=dot(fa.xyz,vec3(X.xy*fq,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
     if(tn.y!=0.) sm+=tn.y*boil(X.xy*tn.z,tn.w,float(i)*2.3+.7);
+    sm+=gLift*LIFT[i];
     vec2 g=vec2(dFdx(sm),dFdy(sm));
     // Across the wrap the phase jumps by the around-count, which only that one pixel's gradient sees. Take off exactly that, so a
     // real gradient too fine to draw stays too fine, and doesn't alias into specks at the far end of a tunnel.
@@ -247,6 +379,8 @@ float prepare(int K,int b,vec2 p){
     else if(wrapped) g-=round(g);
     g+=fb.z*gT1+fc.z*gT2;
     if(seam){ float gl=length(g); if(gl>.5) g*=.5/gl; }     // the one pixel across a jump between two fields isn't a real gradient
+    if(gBreak){ float gl=length(g); if(gl>.2) g*=.2/gl; }   // nor is the one across a finger's edge, or it would draw an outline
+    sm+=gRing*min(length(g)*uF[8].y*.5,9.);                 // a ring moves a line by the same distance however big it is, up to a point
     gPh[k]=sm+fb.z*b1.z+fc.z*b2.z+fa.w+fa.y*tn.x*slipY;
     if(parity<0.){ gPh[k]+=.5; parity=1.; }                 // half a cycle on one family inverts the whole XOR
     gGr[k]=g; gGn[k]=max(length(g),1e-5); gDu[k]=fb.w;
@@ -306,20 +440,71 @@ float inkOf(int K,int k0,int k1,float th){
   return gRnd[K]>0.||gSum[K]>0.?inkSoft(k0,k1,gRnd[K],gSum[K],th):inkBand(k0,k1,th);
 }
 
+#ifdef PLATES
+// Beyond: the same pattern printed a second time, its phases moved. No family is evaluated again. Each family runs ahead by its own
+// share of the offset, plus a first-order shift, phase + dot(gradient, shift).
+float gW[2*FAM],gDv[2*FAM];
+void plateMove(int k1){
+  float r=uF[5].y; vec2 sh=vec2(uF[5].z,uF[1].a);
+  for(int k=0;k<k1;k++){
+    if(!gOn[k]) continue;
+    float dv=r*gW[k]+dot(gGr[k],sh)*(1.-smoothstep(.25,.5,gGn[k])); dv-=round(dv);   // too fine to draw, the shift would only be noise
+    gDv[k]=dv; gPh[k]+=dv;
+  }
+}
+// How much of this pixel the two plates disagree on, once they've moved. Within one family that's two exact bands at its edges; across
+// families they XOR, like the ink itself. Only an edge pixel or a hairline needs this: elsewhere the two inks already say.
+float plateDis(int k0,int k1){
+  float dis=1.;
+  for(int k=k0;k<k1;k++){
+    if(!gOn[k]) continue;
+    float dv=gDv[k],d=gDu[k],hp=clamp(.5*(1.-d),0.,1.),h=min(hp,1.-hp),a=abs(dv),e=min(a,h),s=dv<0.?-1.:1.,x=gPh[k]-dv+(hp<=.5?0.:.5),g=gGn[k];
+    dis*=1.-2.*clamp(band(x-s*.5*(h-e),e,g)+band(x+s*(.5*(h-e)+a),e,g),0.,1.);
+  }
+  return .5*(1.-dis);
+}
+#endif
+
 void main(){
   vec2 res=uF[8].xy;
   vec2 p=(gl_FragCoord.xy-.5*res)/res.y*2.;         // frame coordinates: y runs -1..1
+  vec2 p0=p;
   vec4 pr=uF[6];
   if(pr.z!=0.){ vec2 d=p-pr.xy; p+=pr.z*d*exp(-dot(d,d)/max(pr.w*pr.w,1e-5)); }
   if(uF[8].w>.5) p+=texture(uPush,gl_FragCoord.xy/res).xy;
 
-  // ripples: rings of displacement running out through the sheet, under everything
+  // twist, pinch, bulge: the sheet wound or drawn about one point, and let go slowly
+  float wt=uF[0].w,wp=uF[5].w;
+  if(wt!=0.||wp!=0.){
+    vec2 d=p-uF[9].yz; float e=exp(-dot(d,d)/max(uF[9].w*uF[9].w,1e-5));
+    p=uF[9].yz+rot(wt*e)*d*(1.+wp*e);
+  }
+
+  // ripples: rings running out through the sheet, each a little packet of waves that spreads as it goes. They push the lines outward,
+  // which alone would miss lines running the same way, and each family's phase slips too, so a ring shows all the way round.
   for(int i=0;i<NRIP;i++){
     vec4 r=uF[F_RIP+i];
     if(r.w==0.) continue;
-    vec2 d=p-r.xy; float l=max(length(d),1e-4),fr=l-r.z;
-    p+=d/l*r.w*sin(fr*22.)*exp(-fr*fr*16.);
+    vec2 d=p-r.xy; float l=length(d),fr=l-r.z,wd=.16+.1*r.z;
+    float wave=sin(fr*21.)*exp(-fr*fr/(wd*wd))*r.w*smoothstep(0.,.12,l);
+    p+=d/max(l,1e-4)*wave;
+    gRing+=wave;
   }
+
+  // the hand: the height of the sheet here decides where the pattern lands and how far its phase has slipped. Height jumps where a
+  // finger stands clear of the sheet, so the lines break there, and that's the whole of its outline.
+#ifdef HAND
+  if(uF[F_HAND].w>.001){
+    float hz=handHeight(p0);
+    vec2 slope=vec2(dFdx(hz),dFdy(hz))*res.y*.5;
+    float sl=dot(slope,slope);
+    // Lines ride up over each bone by how proud of it they are, which is nothing at its edge, so at the outline the slip is the same
+    // half a cycle whatever the pattern's size, and the two sides never happen to line up.
+    p+=H_LEAN*hProud;
+    gLift+=.5*smoothstep(-.03,.03,hOnHand)+.3*hz;
+    gBreak=sl>36.;
+  }
+#endif
 
   // the song in the sheet: the chord's shape and the pulse are lenses, and the tune travels out through the lines
   for(int i=0;i<4;i++){
@@ -339,51 +524,94 @@ void main(){
 
   float th=uG[I_shape].z,dl=uF[5].x;
   vec4 dv=uF[F_DIVE];
+  float o=uG[I_matte].y; if(o==2.) o=0.;
+#ifdef PLATES
+  bool plates=uF[5].y!=0.;
+  if(plates){ int wa=int(uF[3].a),wb=int(uF[4].a); for(int i=0;i<FAM;i++){ gW[i]=float((wa>>(5*i))&31)/14.-1.; gW[FAM+i]=float((wb>>(5*i))&31)/14.-1.; if(dv.w<.5) gW[i]=mix(gW[i],gW[FAM+i],uF[2].a); } }
+#endif
+  float c,c2,cP,dP=0.;
+#ifdef FLIGHT
   if(dv.w>.5){
     // A flight into one element of a pattern: the other pattern is what's inside that element, so there is nothing laid over anything.
-    bool bOuter=dv.w>2.5, inWhite=dv.w==1.||dv.w==3.;
+    bool bOuter=dv.w>2.5,inWhite=dv.w==1.||dv.w==3.;
     vec2 pz=dv.xy+(p-dv.xy)/dv.z;
-    float oA=uG[I_matte].y; if(oA==2.) oA=0.;
     float oB=uG[SLOT+I_matte].y; if(oB==2.) oB=0.;
+    float thB=uG[SLOT+I_shape].z;
     float mA=prepare(0,0,bOuter?p:pz),mB=prepare(1,SLOT,bOuter?pz:p);
-    float cA=mix(oA,inkOf(0,0,FAM,th),mA),cB=mix(oB,inkOf(1,FAM,2*FAM,uG[SLOT+I_shape].z),mB);
+    float cA=mix(o,inkOf(0,0,FAM,th),mA),cB=mix(oB,inkOf(1,FAM,2*FAM,thB),mB);
     float outer=bOuter?cB:cA,inner=bOuter?cA:cB;
-    float cd=inWhite?outer*inner:1.-(1.-outer)*(1.-inner);
-    outColor=vec4(mix(uF[1].rgb,uF[2].rgb,pow(cd,.4545)),1.);
-    return;
-  }
-  float ma=prepare(0,0,p),o=uG[I_matte].y; if(o==2.) o=0.;
-  int k1=FAM;
-  if(uF[0].y>.5){
-    // Two patterns at once. Families that have a partner bend into it, phase by phase, so each line travels to where it's going;
-    // the rest stay XOR-ed in, opening and closing as slits (their duties are set from the score). Nothing is ever blended.
-    float mb=prepare(1,SLOT,p),T=uF[0].x;
-    vec4 pa=uF[F_PAIR];
-    for(int i=0;i<FAM;i++){
-      int j=int(pa[i]);
-      if(j<0) continue;
-      int qa=i,qb=FAM+j;
-      if(!gOn[qa]||!gOn[qb]) continue;
-      gPh[qa]=mix(gPh[qa],gPh[qb],T);
-      gGr[qa]=mix(gGr[qa],gGr[qb],T);
-      gGn[qa]=max(length(gGr[qa]),1e-5);
-      gDu[qa]=mix(gDu[qa],gDu[qb],T);
-      gOn[qb]=false;
+    c=inWhite?outer*inner:1.-(1.-outer)*(1.-inner);
+    c2=c; cP=c;
+#ifdef PLATES
+    if(plates){
+      float cA0=cA,cB0=cB;
+      for(int i=0;i<FAM;i++) gW[(bOuter?FAM:0)+i]*=uF[2].a;      // the outer pattern's plates are shut by the time its element fills the frame
+      plateMove(2*FAM);
+      cA=mix(o,inkOf(0,0,FAM,th),mA); cB=mix(oB,inkOf(1,FAM,2*FAM,thB),mB);
+      outer=bOuter?cB:cA; inner=bOuter?cA:cB;
+      float o0=bOuter?cA0:cB0,i0=bOuter?cB0:cA0;     // the first plate's, for what each pattern contributes here
+      cP=inWhite?outer*inner:1.-(1.-outer)*(1.-inner);
+      dP=abs(c-cP);
+      if(min(c+cP,2.-c-cP)>dP){
+        float dOuter=plateDis(bOuter?FAM:0,bOuter?2*FAM:FAM)*(bOuter?mB:mA),dInner=plateDis(bOuter?0:FAM,bOuter?FAM:2*FAM)*(bOuter?mA:mB);
+        dP=inWhite?dInner*outer*o0+dOuter*inner*i0:dInner*(1.-outer)*(1.-o0)+dOuter*(1.-inner)*(1.-i0);
+      }
     }
-    k1=2*FAM;
-    ma=mix(ma,mb,T);
+#endif
+  } else
+#endif
+  {
+    float ma=prepare(0,0,p);
+    int k1=FAM;
+    if(uF[0].y>.5){
+      // Two patterns at once: each family bends into its partner, phase by phase, so each line travels to where it's going.
+      float mb=prepare(1,SLOT,p),T=uF[0].x;
+      vec4 pa=uF[F_PAIR];
+      for(int i=0;i<FAM;i++){
+        int j=int(pa[i]);
+        if(j<0) continue;
+        int qa=i,qb=FAM+j;
+        if(!gOn[qa]||!gOn[qb]) continue;
+        gPh[qa]=mix(gPh[qa],gPh[qb],T);
+        gGr[qa]=mix(gGr[qa],gGr[qb],T);
+        gGn[qa]=max(length(gGr[qa]),1e-5);
+        gDu[qa]=mix(gDu[qa],gDu[qb],T);
+#ifdef PLATES
+        gW[qa]=mix(gW[qa],gW[qb],T);
+#endif
+        gOn[qb]=false;
+      }
+      k1=2*FAM;
+      ma=mix(ma,mb,T);
+    }
+    c=mix(o,inkOf(0,0,k1,th),ma);
+    c2=dl!=0.?mix(o,inkOf(0,0,k1,th+dl),ma):c;
+    cP=c;
+#ifdef PLATES
+    if(plates){
+      plateMove(k1); cP=mix(o,inkOf(0,0,k1,th),ma);
+      dP=abs(c-cP); if(min(c+cP,2.-c-cP)>dP) dP=plateDis(0,k1)*ma;
+    }
+#endif
   }
-  float c=mix(o,inkOf(0,0,k1,th),ma);
-  float c2=dl!=0.?mix(o,inkOf(0,0,k1,th+dl),ma):c;
   // the hand's moire: a lifted copy of the same sheet, XOR-ed on top
   vec4 so=uF[7];
   if(so.w>0.){
     float ms=prepare(2,0,rot(so.z)*p+so.xy);
     float cs=mix(o,inkOf(2,2*FAM,3*FAM,th),ms);
     c=mix(c,c+cs-2.*c*cs,so.w); c2=c;
+    cP=mix(cP,cP+cs-2.*cP*cs,so.w);
   }
   vec3 col;
   // gamma-correct coverage, so an edge pixel carries half the light rather than looking dark
+#ifdef PLATES
+  if(plates){
+    // Four flat inks by area: neither plate, the first only, the second only, both. Equal plates leave exactly black and white.
+    float dd=clamp(dP,abs(c-cP),min(c+cP,2.-c-cP)),both=.5*(c+cP-dd);
+    col=pow(max((1.-c-cP+both)*uF[1].rgb+(c-both)*uF[3].rgb+(cP-both)*uF[4].rgb+both*uF[2].rgb,vec3(0.)),vec3(.4545));
+  }
+  else
+#endif
   if(dl==0.) col=mix(uF[1].rgb,uF[2].rgb,pow(c,.4545));
   else {
     float a=pow(max(c,c2),.4545),b=pow(min(c,c2),.4545);

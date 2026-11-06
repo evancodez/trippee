@@ -217,10 +217,7 @@ export default async ({ page, save, log, out }) => {
   const seconds = Math.min(info.duration, +(process.env.WATCH_SECONDS || 1e9));
   const w = await watch(page, save, { name, seconds, fps: FPS, cols: 12, rows: 12, setup: 'window.trippee.seek(0)' });
   const a = measure(w);
-  const solids = a.solids.filter(s => s.at < seconds - 3);
-  const starts = solids.map(s => s.at), gaps = starts.slice(1).map((v, i) => v - starts[i]);
   const planned = info.landings.map(l => l.B);
-  const offs = planned.filter(B => B <= seconds).map(B => { let best = 1e9; for (const s of a.solids) { const d = B < s.at ? s.at - B : B > s.at + s.seconds ? B - s.at - s.seconds : 0; best = Math.min(best, d); } return best; });
   // Visual speed against onsets: only inside gesture bodies, at several scales
   const onsetSeries = w.diff.map((_, i) => { let m = 0; for (let k = -2; k <= 2; k++) m = Math.max(m, info.onset[Math.round((w.time[i] + k / (FPS * 5)) * info.onsetFps)] || 0); return m; });
   const rs = {}, bp = {};
@@ -235,16 +232,12 @@ export default async ({ page, save, log, out }) => {
     bp[`${secs}s`] = +pearson(idx.map(i => dA[i] - dS[i]), idx.map(i => oA[i] - oS[i])).toFixed(3);
   }
   log(JSON.stringify({
-    solidCount: solids.length, medianGapS: +median(gaps).toFixed(1), medianSolidS: +median(solids.map(s => s.seconds)).toFixed(2), longestSolidS: Math.max(...solids.map(s => s.seconds)),
-    plannedLandings: planned.length, picture_vs_plan_medianOffsetS: +median(offs).toFixed(3), picture_vs_plan_worstS: +Math.max(...offs).toFixed(3),
+    solidFrames: a.solids.length, plannedLandings: planned.length,
     speedOnsetR: rs, speedOnsetR_transientsOnly: bp, flashesPerSecond: a.flashesPerSecondWholeFrame, flashesTile: a.flashesPerSecondAnyTile, maxLumaStep: a.largestLuminanceStepPerFrame, meanWhite: a.meanWhite, greyP95: a.p95GreyAtNativeRes,
   }, null, 0));
-  log('solids', a.solids.map(s => `${s.at.toFixed(1)}+${s.seconds}${s.colour[0]}`).join(' '));
   if (truth) {
     // Against the truth: how far is the nearest landing from each true boundary?
-    const trueB = truth.boundaries.filter(b => b > 1);
-    const dB = trueB.map(b => Math.min(...planned.map(B => Math.abs(B - b))));
-    const dP = trueB.map(b => { let best = 1e9; for (const s of solids) { const e = b < s.at ? s.at - b : b > s.at + s.seconds ? b - s.at - s.seconds : 0; best = Math.min(best, e); } return best; });
-    log('truth: boundary to planned landing', JSON.stringify(dB.map(x => +x.toFixed(3))), 'median', median(dB).toFixed(3), ' boundary to solid in the picture', JSON.stringify(dP.map(x => +x.toFixed(3))), 'median', median(dP).toFixed(3));
+    const dB = truth.boundaries.filter(b => b > 1).map(b => Math.min(...planned.map(B => Math.abs(B - b))));
+    log('truth: boundary to planned landing', JSON.stringify(dB.map(x => +x.toFixed(3))), 'median', median(dB).toFixed(3));
   }
 };

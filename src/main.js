@@ -5,7 +5,7 @@ import { Stage } from './stage.js';
 import { Governor } from './gl/governor.js';
 import { patterns, byId, families } from './pattern/library.js';
 
-export const VERSION = 'v1.2';
+export const VERSION = 'v2';
 const canvas = document.getElementById('c');
 const R = new Renderer(canvas);
 // A different wander each visit, from a count rather than the clock, so a given seed always gives the same picture.
@@ -18,6 +18,8 @@ const app = window.app = {
   R, stage, patterns, byId, families, canvas, VERSION, governor,
   t: 0, manual: false, paused: false, edits: {}, lastFrame: null, onFrame: [],
   clock: null,    // when a song is playing, a function returning song seconds
+  // The time the picture is actually at. Colour can rest the picture's clock for a few seconds, so anything that plans a change goes by this.
+  pictureT: (t = app.t) => (app.edits.beyond ? app.edits.beyond.time(t, stage.score) : t),
 };
 
 let dprSeen = 0;
@@ -30,7 +32,7 @@ new ResizeObserver(fit).observe(canvas);
 fit();
 
 function render() {
-  stage.update(app.t);
+  stage.update(app.pictureT());
   app.edits.staticG = stage.staticG;
   app.lastFrame = frame(stage.score, app.t, R, app.edits);
   R.brush(app.brush || {});
@@ -48,8 +50,7 @@ function loop(now) {
   if (app.clock) app.t = app.clock();
   else if (!app.paused) app.t += dt;
   render();
-  const f = app.lastFrame;
-  governor.tick(real, Math.abs(f.theta) >= f.solid - 1e-3);
+  governor.tick(real);
   requestAnimationFrame(loop);
 }
 
@@ -62,8 +63,8 @@ window.trippee = {
   seek(t) { app.manual = true; app.t = t; render(); },
   list: () => patterns.map(({ id, name, family }) => ({ id, name, family })),
   // Show one pattern straight away, with no way in: for looking at a pattern on its own.
-  // With sweep: true it plays one whole gesture of `len` seconds, out of a solid and into the other solid.
-  load(id, { arcs = true, sweep = false, len = 26, inDur = 6, outDur = 6 } = {}) {
+  // With sweep: true it plays one whole gesture of `len` seconds, and doesn't stop there.
+  load(id, { arcs = true, sweep = false, len = 26 } = {}) {
     const p = byId[id];
     if (!p) throw new Error('no pattern ' + id);
     stage.score.gestures = [{ t0: 0, t1: 3600, arcEnd: len, pattern: p, arcs: arcs ? undefined : [] }];
@@ -95,7 +96,8 @@ async function attach(path) {
 
 R.whenReady().then(async () => {
   render();
-  await Promise.all(['./music/song.js', './tools/input.js', './ui/ui.js'].map(attach));
-  window.trippee.ready = true;
+  await Promise.all(['./music/song.js', './tools/input.js', './ui/ui.js', './beyond/beyond.js', './sound/sound.js'].map(attach));
   window.trippee.run();
+  await R.whenAllReady();         // the hand's and colour's shaders build behind the picture. Tests wait for them.
+  window.trippee.ready = true;
 });

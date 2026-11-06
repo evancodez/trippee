@@ -31,11 +31,11 @@ export default async ({ page, log, save }) => {
   });
   save('governor-clip-end.jpg', res.data); delete res.data; log('clip', JSON.stringify(res));
   await page.shot('governor-low');
-  // Back up, under a solid, when the load goes away
+  // Back up when the load goes away
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
   await sleep(500);
-  await page.eval(() => { app.governor.wait = 3; app.governor.calm = 0; trippee.load('lattice.star', { sweep: true, len: 12, inDur: 2, outDur: 2 }); app.stage.hold = false; });
-  for (let i = 0; i < 10; i++) { await sleep(2000); log('after load', JSON.stringify(await page.eval('({t:+app.t.toFixed(1),tier:app.governor.tier,theta:+app.lastFrame.theta.toFixed(2),calm:app.governor.calm})'))); }
+  await page.eval(() => { app.governor.wait = 3; app.governor.calm = 0; trippee.load('lattice.star'); });
+  for (let i = 0; i < 10; i++) { await sleep(2000); log('after load', JSON.stringify(await page.eval('({t:+app.t.toFixed(1),tier:app.governor.tier,scale:app.R.drawScale,fps:+app.governor.fps.toFixed(1),calm:app.governor.calm})'))); }
   log('history', JSON.stringify(await page.eval('app.governor.history')));
   log('errors', page.logs.filter(l => /\[error\]|\[exception\]/.test(l)));
 };

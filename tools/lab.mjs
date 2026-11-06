@@ -10,7 +10,7 @@
 //   save(name, dataUrlOrBuffer)   writes a file to <out>
 // Each run gets its own Chrome, profile and debugging port, so runs can overlap safely.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -28,6 +28,27 @@ const CHROMES = [
 ];
 const chrome = process.env.CHROME || CHROMES.find(existsSync);
 if (!chrome) { console.error('no Chrome found; set CHROME=/path/to/chrome'); process.exit(2); }
+
+// Only so many test browsers at once, or the machine crawls for whoever is actually using it. Later runs wait their turn.
+const LAB_SLOTS = +(process.env.LAB_SLOTS || 2);
+const slotDir = join(tmpdir(), 'trippee-lab-slots');
+mkdirSync(slotDir, { recursive: true });
+async function takeSlot() {
+  for (;;) {
+    for (let i = 0; i < LAB_SLOTS; i++) {
+      const f = join(slotDir, `slot${i}`);
+      try { writeFileSync(f, String(process.pid), { flag: 'wx' }); return f; }
+      catch {
+        // a slot whose owner has died is free
+        try { const pid = +readFileSync(f, 'utf8'); process.kill(pid, 0); }
+        catch { try { rmSync(f, { force: true }); } catch {} }
+      }
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+const slot = await takeSlot();
+process.on('exit', () => { try { rmSync(slot, { force: true }); } catch {} });
 
 const freePort = () => new Promise(res => { const s = createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));

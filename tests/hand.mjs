@@ -116,14 +116,14 @@ export default async ({ page, log, save }) => {
       if (i % 22 === 0) await page.shot(`duty-${String(i).padStart(3, '0')}`);
       if (s.now !== prev) { seq.push([i, s.now, s.theta, s.room]); prev = s.now; }
     }
-    log('corridor forward', JSON.stringify(seq), await state());
+    log('thinner', JSON.stringify(seq), await state());
     seq = []; prev = null;
     for (let i = 0; i < 120; i++) {
       await wheel(640, 360, -26, 0); await sleep(30);
       const s = await state();
       if (s.now !== prev) { seq.push([i, s.now, s.theta, s.room]); prev = s.now; }
     }
-    log('corridor back', JSON.stringify(seq), await state());
+    log('fatter', JSON.stringify(seq), await state());
     await key('z'); await sleep(1500);
   }
 
@@ -208,7 +208,7 @@ export default async ({ page, log, save }) => {
     await sleep(100);
     const whites = [];
     for (let i = 0; i < 14; i++) { whites.push([(await state()).theta, await page.eval('app.lastFrame.G.pattern.id')]); await sleep(500); }
-    log('going through a solid to', t.name, JSON.stringify(whites), 'held', await page.eval('app.hand.isHeld()'));
+    log('morphing to', t.name, JSON.stringify(whites), 'held', await page.eval('app.hand.isHeld()'));
     await page.shot('library-3-arrived');
     const w = await page.eval(() => { const b = document.querySelector('#library [data-wander]').getBoundingClientRect(); return { x: b.left + 8, y: b.top + 6 }; });
     await move(w.x, w.y); await down(w.x, w.y); await up(w.x, w.y); await sleep(300);
@@ -333,7 +333,7 @@ export default async ({ page, log, save }) => {
     log('recording with song', JSON.stringify(res));
     await key(' '); await sleep(300); log('pause song', await page.eval('app.song.playing')); await key(' '); await sleep(200);
     log('resumed', await page.eval('app.song.playing'));
-    // N while a song plays: the film takes that pattern as its motif, under a solid, and the music doesn't stop
+    // N while a song plays: the film takes that pattern as its motif, and the music doesn't stop
     const pool0 = await page.eval('app.song.score.pool[0]');
     const tN = await page.eval('app.t');
     await key('n');

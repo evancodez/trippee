@@ -30,7 +30,7 @@ const pathOff = p => { const o = OFF[p]; if (o === undefined) throw new Error('n
 // gesture rides just the part of its long move that stays this bold. In cycles per picture unit: at 720p that's a period of about 20 px.
 const BOLD = 12;
 const lim = new Float32Array(SLOT_FLOATS), lim3 = new Float32Array(SLOT_FLOATS), limR = new Float32Array(SLOT_FLOATS), lensTmp = new Float32Array(12);
-function boldRange(G) {
+export function boldRange(G) {
   if (G.range) return G.range;
   G.range = [0, 1];
   const n = 12, ks = [];
@@ -179,7 +179,7 @@ function makePlan(a, b, ctx) {
   if (plain && flat(a) && flat(b) && allPaired && closeEnough && ctx.D >= 8) return { kind: 'bend', pair, flip, offset, close, open, ratio };
   const out = biggestElement(ctx.R, a, ctx.aspect), inn = biggestElement(ctx.R, b, ctx.aspect);
   const diag = Math.hypot(Math.max(ctx.aspect, 1.9), 1);
-  const zoomFor = e => clamp((Math.hypot(e.x, e.y) + diag) * 1.15 / Math.max(e.r, 0.012), 1.5, 240);
+  const zoomFor = e => clamp((Math.hypot(e.x, e.y) + diag + 0.4) * 1.15 / Math.max(e.r, 0.012), 1.5, 240);    // with room for the song's lenses moving the frame a little
   const zo = zoomFor(out), zi = zoomFor(inn);
   // Out of the pattern with the bigger element, which is the shorter and more legible flight. Now and then the other way, for variety.
   const rise = ctx.rise ?? zi < zo * 0.8;
@@ -235,6 +235,8 @@ function applyBend(A, B, plan, T, F) {
 }
 
 export function frame(score, t, R, edits) {
+  const tReal = t, beyond = edits?.beyond;
+  if (beyond) t = beyond.time(t, score);   // Beyond's stops: the picture's clock with a rest taken out of it
   const g = score.gestures, A = R.slotA, B = R.slotB, F = R.frame;
   const i = indexAt(g, t);
   const held = edits?.staticG;
@@ -299,25 +301,35 @@ export function frame(score, t, R, edits) {
     fillSlot(A, G, t, pat, { phi });
   }
 
-  // ---------- the song
+  // ---------- the song. Balance: the tune leads, the beat keeps time under it, and the chords shape the sheet. No one of them takes over.
   const Rc = score.react, amt = edits?.reactAmt ?? 1;
   if (Rc && amt > 0) {
-    const s = reactAt(Rc, t), big = 0.45 + 0.75 * s.energy;
+    const s = reactAt(Rc, t), big = 0.5 + 0.7 * s.energy;
+    const mPulse = (edits?.reactPulse ?? 1) * amt, mMel = (edits?.reactMelody ?? 1) * amt, mTone = (edits?.reactTone ?? 1) * amt;
+    // In a flight, the pattern being flown through has to hold still, or the element would slip out from under the camera. The one inside it reacts.
+    const moveA = kind !== 'dive', moveB = two && kind !== 'rise';
     // Tone: brighter sound, finer lines. Only on flat patterns, slowly.
-    if (A[OFF['surf.kind']] < 0.5) A[OFF.freq] *= 1 + 0.16 * s.tone * amt;
-    if (two && B[OFF['surf.kind']] < 0.5) B[OFF.freq] *= 1 + 0.16 * s.tone * amt;
-    // Pulse: lines fatten on the beat, and the middle of the sheet swells towards you
-    theta -= 0.2 * (solid || 1) * s.pulse * big * amt;
-    if (kind === 'dive' || kind === 'rise') thetaB -= 0.2 * (solid || 1) * s.pulse * big * amt * (kind === 'dive' ? smoother((x - 0.6) / 0.4) : 1);
+    if (moveA && A[OFF['surf.kind']] < 0.5) A[OFF.freq] *= 1 + 0.16 * s.tone * mTone;
+    if (moveB && B[OFF['surf.kind']] < 0.5) B[OFF.freq] *= 1 + 0.16 * s.tone * mTone;
+    // The pulse: lines fatten a little on the strong beats and the middle swells. It steps back while the tune is playing.
+    const beat = s.pulse * big * mPulse * (1 - 0.45 * s.voiced);
+    if (moveA) theta -= 0.13 * (solid || 1) * beat;
+    if (kind === 'dive') thetaB -= 0.13 * (solid || 1) * beat * smoother((x - 0.6) / 0.4);
     const Po = FRAME.pose * 4;
     chordLenses(Rc, t, lensTmp);
-    for (let n = 0; n < 12; n += 4) { F[Po + n] = lensTmp[n]; F[Po + n + 1] = lensTmp[n + 1]; F[Po + n + 2] = lensTmp[n + 2] * big * amt; F[Po + n + 3] = lensTmp[n + 3]; }
-    F[Po + 12] = 0; F[Po + 13] = 0; F[Po + 14] = 0.2 * s.pulse * big * amt; F[Po + 15] = 1.15;
-    // Melody: the tune leaves the middle and travels out through the lines, a sample every eighth of a second
+    for (let n = 0; n < 12; n += 4) { F[Po + n] = lensTmp[n]; F[Po + n + 1] = lensTmp[n + 1]; F[Po + n + 2] = lensTmp[n + 2] * big * mTone; F[Po + n + 3] = lensTmp[n + 3]; }
+    F[Po + 12] = 0; F[Po + 13] = 0; F[Po + 14] = 0.1 * beat; F[Po + 15] = 1.15;
+    // The tune: it leaves the middle and travels out through the lines, a sample every eighth of a second
     const Ml = FRAME.mel * 4, step = 0.125, speed = 0.62;
-    F[Ml] = (0.05 + 0.07 * s.energy) * amt; F[Ml + 1] = 1 / (step * speed); F[Ml + 2] = G.melMode ?? 0;
+    F[Ml] = (0.085 + 0.09 * s.energy) * mMel; F[Ml + 1] = 1 / (step * speed); F[Ml + 2] = G.melMode ?? 0;
     const Ms = FRAME.melS * 4;
     for (let n = 0; n < 32; n++) F[Ms + n] = reactAt(Rc, Math.max(0, t - n * step)).melody;
+    // ...and it carries the lines with it: as the note climbs they slide one way, as it falls they slide back, so a guitar slide pulls
+    // the whole sheet. The sheet also leans a little with it.
+    const slide = 0.42 * s.melSlow * s.voiced * mMel;
+    const lean = 0.05 * s.melSlow * s.voiced * mMel;
+    if (moveA) { A[OFF['f0.ph']] += slide; A[OFF.rot] += lean; }
+    if (moveB) { B[OFF['f0.ph']] += slide; B[OFF.rot] += lean; }
   }
 
   if (edits) {
@@ -342,6 +354,11 @@ export function frame(score, t, R, edits) {
       F[H] = e.x; F[H + 1] = e.y; F[H + 2] = e.height; F[H + 3] = e.on;
       F[H + 4] = e.curl; F[H + 5] = e.spread; F[H + 6] = e.turn; F[H + 7] = e.size;
     }
+    if (edits.warp) {
+      // twist, pinch, bulge: one place on the sheet, kept in the block's spare numbers
+      const e = edits.warp, M = FRAME.misc * 4;
+      F[M + 1] = e.x; F[M + 2] = e.y; F[M + 3] = e.r; F[FRAME.compose * 4 + 3] = e.twist; F[FRAME.plate * 4 + 3] = e.pinch;
+    }
     // the threshold never quite reaches solid under the hand either
     if (edits.duty) theta += edits.duty;
     if (edits.invert) A[OFF.invert] = 1 - A[OFF.invert];
@@ -360,7 +377,8 @@ export function frame(score, t, R, edits) {
     F[Dv + 3] = kind === 'dive' ? (plan.white ? 1 : 2) : (plan.white ? 3 : 4);
     A[OFF.theta] = theta; B[OFF.theta] = thetaB;
   } else A[OFF.theta] = theta;
-  return { G, theta, solid, phi, T, kind, N: from ? to : null };
+  if (beyond) beyond.write(F, tReal, score, from ?? G, from ? to : null, T, plan);
+  return { G, theta, solid, phi, T, kind, from, N: from ? to : null };
 }
 
 // The threshold a gesture wants at time t. Patterns can read it; `solid` isn't reached any more.

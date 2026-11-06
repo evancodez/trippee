@@ -4,6 +4,12 @@ import { SLOT_FLOATS, FRAME_VEC4, FRAME } from '../pattern/layout.js';
 
 const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 
+// One shader, built eight ways: with or without the hand, colour's second plate, and a flight between two patterns. A GPU pays for what a
+// program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each
+// is only in the program while it's in use. The first two are what the picture needs to run; the rest build behind it.
+const HAND = 1, PLATES = 2, FLIGHT = 4, ORDER = [0, FLIGHT, HAND, PLATES, HAND | FLIGHT, PLATES | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT];
+const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}`);
+
 function compile(gl, type, src) {
   const s = gl.createShader(type);
   gl.shaderSource(s, src);
@@ -40,38 +46,61 @@ export class Renderer {
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
 
-    const vs = compile(gl, gl.VERTEX_SHADER, VERT);
-    const fs = compile(gl, gl.FRAGMENT_SHADER, FRAG);
-    this._pending = { vs, fs, prog: link(gl, vs, fs) };
+    this.vs = compile(gl, gl.VERTEX_SHADER, VERT);
+    this.progs = new Array(8).fill(null);
+    this.variant = 0;
+    this._start(0);
     this._whenReady = new Promise(res => { this._resolveReady = res; });
+    this._whenAll = new Promise(res => { this._resolveAll = res; });
     this._poll();
   }
 
   whenReady() { return this._whenReady; }
+  whenAllReady() { return this._whenAll; }
+
+  _start(v) {
+    const gl = this.gl, fs = compile(gl, gl.FRAGMENT_SHADER, sourceOf(v));
+    this._pending = { v, fs, prog: link(gl, this.vs, fs) };
+  }
 
   _poll() {
-    const gl = this.gl, { prog, vs, fs } = this._pending;
+    const gl = this.gl, { v, prog, fs } = this._pending;
     const done = !this.parallel || gl.getProgramParameter(prog, this.parallel.COMPLETION_STATUS_KHR);
     if (!done) { setTimeout(() => this._poll(), 16); return; }
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
       const log = gl.getShaderInfoLog(fs) || '';
-      const lines = FRAG.split('\n');
+      const lines = sourceOf(v).split('\n');
       const where = /ERROR: \d+:(\d+)/.exec(log);
       console.error('Shader failed:', log, where ? `\nline: ${lines[+where[1] - 1]}` : '', gl.getProgramInfoLog(prog));
       throw new Error('Shader failed to compile');
     }
-    this.prog = prog;
     const ix = gl.getUniformBlockIndex(prog, 'Block');
     gl.uniformBlockBinding(prog, ix, 0);
-    this.ubo = gl.createBuffer();
-    gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
-    gl.bufferData(gl.UNIFORM_BUFFER, this.block.byteLength, gl.DYNAMIC_DRAW);
-    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.ubo);
     gl.useProgram(prog);
     gl.uniform1i(gl.getUniformLocation(prog, 'uPush'), 0);
-    this._initBrush();
-    this.ready = true;
-    this._resolveReady();
+    this.progs[v] = prog;
+    if (v === 0) {
+      this.prog = prog;
+      this.ubo = gl.createBuffer();
+      gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
+      gl.bufferData(gl.UNIFORM_BUFFER, this.block.byteLength, gl.DYNAMIC_DRAW);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.ubo);
+      this._initBrush();
+    }
+    if (v === FLIGHT) { this.ready = true; this._resolveReady(); }
+    // The next one, without holding anything up. With no way to build in the background, the rest wait until each is first asked for.
+    const next = ORDER.find(n => !this.progs[n]);
+    if (next === undefined) { this._pending = null; this._resolveAll(); return; }
+    if (this.parallel || v === 0) { this._start(next); this._poll(); } else { this._pending = null; this._resolveAll(); }
+  }
+
+  // The smallest program with what this frame needs. One still building, the frame goes without the hand or colour for a moment. They both come up slowly anyway.
+  _programFor(F) {
+    const v = (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0);
+    if (!this.progs[v] && !this.parallel && !this._pending) { this._start(v); this._poll(); }
+    const got = this.progs[v] ? v : v & FLIGHT;
+    this.variant = got;
+    return this.progs[got];
   }
 
   _initBrush() {
@@ -180,7 +209,7 @@ export class Renderer {
     F[res] = w; F[res + 1] = h; F[res + 2] = w / h; F[res + 3] = this.pushOn ? 1 : 0;
     gl.bindFramebuffer(gl.FRAMEBUFFER, low ? low.fbo : null);
     gl.viewport(0, 0, w, h);
-    gl.useProgram(this.prog);
+    gl.useProgram(this._programFor(F));
     gl.activeTexture(gl.TEXTURE0);
     if (this.brushOk) gl.bindTexture(gl.TEXTURE_2D, this.brushA.tex);
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
