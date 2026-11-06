@@ -30,7 +30,7 @@ const chrome = process.env.CHROME || CHROMES.find(existsSync);
 if (!chrome) { console.error('no Chrome found; set CHROME=/path/to/chrome'); process.exit(2); }
 
 // Only so many test browsers at once, or the machine crawls for whoever is actually using it. Later runs wait their turn.
-const LAB_SLOTS = +(process.env.LAB_SLOTS || 2);
+const LAB_SLOTS = +(process.env.LAB_SLOTS || 3);
 const slotDir = join(tmpdir(), 'trippee-lab-slots');
 mkdirSync(slotDir, { recursive: true });
 async function takeSlot() {

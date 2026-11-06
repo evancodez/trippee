@@ -126,7 +126,7 @@ export default [
     lambda: .1 },
 
   // Dive's turning window: tiny checks in a tilted square, growing past the frame while the checks swell and swirl.
-  { id: 'void.diamond', name: 'Diamond', family: 'void',
+  { id: 'void.diamond', pool: false, name: 'Diamond', family: 'void',
     g: {
       fams: [plane(4, 0), plane(4, 90)],
       matte: { kind: 1, q: 1, rx: .05, ry: .05, outside: 0 },
@@ -150,7 +150,7 @@ export default [
     lambda: .12 },
 
   // A black disc drifts through stripes and the lines part round it like water round a stone.
-  { id: 'void.eclipse', name: 'Eclipse', family: 'void',
+  { id: 'void.eclipse', pool: false, name: 'Eclipse', family: 'void',
     g: {
       fams: [plane(5, 90)], bulge: { a: 3, r: .6 }, wob: .05, wobF: 1.3,
       matte: { kind: 1, q: 2, invert: 1, outside: 0, rx: .1, ry: .1 },

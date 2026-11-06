@@ -5,6 +5,9 @@
 // on it. Moment by moment the pulse, the melody and the tone act on the sheet (see react.js).
 import { rng, clamp, lerp, smoother, evalTrack } from './curves.js';
 import { buildReact, surgedBeats } from './react.js';
+import { buildTime } from './time.js';
+import { direct } from './direct.js';
+import { flag } from './flags.js';
 
 const AFFINITY = {          // slide, perc, tempo, harmRate
   lattice: [0, 0.8, 0.6, 0.5], poles: [1, 0, 0.3, 0.2], pole: [1, 0, 0.3, 0.2], rooms: [0.2, 0.7, 0.8, 0.6], room: [0.2, 0.7, 0.8, 0.6],
@@ -74,7 +77,10 @@ export function compose(A, seed = 1, opts = {}) {
   let songHash = 0;
   for (const c of String(A.hash ?? A.duration)) songHash = (Math.imul(songHash, 31) + c.charCodeAt(0)) >>> 0;
   const rand = rng(((seed | 0) * 7919 + songHash) >>> 0);
-  const patterns = opts.patterns ?? globalThis.app?.patterns ?? [];
+  const library = opts.patterns ?? globalThis.app?.patterns ?? [];
+  // pool:false stays in the library to be picked by hand, and out of films
+  const inPool = library.filter(p => p.pool !== false);
+  const patterns = flag('pool') && inPool.length ? inPool : library;
   if (!patterns.length) throw new Error('compose: no patterns');
   const aspect = opts.aspect ?? 16 / 9;
   const { tau, rate } = clockOf(A);
@@ -106,7 +112,7 @@ export function compose(A, seed = 1, opts = {}) {
     s += n < 3 ? -0.6 : Math.min(n, 10) * 0.02;
     return { f, s };
   }).sort((a, b) => b.s - a.s);
-  const given = typeof opts.pattern === 'string' ? patterns.find(p => p.id === opts.pattern) : opts.pattern;
+  const given = typeof opts.pattern === 'string' ? library.find(p => p.id === opts.pattern) : opts.pattern;
   const family = given?.family ?? (opts.family && byFam.has(opts.family) ? opts.family : scored[0].f);
   const shuffled = list => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   let pool = shuffled(byFam.get(family) || []);
@@ -353,51 +359,56 @@ export function compose(A, seed = 1, opts = {}) {
     if (flowOver) { G.flow = flowOver; G.flowOver = flowOver; }
 
     // Gears: one element passes per N beats, N from lambda and the scale of the moment. Closed form: a track in tau.
-    const lam = lambdaOf(pat, aspect), arcsU = u => {
-      const s0 = arcValue(arcs, 'scale', u, pat.g.scale ?? 1), f0 = arcValue(arcs, 'freq', u, pat.g.freq ?? 1);
-      // A lump magnifies what flows through it: the edge in the middle of a bulge travels (1 + a) times as far per cycle.
-      const bulge = Math.max(0, arcValue(arcs, 'bulge.a', u, pat.g.bulge?.a ?? 0));
-      return lam * s0 * (1 + bulge) / Math.max(f0, 1e-3);
-    };
+    // The rehearsal may yet narrow the part of the long move this gesture rides, or add to it, so it can ask what the gears would then be. x is how far through the gesture.
+    const lam = lambdaOf(pat, aspect), first = barIdxAt(a);
     const hasFamilyFlow = pat.flow && Object.keys(pat.flow).some(key => /^f\d\.ph$/.test(key));
-    const first = barIdxAt(a), track = [];
-    let cur = hasFamilyFlow ? gearFor(arcsU(0), rate(a), meter) : meter * 2;
-    // A drive may breathe on the clock (dots inflating, merging, flipping). That needs a slow clock, one gear, and, where the song
-    // breathes in phrases, the phrase itself. At the beat it would strobe.
-    const breathes = !!pat.drive;
-    if (breathes) {
-      const r = Math.max(rate((a + b) / 2), 0.5), steps = meter === 3 ? [3, 6, 12, 24, 48, 96, 192] : [2, 4, 8, 16, 32, 64, 128];
-      const slowest = pat.minPeriod ?? 5;
-      let N = steps.find(n => n / r >= slowest) ?? steps[steps.length - 1];
-      const phrase = (A.phraseBars || 8) * meter;
-      if (A.swellRegularity > 0.5) { const P = phrase / r >= slowest && phrase / r <= 14 ? phrase : phrase * 2 / r <= 14 ? phrase * 2 : phrase / 2 / r >= slowest ? phrase / 2 : 0; if (P) N = P; }
-      let worst = 0;
-      for (let u = 0; u <= 1; u += 0.1) worst = Math.max(worst, gearFor(arcsU(u), r, meter));
-      cur = Math.max(N, hasFamilyFlow ? worst : 0);
-    }
-    const tau0 = tau(a);
-    let phiNow = 0, tauNow = tau0;
-    track.push({ t: tau0, x: 0, v: 1 / cur });
-    const list = [cur];
-    if (hasFamilyFlow && !breathes) {
-      for (let i = first + 1; i < bars.length && bars[i] < b - 0.5; i++) {
-        const u = (bars[i] - a) / len, want = gearFor(arcsU(clamp(u + 0.05)), rate(bars[i]), meter);
-        if (want === cur || tau(bars[i]) < tauNow) continue;
-        // shift over at least a bar and at least 3 s, on bar lines
-        let j = i + 1;
-        while (j < bars.length - 1 && bars[j] - bars[i] < 3) j++;
-        if (bars[j] > b) break;
-        const ta = tau(bars[i]), tb = tau(bars[j]);
-        phiNow += (ta - tauNow) / cur;
-        track.push({ t: ta, x: phiNow, v: 1 / cur });
-        const dPhi = (tb - ta) * (1 / cur + 1 / want) / 2;
-        phiNow += dPhi >= 1.5 ? Math.round(dPhi) : dPhi;
-        track.push({ t: tb, x: phiNow, v: 1 / want });
-        tauNow = tb; cur = want; list.push(cur);
-        i = j - 1;
+    G.regear = ([lo, hi] = [0, 1], ridden = G.arcs) => {
+      const arcsU = x => {
+        const u = lerp(lo, hi, x), s0 = arcValue(ridden, 'scale', u, pat.g.scale ?? 1), f0 = arcValue(ridden, 'freq', u, pat.g.freq ?? 1);
+        // A lump magnifies what flows through it: the edge in the middle of a bulge travels (1 + a) times as far per cycle.
+        const bulge = Math.max(0, arcValue(ridden, 'bulge.a', u, pat.g.bulge?.a ?? 0));
+        return lam * s0 * (1 + bulge) / Math.max(f0, 1e-3);
+      };
+      const track = [];
+      let cur = hasFamilyFlow ? gearFor(arcsU(0), rate(a), meter) : meter * 2;
+      // A drive may breathe on the clock (dots inflating, merging, flipping). That needs a slow clock, one gear, and, where the song
+      // breathes in phrases, the phrase itself. At the beat it would strobe.
+      const breathes = !!pat.drive;
+      if (breathes) {
+        const r = Math.max(rate((a + b) / 2), 0.5), steps = meter === 3 ? [3, 6, 12, 24, 48, 96, 192] : [2, 4, 8, 16, 32, 64, 128];
+        const slowest = pat.minPeriod ?? 5;
+        let N = steps.find(n => n / r >= slowest) ?? steps[steps.length - 1];
+        const phrase = (A.phraseBars || 8) * meter;
+        if (A.swellRegularity > 0.5) { const P = phrase / r >= slowest && phrase / r <= 14 ? phrase : phrase * 2 / r <= 14 ? phrase * 2 : phrase / 2 / r >= slowest ? phrase / 2 : 0; if (P) N = P; }
+        let worst = 0;
+        for (let u = 0; u <= 1; u += 0.1) worst = Math.max(worst, gearFor(arcsU(u), r, meter));
+        cur = Math.max(N, hasFamilyFlow ? worst : 0);
       }
-    }
-    G.phiTrack = track; G.gears = list; G.tau0 = tau0;
+      const tau0 = tau(a);
+      let phiNow = 0, tauNow = tau0;
+      track.push({ t: tau0, x: 0, v: 1 / cur });
+      const list = [cur];
+      if (hasFamilyFlow && !breathes) {
+        for (let i = first + 1; i < bars.length && bars[i] < b - 0.5; i++) {
+          const u = (bars[i] - a) / len, want = gearFor(arcsU(clamp(u + 0.05)), rate(bars[i]), meter);
+          if (want === cur || tau(bars[i]) < tauNow) continue;
+          // shift over at least a bar and at least 3 s, on bar lines
+          let j = i + 1;
+          while (j < bars.length - 1 && bars[j] - bars[i] < 3) j++;
+          if (bars[j] > b) break;
+          const ta = tau(bars[i]), tb = tau(bars[j]);
+          phiNow += (ta - tauNow) / cur;
+          track.push({ t: ta, x: phiNow, v: 1 / cur });
+          const dPhi = (tb - ta) * (1 / cur + 1 / want) / 2;
+          phiNow += dPhi >= 1.5 ? Math.round(dPhi) : dPhi;
+          track.push({ t: tb, x: phiNow, v: 1 / want });
+          tauNow = tb; cur = want; list.push(cur);
+          i = j - 1;
+        }
+      }
+      return { phiTrack: track, gears: list, tau0 };
+    };
+    Object.assign(G, G.regear());
 
     // Swells, where the song breathes in phrases: attack of at least .5 s ending on the phrase, then a 4 s decay
     if (A.swellRegularity > 0.5 && !pat.drive && (swellable(pat) || rand() < 0.4)) {
@@ -434,11 +445,11 @@ export function compose(A, seed = 1, opts = {}) {
     black: landings.filter(l => l.pol > 0).length, white: landings.filter(l => l.pol < 0).length,
     boundaryLanded: A.segments.slice(1).filter(s => landings.some(l => Math.abs(l.B - s.t0) < 0.3)).length + '/' + (A.segments.length - 1),
   };
-  return {
-    gestures, landings, stats, tau, rate, family, pool: pool.map(p => p.id), seed,
+  return direct({
+    gestures, landings, stats, tau, rate, family, pool: pool.map(p => p.id), seed, aspect,
     // Flow surges on the strong beats and glides between, so it stays locked and never jolts
     phi: (t, G) => { const s = surged(t); return G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8; },
-    react,
+    react, time: buildTime(react.M),
     song: { duration, bpm: A.bpm, hash: A.hash, meter, phraseBars: A.phraseBars },
-  };
+  }, A, react.M);
 }

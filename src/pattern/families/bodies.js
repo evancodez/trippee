@@ -151,7 +151,7 @@ export default [
 
   // Inside a bowl with rings and rays on it. The camera swings from over the bottom right round to look up and out of the
   // mouth, where the rings run away to a point. The vertex sits well below the camera's orbit, so it can never leave the bowl.
-  { id: 'body.bowl', name: 'Bowl', family: 'body',
+  { id: 'body.bowl', pool: false, name: 'Bowl', family: 'body',
     g: {
       fams: [{ r1: 1.2 }, { t1: 12 }],
       surf: { kind: 1 }, q: { xx: 1, yy: 1, zw: -1, ww: -4 }, cam: { pitch: .2, dist: 1 },
@@ -188,7 +188,7 @@ export default [
     lambda: .1 },
 
   // A zebra ball that lets out its waist: ball, then tube, then hourglass, on a single number.
-  { id: 'body.vase', name: 'Vase', family: 'body',
+  { id: 'body.vase', pool: false, name: 'Vase', family: 'body',
     g: {
       fams: [{ x: 1, y: 5 }],
       surf: { kind: 1, map: 3, mapR: 2 }, q: { xx: 1, zz: 1, yy: 1, ww: -.5, zw: 0 }, cam: { pitch: .3, dist: 2.6 },

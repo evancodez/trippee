@@ -43,7 +43,7 @@ export default [
     lambda: 0.2 },
 
   // Chevrons from hairline to larger than the frame, tightening towards one band. At the top of the move, edges go hand-cut.
-  { id: 'rooms.chevron', name: 'Chevron', family: 'rooms',
+  { id: 'rooms.chevron', pool: false, name: 'Chevron', family: 'rooms',
     g: { fams: [plane(4, 90)], zig: { a: 0.28, c: 1.1 }, squeeze: { a: 0.6, x0: 0, b: 0.2, ang: Math.PI / 2 }, wobF: 0.8 },
     flow: { 'f0.ph': 1 },
     arcs: [

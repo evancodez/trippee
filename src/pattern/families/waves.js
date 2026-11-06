@@ -20,7 +20,7 @@ function tipDown(out, { t, OFF, G }) {
 
 export default [
   // A sheet of lines rolling under its own weight: the parallax map folds, and lines hide behind the crests.
-  { id: 'waves.swell', name: 'Swell', family: 'waves',
+  { id: 'waves.swell', pool: false, name: 'Swell', family: 'waves',
     g: { fams: [plane(5, 90)], sheet: { a: 0.2, f: 2.2, ang: 0.35 } },
     flow: { 'sheet.t': ROLL },
     arcs: [
@@ -38,7 +38,7 @@ export default [
     lambda: lam(5) },
 
   // The sea: swells that bunch and spread as they run in from a horizon. The horizon only comes in at the top of the tilt.
-  { id: 'waves.sea', name: 'Sea', family: 'waves',
+  { id: 'waves.sea', pool: false, name: 'Sea', family: 'waves',
     g: { fams: [plane(2, 0)], surf: { kind: 1 }, q: Q.plane, cam: { pitch: 1.3, dist: 2.2 }, rot: Math.PI / 2,
       sheet: { a: 0.05, f: 3.4, ang: 0.25 }, ripple: { a: 0.05, f: 12, cx: -9 }, bend1: { a: 0.1, f: 1.7, ang: Math.PI / 2 } },
     flow: { 'ripple.ph': -TAU, 'sheet.t': ROLL },
@@ -59,7 +59,7 @@ export default [
     lambda: lam(2) },
 
   // A flag of checks: the same rolling sheet with a second family, so it reads as cloth.
-  { id: 'waves.cloth', name: 'Cloth', family: 'waves',
+  { id: 'waves.cloth', pool: false, name: 'Cloth', family: 'waves',
     g: { fams: [plane(2.2, 35), plane(2.2, 125)], sheet: { a: 0.28, f: 1.9, ang: -0.5 } },
     flow: { 'sheet.t': ROLL },
     arcs: [
@@ -76,7 +76,7 @@ export default [
     lambda: lam(2.2) },
 
   // Riley's Current: one wave repeated at an angle to itself, so the lines crowd along false ridges and the flat sheet looks corrugated.
-  { id: 'waves.current', name: 'Current', family: 'waves',
+  { id: 'waves.current', name: 'Current', family: 'lines',
     g: { fams: [plane(5, 0)], bend1: { a: 0.3, f: 6, ang: Math.PI / 4 } },
     flow: { 'bend1.ph': ROLL },   // a half turn per cycle: it closes every two
     arcs: [
@@ -94,7 +94,7 @@ export default [
     lambda: lam(5) },
 
   // A stone in a pond, seen from low down: rings bunch and spread on their way out, ellipses to a grazing shore.
-  { id: 'waves.pond', name: 'Pond', family: 'waves',
+  { id: 'waves.pond', pool: false, name: 'Pond', family: 'waves',
     g: { fams: [ring(3)], surf: { kind: 1 }, q: Q.plane, cam: { pitch: 1, dist: 2.4 }, ripple: { a: 0.09, f: 8, cx: 0 } },
     flow: { 'ripple.ph': TAU, 'f0.ph': -1 },
     arcs: [
@@ -111,7 +111,7 @@ export default [
     lambda: lam(3) },
 
   // Dunes: a check floor rolled into hills that hide behind each other, going away to a hard black sky.
-  { id: 'waves.dune', name: 'Dunes', family: 'waves',
+  { id: 'waves.dune', pool: false, name: 'Dunes', family: 'waves',
     g: { fams: [plane(1.4, 0), plane(1.4, 90)], surf: { kind: 1 }, q: Q.plane, cam: { pitch: 1.1, dist: 2.2 }, sheet: { a: 0.2, f: 1.6, ang: 0.3 } },
     flow: { 'sheet.t': ROLL },
     arcs: [
@@ -130,7 +130,7 @@ export default [
     lambda: lam(1.4) },
 
   // Silk: fine lines draped in long folds. The lines stay fine, so the fold lines are drawn by nothing but crowding.
-  { id: 'waves.silk', name: 'Silk', family: 'waves',
+  { id: 'waves.silk', pool: false, name: 'Silk', family: 'waves',
     g: { fams: [plane(13, 80)], sheet: { a: 0.3, f: 1.3, ang: 0.6 } },
     flow: { 'sheet.t': ROLL },
     arcs: [

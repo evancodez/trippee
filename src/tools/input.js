@@ -87,7 +87,14 @@ function fineness(A) {
   }
   return Math.max(k * Math.max(A[OFF.freq], 1e-3), 0.2);
 }
-const periodPx = A => (canvas.height / 2) * Math.max(A[OFF.scale], 1e-5) / fineness(A);
+// ...and on screen, with the hand's zoom, which is a view of the whole frame and not in the numbers.
+const periodPx = A => (canvas.height / 2) * Math.max(A[OFF.scale], 1e-5) * Math.exp(edits.journey || 0) / fineness(A);
+
+// Where a point of the frame lands on the sheet, through the hand's view.
+function toSheet([x, y]) {
+  const z = Math.exp(-(edits.journey || 0)), c = Math.cos(edits.spin || 0), s = Math.sin(edits.spin || 0);
+  return [(c * x + s * y) * z + (edits.jx || 0), (-s * x + c * y) * z + (edits.jy || 0)];
+}
 
 // ------------------------------------------------------------------------------------------------- taking hold of a pattern
 // The hand takes the threshold from whatever the gesture was doing, and nothing on screen moves as it does.
@@ -128,7 +135,7 @@ function beginSheet(e) {
   if (!S.on) {
     // First lift: pivot under the hand, already turned enough to show a fringe about a third of the frame across.
     S.on = true;
-    S.pivot = toPicture(e.clientX, e.clientY);
+    S.pivot = toSheet(toPicture(e.clientX, e.clientY));
     const a0 = clamp(periodPx(A) / (0.33 * canvas.height), 2 * Math.PI / 180, 0.4);
     let best = a0, bd = 9;
     for (const d of S.detents) { if (d.a > 0 && Math.abs(d.a - a0) < bd) { bd = Math.abs(d.a - a0); best = d.a; } }
@@ -199,26 +206,27 @@ function tickJourney(dt, now, A) {
   J.lo = here - Math.log(Math.max(period / floor, 1e-3));
   J.hi = here + Math.log(2.5 * canvas.height / period);
   J.lo = Math.min(J.lo, here); J.hi = Math.max(J.hi, here);
-  const before = J.s.x;
+  const before = J.s.x, liftWas = J.lift.x;
   J.s.step(J.target, dt, J.clearing ? 2.2 : 7, J_RATE);
   // Calm keeps fine lines at a comfortable size, whatever the pattern's own move is doing.
   const unlifted = period * Math.exp(-J.lift.x);
   J.lift.step(hand.calm ? Math.max(0, Math.log(12 / unlifted)) : 0, dt, 1.2);
-  const dJ = J.s.x - before;
   if (J.clearing || song && now - J.touched > 2) {
-    const k = Math.exp(-dt * (J.clearing ? 1.8 : 0.4));
+    // Going back: straight out about one point on the screen, pan and zoom arriving together. Pan on its own, zoomed right in, would whip the view sideways.
+    const z0 = 1 - Math.exp(-(before + liftWas)), z1 = 1 - Math.exp(-(J.s.x + liftWas));
+    const k = Math.abs(z0) > 0.02 && z1 / z0 > 0 ? Math.min(1, z1 / z0) : Math.exp(-dt * (J.clearing ? 1.8 : 0.4));
     J.jx *= k; J.jy *= k;
     if (J.clearing && Math.abs(J.s.x) < 1e-3 && Math.abs(J.jx) + Math.abs(J.jy) < 1e-4) { J.s.set(0); J.target = 0; J.jx = 0; J.jy = 0; J.clearing = false; }
-  } else if (dJ !== 0) {
+  } else if (J.s.x !== before) {
     // about the cursor: keep the point under it where it is
-    const s = Math.max(A[OFF.scale], 1e-5), a = -A[OFF.rot], [cx, cy] = m.over ? toPicture(m.cx, m.cy) : [0, 0];
-    const f = 1 / s - 1 / (s * Math.exp(dJ));
+    const [cx, cy] = m.over ? toPicture(m.cx, m.cy) : [0, 0], a = -spinS.x;
+    const f = Math.exp(-(before + liftWas)) - Math.exp(-(J.s.x + liftWas));
     J.jx += (Math.cos(a) * cx - Math.sin(a) * cy) * f;
     J.jy += (Math.sin(a) * cx + Math.cos(a) * cy) * f;
   }
-  const total = J.s.x + J.lift.x;
-  edits.journey = total || (J.jx || J.jy ? 1e-9 : 0);
+  edits.journey = J.s.x + J.lift.x;
   edits.jx = J.jx; edits.jy = J.jy;
+  edits.aspect = canvas.width / canvas.height;
 }
 
 function tickDuty(dt, now, t, G, solid) {
@@ -259,8 +267,7 @@ function tickKnobs(dt) {
       if (Math.abs(k.s.x - nat[off]) < 1e-3 * (1 + Math.abs(nat[off]))) { knobs.delete(path); delete edits.over[path]; continue; }
     } else if (SNAP.has(off)) k.s.set(k.target);
     else k.s.step(k.target, dt, 16);
-    // a knob on the view still rides the hand's zoom and spin, which frame() would otherwise overwrite
-    (edits.over ||= {})[path] = path === 'scale' ? k.s.x * Math.exp(edits.journey || 0) : path === 'rot' ? k.s.x + (edits.spin || 0) : k.s.x;
+    (edits.over ||= {})[path] = k.s.x;
   }
 }
 
@@ -279,11 +286,11 @@ function tickSpeed(dt, t, G) {
   if (st.s !== speedS.x) { st.a = sc.phi(t, G); st.t = t; st.s = speedS.x; }
 }
 
-function tickSpin(dt, dtApp) {
+function tickSpin(dt) {
   if (clearingSpin) {
     spinS.step(0, dt, 1.5);
     if (Math.abs(spinS.x) < 1e-3) { spinS.set(0); clearingSpin = false; }
-  } else spinS.x += hand.spinRate * dtApp;
+  } else spinS.x += hand.spinRate * dt;      // real seconds, like everything the hand does, so it still turns in a pause or a rest
   edits.spin = spinS.x;
 }
 
@@ -293,9 +300,25 @@ function naturals() {
   return scratch;
 }
 
+// What the hand has made of a pattern stays on it as it's left behind, and nothing on screen moves: the flight has to see the pattern as it stands, and
+// then hold it still. From there on the knobs and the line weight are free for whatever comes next.
+function leaving(G) {
+  if (J.s.x || J.jx || J.jy) { J.target = 0; J.clearing = true; }
+  const over = {};
+  for (const [path, k] of knobs) over[path] = k.s.x;
+  if (Object.keys(over).length) G.over = { ...G.over, ...over };
+  knobs.clear();
+  edits.over = {};
+  const d = edits.duty || 0;
+  if (d) {
+    G.thetaBody = (G.thetaBody ?? [{ t: 0, x: 0 }]).map(k => ({ ...k, x: k.x + d }));
+    D.s.set(0); D.target = 0; edits.duty = 0;
+  }
+}
+
 // ----------------------------------------------------------------------------------------------------------------- frames
 function tick(t) {
-  const now = nowS(), dt = clamp(now - lastNow, 0, 0.05), dtApp = t - lastT;
+  const now = nowS(), dt = clamp(now - lastNow, 0, 0.05);
   lastNow = now; lastT = t;
   const f = app.lastFrame;
   if (!f) return;
@@ -314,6 +337,15 @@ function tick(t) {
       hand.emit('pattern', G.pattern);
     }
   }
+  // A gesture's own transformation is coming, and what the hand has done stays with the gesture. In a flight, and on the way to one, the zoom keeps inside what
+  // the flight has room for (a view right out would see past the element it's flying into).
+  const left = G.morph && !f.N && !stage.staticG ? G.t1 - G.morph - app.pictureT(t) : Infinity;
+  if (left < 0.15) leaving(G);
+  if (left < 2.5 || f.kind === 'dive' || f.kind === 'rise') {
+    if (J.target < -0.25) { J.target = -0.25; J.touched = now; }
+    const asp = canvas.width / canvas.height, room = 1.15 * Math.hypot(Math.max(asp, 1.9), 1) + 0.46;
+    if (Math.exp(-(J.s.x + J.lift.x)) * Math.hypot(asp, 1) + Math.hypot(J.jx, J.jy) > 0.97 * room) { const k = Math.exp(-dt * 3); J.jx *= k; J.jy *= k; }
+  }
   fx.tick(dt, m.over);
   tickPress(dt, now);
   tickPush(dt, now);
@@ -322,7 +354,7 @@ function tick(t) {
   tickSheet(dt);
   tickKnobs(dt);
   tickSpeed(dt, t, G);
-  tickSpin(dt, dtApp);
+  tickSpin(dt);
 }
 
 // ----------------------------------------------------------------------------------------------------------------- actions
@@ -343,23 +375,24 @@ hand.knobValue = path => {
 hand.natural = path => naturals()[OFF[path]];
 hand.liveValue = path => knobs.get(path)?.s.x ?? naturals()[OFF[path]];
 
-// Go somewhere: what's showing bends into it. With a song playing, the film carries on with this pattern as its motif.
+// Go somewhere: what's showing becomes it, whatever mode this is, and it gets there on real seconds. With a song playing, the film carries on with this
+// pattern as its motif.
 hand.go = (id, opts = {}) => {
-  const t = app.pictureT();
   const pat = typeof id === 'string' ? app.byId[id] : id;
   if (!pat) return;
-  if (stage.score.song && app.song?.rebuild && !stage.staticOn) { hand.veil(() => app.song.rebuild({ pattern: pat })); hand.emit('going', pat); return; }
-  if (app.paused && !app.clock) app.paused = false;
-  stage.go(pat, t, opts);
+  stage.pick(pat, app.pictureT(), opts);
   hand.emit('going', pat);
 };
 
-// Do something that changes what's showing (another take, a seek, a song going away), and have the old picture bend into the new one.
+// Do something that changes what's showing (another take, a seek, a song going away), and have the old picture bend into the new one. In the middle of a
+// transformation, that gets to the end of it first: a picture that's two patterns at once can't bend into anything.
 hand.veil = (fn, { dur = 6 } = {}) => {
-  const snap = stage.snapshot(app.pictureT());
-  try { fn?.(); } catch (e) { console.error(e); }
-  // A seek's new time only shows on the next frame, so ask the clock
-  stage.morphFrom(snap, app.pictureT(app.clock ? app.clock() : app.t), dur);
+  stage.settle(app.pictureT(), () => {
+    const snap = stage.snapshot(app.pictureT());
+    try { fn?.(); } catch (e) { console.error(e); }
+    // A seek's new time only shows on the next frame, so ask the clock
+    stage.morphFrom(snap, app.pictureT(app.clock ? app.clock() : app.t), dur);
+  });
 };
 
 // What the hand has made of the current pattern, as a pattern a song can be composed from.
@@ -369,13 +402,17 @@ hand.mine = () => {
   const over = {};
   for (const [path, k] of knobs) if (!k.release) over[path] = k.target;
   const j = J.s.x, jx = J.jx, jy = J.jy, spin = spinS.x;
-  if (!Object.keys(over).length && !j && !spin) return pat;
+  if (!Object.keys(over).length && !j && !spin && !jx && !jy) return pat;
   return {
     ...pat,
     drive(out, ctx) {
       pat.drive?.(out, ctx);
-      out[OFF.scale] *= Math.exp(j); out[OFF.tx] += jx; out[OFF.ty] += jy; out[OFF.rot] += spin;
       for (const p in over) out[OFF[p]] = over[p];
+      // The hand's view is of the frame, before the pattern's own view, so in the pattern's numbers its pan goes through that view.
+      const s = Math.max(out[OFF.scale], 1e-5), a = out[OFF.rot];
+      out[OFF.tx] += (Math.cos(a) * jx + Math.sin(a) * jy) / s;
+      out[OFF.ty] += (-Math.sin(a) * jx + Math.cos(a) * jy) / s;
+      out[OFF.scale] *= Math.exp(j); out[OFF.rot] += spin;
     },
   };
 };
@@ -445,6 +482,7 @@ export function init(a) {
   edits = a.edits; edits.over = {};
   a.hand = hand;
   fx = hand.fx = new Effects(a, hand, toPicture);
+  stage.onLeave = leaving;
   lastNow = nowS(); lastT = a.t;
   curG = a.lastFrame?.G ?? null;
   curPat = curG?.pattern ?? null;

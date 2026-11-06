@@ -72,7 +72,7 @@ function weightsOf(pat) {
   return w;
 }
 // A slide happens all in one slot, its numbers gliding family by family to their partners'. So the weights go the same way: each family
-// ends up where its partner's weight says, or the plates would jump when the next pattern takes over. (Places as in frame.js applySlide.)
+// ends up where its partner's weight says, or the plates would jump when the next pattern takes over. (Places as in xform/slide.js applySlide.)
 function slideWeights(wa, wb, plan) {
   const w = wa.slice();
   plan.pair.forEach((j, i) => { if (j >= 0) w[i] = plan.flip[j] ? -wb[j] : wb[j]; });
@@ -154,11 +154,22 @@ export function init(app) {
   let from = Infinity, until = Infinity, seen = null;
   let shown = palettes[0].lin.slice(), fadeFrom = null, fade = 1;
 
+  // A stop rests the picture's clock at a - DEC/2. That has to be in a gesture's body: rest in a transformation and the frame holds half way between two patterns for seconds.
+  const safeStop = (a, score) => {
+    if (a == null) return a;
+    const p = a - DEC / 2;
+    for (const G of score?.gestures || []) {
+      if (!G.morph) continue;
+      const m0 = G.t1 - G.morph;
+      if (p > m0 - 1.5 && p < G.t1 + 0.5) return Math.max(G.t0 + 2, m0 - 1.5) + DEC / 2;
+    }
+    return a;
+  };
   const analysis = score => (score?.song && app.song?.analysis?.hash === score.song.hash ? app.song.analysis : null);
   const stopFor = (t, score) => {
     if (score !== seen) { seen = score; from = t; }
     const A = score?.song ? analysis(score) : null;
-    const a = score?.song ? (A ? songTable(A).stop : null) : wanderStop(t);
+    const a = safeStop(score?.song ? (A ? songTable(A).stop : null) : wanderStop(t), score);
     return a == null || a - DEC < from || a - DEC >= until ? null : a;
   };
   function openAt(t, score) {

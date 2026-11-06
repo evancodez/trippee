@@ -15,6 +15,7 @@ export const DEFAULTS = {
   'matte.q': 2, 'matte.rx': 1, 'matte.ry': 1, 'matte.eps': 0,
   'bg.on': 1, 'bg.rot': 1.5708, 'bg.scale': 1,
   'ribbon.w': 0.2, 'ribbon.om': 3, 'ribbon.k': 10,
+  'star.qw': 1, 'slip.ease': 1,
 };
 
 // fams is a list of up to four families, e.g. { y: 12 } (horizontal stripes), { l1: 8 } (rings, even in log radius).

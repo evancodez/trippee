@@ -79,7 +79,7 @@ export default [
     lambda: 0.08 },
 
   // Dots down a real tunnel: round on the near wall, crushed flat as they run to the vanishing point, which drifts off-centre.
-  { id: 'dots.funnel', name: 'Funnel', family: 'dots',
+  { id: 'dots.funnel', pool: false, name: 'Funnel', family: 'dots',
     g: { round: 1, fams: [{ x: 14 }, { y: 0.55 }, LIFT], surf: { kind: 1, map: 1, mapR: 1 },
       q: { xx: 1, yy: 1, zz: 0, ww: -1, zw: 0 }, cam: { dist: 1.2, pitch: 0 } },
     flow: { 'f1.ph': 1 },

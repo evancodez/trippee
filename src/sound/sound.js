@@ -13,12 +13,28 @@ const store = {
 
 export function init(app) {
   let ctx = null, synth = null, brain = null, reader = null, tap = null;
-  let active = false, hooked = false, sleepTimer = 0, volume = 0.8, hidden = false, lastRead = 0, picking = false;
+  let active = false, hooked = false, heard = false, sleepTimer = 0, volume = 0.8, hidden = false, lastRead = 0, picking = false;
   const cost = { sum: 0, n: 0 };
   const saved = +store.get('soundVolume');
   if (saved > 0 && saved <= 1) volume = saved;
   let song = null;     // the song we're standing in for
   const say = msg => app.ui?.say?.(msg);
+  // Where a drag is. Dents go straight to the push texture and leave nothing in app.edits, so the music watches the pointer for itself.
+  const comb = { on: false, x: 0, y: 0 };
+  const seePointer = e => {
+    const r = app.canvas.getBoundingClientRect();
+    comb.x = (e.clientX - r.left - r.width / 2) / r.height * 2;
+    comb.y = -(e.clientY - r.top - r.height / 2) / r.height * 2;
+  };
+  app.canvas.addEventListener('pointerdown', e => {
+    const fx = app.hand?.effect?.();
+    if (e.button !== 0 || e.altKey || (fx && fx !== 'comb')) return;
+    comb.on = true; seePointer(e);
+  });
+  addEventListener('pointermove', e => { if (comb.on) seePointer(e); }, { passive: true });
+  const combUp = () => { comb.on = false; };
+  addEventListener('pointerup', combUp);
+  addEventListener('pointercancel', combUp);
 
   const seed = () => { let v = 1; try { v = +localStorage.getItem('trippee.visit') || 1; } catch { /* the first key, then */ } return (v * 2053 + 11) >>> 0; };
 
@@ -76,7 +92,7 @@ export function init(app) {
     if (!reader.fence && t0 - lastRead > READ_MS) { lastRead = t0; reader.request(); }
     else if (reader.fence && !picking) { picking = true; requestAnimationFrame(pick); }   // just before the next render, when the GPU has nothing queued
     if (!reader.reads) return;
-    brain.frame(ctx.currentTime, features(app, reader));
+    brain.frame(ctx.currentTime, features(app, reader, comb));
     cost.sum += performance.now() - t0; cost.n++;
   }
   const pick = () => { picking = false; if (reader) reader.pickup(); };
@@ -90,6 +106,7 @@ export function init(app) {
     brain = new Brain(synth, seed());
     active = true;
     if (!hooked) { app.onFrame.push(tick); hooked = true; }
+    if (!heard) { heard = true; app.hand?.on?.('cleared', () => { if (brain) brain.touch.heal = 0; }); }   // z: the dents let go in a couple of seconds, so the echoes do
     synth.fadeTo(1, ctx.currentTime, FADE_IN);
     window.dispatchEvent(new CustomEvent('trippee:sound', { detail: { active: true } }));
     say('the picture is playing');
@@ -99,6 +116,7 @@ export function init(app) {
   function off() {
     if (!active) return api;
     active = false;
+    brain?.letGo(ctx.currentTime + FADE_OUT);
     synth.fadeTo(0, ctx.currentTime, FADE_OUT);
     const i = app.onFrame.indexOf(tick);
     if (i >= 0) app.onFrame.splice(i, 1);

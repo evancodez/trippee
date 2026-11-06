@@ -95,8 +95,12 @@ export class Renderer {
   }
 
   // The smallest program with what this frame needs. One still building, the frame goes without the hand or colour for a moment. They both come up slowly anyway.
+  _variantOf(F) {
+    return (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0);
+  }
+
   _programFor(F) {
-    const v = (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0);
+    const v = this._variantOf(F);
     if (!this.progs[v] && !this.parallel && !this._pending) { this._start(v); this._poll(); }
     const got = this.progs[v] ? v : v & FLIGHT;
     this.variant = got;
@@ -161,8 +165,43 @@ export class Renderer {
     this.brushEnergy = 0; this.pushOn = false;
   }
 
-  // Draws a slot's picture very small and reads it back: how the planner finds an element to fly into. Only once per transition.
+  // Draws a slot's picture very small and reads it back: how the planner finds an element to fly into. It waits for the GPU, so it can cost a frame.
   probe(slot, aspect) {
+    const gl = this.gl, { W, H } = this._drawProbe(slot, aspect);
+    const px = new Uint8Array(W * H * 4);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { W, H, px };
+  }
+
+  // The same look without waiting: the draw joins the queue now and probeDone has its pixels on a later frame, null until then. WebGL won't let a
+  // fence pass within one task, so there's no waiting for one: anyone in a hurry drops it with probeDrop and calls probe.
+  probeStart(slot, aspect) {
+    const gl = this.gl, { W, H } = this._drawProbe(slot, aspect), pbo = gl.createBuffer();
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
+    gl.bufferData(gl.PIXEL_PACK_BUFFER, W * H * 4, gl.STREAM_READ);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
+    return { W, H, pbo, sync };
+  }
+
+  probeDone(look) {
+    const gl = this.gl;
+    if (gl.getSyncParameter(look.sync, gl.SYNC_STATUS) !== gl.SIGNALED) return null;
+    const px = new Uint8Array(look.W * look.H * 4);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, look.pbo);
+    gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, px);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    this.probeDrop(look);
+    return { W: look.W, H: look.H, px };
+  }
+
+  probeDrop(look) { this.gl.deleteSync(look.sync); this.gl.deleteBuffer(look.pbo); }
+
+  _drawProbe(slot, aspect) {
     const gl = this.gl, H = 180, W = Math.min(400, Math.max(40, Math.round(H * aspect)));
     if (!this.probeT) {
       const tex = gl.createTexture();
@@ -184,17 +223,14 @@ export class Renderer {
     this.frame.set([W, H, W / H, 0], FRAME.res * 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.probeT.fbo);
     gl.viewport(0, 0, W, H);
-    gl.useProgram(this.prog);
+    gl.useProgram(this.progs[this._variantOf(this.frame)] ?? this.prog);    // the program this slot needs, alone, with no hand, colour or flight
     gl.activeTexture(gl.TEXTURE0);
     if (this.brushOk) gl.bindTexture(gl.TEXTURE_2D, this.brushA.tex);
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.block);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    const px = new Uint8Array(W * H * 4);
-    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.block.set(saved);
-    return { W, H, px };
+    return { W, H };       // still bound to the small target, for whoever reads it
   }
 
   resize(cssW, cssH, dpr) {

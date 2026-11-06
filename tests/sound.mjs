@@ -1,7 +1,7 @@
 // The picture plays. Run: node tools/lab.mjs tests/sound.mjs --out lab-out/sound   (sound is muted by the lab, nothing is ever heard)
 // Offline: steps the real picture frame by frame, feeds the real read line and musician, and renders every note through the real
 // graph in an OfflineAudioContext, then measures it and draws a piano roll and a spectrogram of each pattern.
-// PATTERNS=a,b,c  SECONDS=26  STAGE=offline,live,hand,flow,keylog
+// PATTERNS=a,b,c  SECONDS=26  STAGE=offline,live,hand,flow,keylog,touch
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -37,7 +37,8 @@ export default async ({ page, log, save, out }) => {
         if (edits) edits(app.edits, t);
         trippee.step(dt);
         reader.now();
-        const Fr = features(app, reader);
+        if (edits) edits(app.edits, t);       // the hand's own tick has just written over them
+        const Fr = features(app, reader, window.__comb || null);
         brain.frame(t, Fr);
         const label = Fr.A.id + (Fr.B ? '>' + Fr.B.id : '');
         if (label !== lastPat) { marks.push({ t: +t.toFixed(2), what: label }); lastPat = label; }
@@ -276,6 +277,34 @@ export default async ({ page, log, save, out }) => {
     await page.eval(() => app.song.eject());
     const stream = await page.eval(() => { const s = app.sound.stream(); return { tracks: s.getAudioTracks().length, kind: s.getAudioTracks()[0]?.kind }; });
     log('stream', JSON.stringify(stream));
+  }
+
+  // Every tool in turn on one pattern, scripted, through the real graph, as a roll and a spectrogram to look at. Stopped clock, then running.
+  if (want('touch')) {
+    const script = `(e, t) => {
+      const on = (a, b) => t >= a && t < b, ramp = (a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)));
+      const fall = (a, b) => 1 - ramp(a, b);
+      e.journey = on(4, 8) ? 2 * Math.sin((t - 4) / 4 * Math.PI) : 0;
+      e.duty = on(9, 13) ? 0.8 * Math.sin((t - 9) / 4 * Math.PI) * (app.lastFrame.solid || 1) : 0;
+      e.warp = null;
+      if (on(14, 19)) e.warp = { x: 0, y: 0, r: .72, twist: 7 * ramp(14, 16) * fall(16.5, 19), pinch: 0 };
+      if (on(20, 24)) e.warp = { x: 0, y: 0, r: .72, twist: 0, pinch: 1.9 * ramp(20, 21.5) * fall(22.5, 24) };
+      if (on(25, 29)) e.warp = { x: 0, y: 0, r: .72, twist: 0, pinch: -0.8 * ramp(25, 26.5) * fall(27.5, 29) };
+      const fist = on(33, 36) ? 1 : 0;
+      e.hand = on(30, 38) ? { x: 1.4 * Math.sin((t - 30) / 8 * 6.28), y: 0.8 * Math.sin((t - 30) / 3), on: ramp(30, 31) * fall(37, 38), height: .1, curl: 0.15 + fist * 0.9, spread: 0.95 - fist * .65, turn: .15, size: 3 } : null;
+      window.__comb = on(39, 43) ? { on: true, x: 1.5 * Math.sin((t - 39) * 2.2), y: Math.sin((t - 39) * 5) * .8 } : null;
+    }`;
+    for (const stopped of [false, true]) {
+      const r = await page.eval(`(async () => {
+        app.paused = false;
+        const r = await __render('lines.river', 46, { edits: ${script}, speed: ${stopped ? 0 : 1}, arcs: false, seed: 12 });
+        window.__comb = null; for (const k of ['journey', 'duty', 'warp', 'hand']) app.edits[k] = k === 'journey' || k === 'duty' ? 0 : null;
+        return r;
+      })()`);
+      save(`touch-${stopped ? 'stopped' : 'running'}.png`, r.png);
+      writeFileSync(join(out, `touch-${stopped ? 'stopped' : 'running'}.json`), JSON.stringify(r.notes));
+      log(stopped ? 'stopped' : 'running', JSON.stringify({ peakDb: r.peakDb, rmsDb: r.rmsDb, clip: r.clip, inKey: r.inKey, loudest: r.loudestWinDb, quietest: r.quietestWinDb, side: r.sideRatio, bands: r.bands, wins: r.wins }));
+    }
   }
 
   if (want('stems')) {

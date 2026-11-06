@@ -100,7 +100,7 @@ export default [
     lambda: lam(5) },
 
   // Two nearly equal fine families: a huge lattice out of nothing. The fringes are the picture; the carrier never moves much.
-  { id: 'lines.ghost', fine: true, name: 'Ghost', family: 'lines',
+  { id: 'lines.ghost', pool: false, fine: true, name: 'Ghost', family: 'lines',
     g: { fams: [plane(22, 90), { x: 0, y: 22 }], bulge: { a: 3, r: 0.9, cx: 0.2, cy: 0 } },
     flow: { 'f0.ph': 1 },
     arcs: [
@@ -117,7 +117,7 @@ export default [
     lambda: 0.2 },
 
   // Rings from two poles, slightly different in count: closed moire discs, as on the walls in Black Car.
-  { id: 'lines.discs', fine: true, name: 'Moire Discs', family: 'lines',
+  { id: 'lines.discs', pool: false, fine: true, name: 'Moire Discs', family: 'lines',
     g: { fams: [ring(17), ring(17, {}, 2)], 'p1.x': -0.1, 'p2.x': 0.1 },
     flow: { 'f0.ph': 1 },
     arcs: [

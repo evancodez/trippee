@@ -149,7 +149,9 @@ export default async ({ page, log }) => {
     await page.eval(`app.hand.clear()`);
     await page.eval(() => { const s = app.stage; s.hold = false; s.score.gestures = []; s._extend(app.t); });
     await sleep(2000);
-    await key('l'); await sleep(200);
+    await key('l');
+    // asked for in the middle of a morph, it arrives first
+    for (let i = 0; i < 60; i++) { await sleep(100); if (await page.eval('__st().held')) break; }
     log('static on', await page.eval('__st()'), 'button', await page.eval(`document.querySelector('[data-fx=static]').className+' '+document.querySelector('[data-fx=static] span').textContent`));
     await move(640, 300); await sleep(100); await page.shot('static-on');
     const pat = await page.eval('app.lastFrame.G.pattern.id');

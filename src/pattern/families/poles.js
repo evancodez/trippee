@@ -132,7 +132,7 @@ export default [
     lambda: .15 },
 
   // Two ring systems XOR-ed, born together, on ground that tips to a low horizon: drops falling on a pond.
-  { id: 'pole.rain', name: 'Rain', family: 'pole',
+  { id: 'pole.rain', pool: false, name: 'Rain', family: 'pole',
     g: {
       fams: [{ l1: 2.4 }, { l2: 2.4 }], 'p1.x': -.5, 'p1.y': .1, 'p2.x': .55, 'p2.y': -.15,
       surf: { kind: 1 }, q: Q.plane, cam: { pitch: 0, dist: 2.4 },

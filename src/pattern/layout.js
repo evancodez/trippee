@@ -49,6 +49,17 @@ add('matte', ['matte.kind', 'matte.outside', 'matte.q', 'matte.wob']);      // k
 add('matte2', ['matte.cx', 'matte.cy', 'matte.rx', 'matte.ry']);
 add('matte3', ['matte.rot', 'matte.t', 'matte.invert', 'matte.eps']);
 add('bg', ['bg.on', 'bg.rot', 'bg.scale', 'bg.x']);                      // nothing is ever empty: past a surface or shape, the same lines carry on flat, turned by rot
+// Reserved once, for moves and fields, then frozen. See docs/NEXT.md 2.1. Each is skipped at its default, so a pattern that doesn't use it pays nothing.
+add('slip', ['slip.kind', 'slip.n', 'slip.u', 'slip.ang']);                 // the bands sliding along themselves. kind: 0 off, 1 straight, 2 rings, 3 log rings, 4 sectors
+add('slip2', ['slip.left', 'slip.step', 'slip.ease', 'slip.seed']);         // tumblers: beats left to the lock, beats per band, ease, seed
+add('slipM', ['slip.m0', 'slip.m1', 'slip.m2', 'slip.m3']);                 // how much of the slip each family takes
+add('star', ['star.k', 'star.qx', 'star.qy', 'star.qz']);                   // star sphere: k = 1/R, 0 off, and the quaternion of its roll
+add('star2', ['star.qw', 'star._1', 'star._2', 'star._3']);
+add('carry', ['lathe.k', 'lathe.w', 'meta.amt', 'meta.k']);                 // carries after the view: the coin, and metamorphosis
+add('field', ['field.kind', 'field.a', 'field.b', 'field.ph']);             // the scalar field. kind: 0 off, 1 river, 2 arcade, 3 blaze
+add('field2', ['field.spin', 'field.scale', 'field._1', 'field._2']);
+add('fieldK', ['field.k0', 'field.k1', 'field.k2', 'field.k3']);            // how much of the field goes into each family's phase
+add('spare', ['spare.a', 'spare.b', 'spare.c', 'spare.d']);
 
 export const SLOT_VEC4 = V.length;
 export const SLOT_FLOATS = SLOT_VEC4 * 4;
@@ -59,12 +70,12 @@ export const OFF = {};
 for (const [, i, comps] of V) comps.forEach((c, k) => { OFF[c] = i * 4 + k; });
 
 // Numbers that must jump, never slide. They take the target's value at the halfway point of a lerp.
-export const SNAP = new Set(['surf.kind', 'surf.map', 'matte.kind', 'matte.outside', 'fold.n', 'bg.on',
+export const SNAP = new Set(['surf.kind', 'surf.map', 'matte.kind', 'matte.outside', 'fold.n', 'bg.on', 'slip.kind', 'slip.n', 'field.kind', 'field.a', 'field.b',
   ...Array.from({ length: FAMILIES }, (_, i) => `f${i}.on`)].map(n => OFF[n]));
 
 // Frame-wide block, after the two slots.
 export const RIPPLES = 8;
-export const FRAME_VEC4 = 13 + RIPPLES + 14;
+export const FRAME_VEC4 = 63;
 export const FRAME = {
   compose: 0,    // x: level-set mix of A into B (0 = A only), y: B active, z: XOR A with B, w: unused
   paper: 1, ink: 2, band1: 3, band2: 4,      // rgb; a: unused
@@ -81,7 +92,17 @@ export const FRAME = {
   mel: 22,       // the tune travelling through the sheet: amount, samples per unit, mode (0 out from the centre, 1 sideways, 2 up), unused
   melS: 23,      // 8 vec4: 32 samples of the melody, newest first
   pose: 31,      // 4 vec4: lenses in the sheet: x, y, strength, radius (the chord's shape, and the pulse)
+  // Reserved once, then frozen. See docs/NEXT.md 2.1. All zero means off.
+  weight: 35,    // the weight field: how far it moves A's threshold, B's, 1/speed, unused
+  focus: 36,     // x, y: where the rings close on
+  wt: 37,        // 16 vec4: 64 samples of the beat around now
+  tune: 53,      // the tune rings: amount, 1/wavelength, phase, 1/reach
+  tens: 54,      // 4 vec4: 16 samples of how the tune's rings fade with radius
+  xf: 58,        // a transformation with local time: 1 in, 2 out; progress; front width; reach
+  xf2: 59,       // x, y: its centre; z: the iris's radius
+  handv: 60,     // the hand's view: zoom, spin, x, y (zoom 0 = off)
+  spare: 61,     // 2 vec4
 };
 
 export const GLSL_INDEX = V.map(([name, i]) => `#define I_${name} ${i}`).join('\n');
-export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}\n#define F_PAIR ${FRAME.pair}\n#define F_HAND ${FRAME.hand}\n#define F_RIP ${FRAME.ripple}\n#define NRIP ${RIPPLES}\n#define F_DIVE ${FRAME.dive}\n#define F_MEL ${FRAME.mel}\n#define F_MELS ${FRAME.melS}\n#define F_POSE ${FRAME.pose}`;
+export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}\n#define F_PAIR ${FRAME.pair}\n#define F_HAND ${FRAME.hand}\n#define F_RIP ${FRAME.ripple}\n#define NRIP ${RIPPLES}\n#define F_DIVE ${FRAME.dive}\n#define F_MEL ${FRAME.mel}\n#define F_MELS ${FRAME.melS}\n#define F_POSE ${FRAME.pose}\n#define F_WEIGHT ${FRAME.weight}\n#define F_FOCUS ${FRAME.focus}\n#define F_WT ${FRAME.wt}\n#define F_TUNE ${FRAME.tune}\n#define F_TENS ${FRAME.tens}\n#define F_XF ${FRAME.xf}\n#define F_XF2 ${FRAME.xf2}\n#define F_HANDV ${FRAME.handv}`;

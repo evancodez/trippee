@@ -5,10 +5,14 @@
 // Nothing here touches the clock. It only follows phi, and sets notes a moment ahead of when they're due.
 import { rng, clamp, lerp, smoother } from '../score/curves.js';
 import { FAMILY, familyOf, Key, within, voiceLead } from './theory.js';
+import { Touch } from './touch.js';
 
 const LOOKAHEAD = 0.2;      // seconds ahead that notes are set. Must be longer than the worst frame.
 const BASS_ROWS = 5;        // the bottom of the picture is the bottom of the band
 const TONICS = [0, 2, 3, 5, 7, 8, 10];   // signature roots that put the low notes where a bass likes them
+const PAD_LO = 47, PAD_HI = 74;          // the pad's range, before the hands move it
+const NOTE_MOIRE = 14;                   // cents apart a doubled note goes, at most. More is a sour note, not a beat.
+const TOUCH_RATE = 0.25;                 // the read line's speed across a stopped picture with a hand on it, at the least
 
 const hash = (a, b = 0) => { let h = (a * 73856093) ^ (b * 19349663); h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15; return (h >>> 0) / 4294967296; };
 
@@ -70,7 +74,16 @@ export class Brain {
     this.lastCtl = -1;
     this.stall = 0;
     this.started = false;
+    this.touch = new Touch();
+    this.drive = 0;          // how fast the read line is going: the picture's rate, or with the picture stopped and a hand on it, its own
+    this.lastRate = 0.158;
+    this.touchDriven = false;
+    this.padShift = 0;       // how far the hands have moved the pad's range
+    this.fist = null;
   }
+
+  // Sound off: nothing may be left ringing for the next time it comes on.
+  letGo(t) { if (this.fist) { this.fist.release(t); this.fist = null; } }
 
   // ---------------------------------------------------------------- one frame
   frame(now, F) {
@@ -96,18 +109,29 @@ export class Brain {
     this._controls(now, F, dt);
     if (this.rate < 1e-3) {
       this.stall += dt;
-      this.mPhi = F.phi; this.next = null;
-      return;
+      if (!this.touch.busy) {
+        this.mPhi = F.phi; this.next = null; this.drive = 0; this.touchDriven = false;
+        return;
+      }
+      // The picture has stopped, but a hand is on it. The read line carries on across it by itself, at the speed it was going, so what you do to
+      // a frozen picture plays. The picture's clock is left alone: this is only where the musician is looking.
+      if (!this.touchDriven) { this.touchDriven = true; this.next = null; }
+      this.drive = Math.max(this.lastRate, TOUCH_RATE);
+      this.mPhi += this.drive * dt;
+    } else {
+      if (this.touchDriven) { this.touchDriven = false; this.mPhi = F.phi; this.next = null; }
+      this.stall = 0;
+      this.drive = this.rate;
+      this.lastRate = clamp(this.rate, 0.08, 0.5);
+      // A slow phase-lock onto the picture's clock, so the notes don't pick up the frame jitter
+      this.mPhi += this.rate * dt;
+      const err = F.phi - this.mPhi, off = Math.abs(err) * this.S;
+      if (off > 3) { this.mPhi = F.phi; this.next = null; }
+      else this.mPhi += err * (1 - Math.exp(-dt / (off < 0.5 ? 3 : 0.6)));
     }
-    this.stall = 0;
-    // A slow phase-lock onto the picture's clock, so the notes don't pick up the frame jitter
-    this.mPhi += this.rate * dt;
-    const err = F.phi - this.mPhi, off = Math.abs(err) * this.S;
-    if (off > 3) { this.mPhi = F.phi; this.next = null; }
-    else this.mPhi += err * (1 - Math.exp(-dt / (off < 0.5 ? 3 : 0.6)));
     if (this.next == null) { this.next = Math.floor(this.mPhi * this.S) + 1; }
     for (let guard = 0; guard < 8; guard++) {
-      const due = now + (this.next / this.S - this.mPhi) / this.rate;
+      const due = now + (this.next / this.S - this.mPhi) / this.drive;
       if (due > now + LOOKAHEAD) break;
       this._step(this.next, this.S, Math.max(due, now + 0.004), F);
       this.next++;
@@ -143,7 +167,7 @@ export class Brain {
     if (fam.gear > 0) gear *= 2; if (fam.gear < 0) gear = Math.max(4, gear / 2);
     if (fam.top) gear = Math.min(gear, fam.top);
     // The flow knob, calm, the song's own speed: the clock itself can run fast or slow, and the gear keeps it playable.
-    const r = Math.max(this.rate, 1e-3);
+    const r = Math.max(this.drive, 1e-3);
     while (gear * r > 7.2 && gear > 4) gear /= 2;
     while (gear * r < 1.1 && gear < 64) gear *= 2;
     return gear;
@@ -162,7 +186,8 @@ export class Brain {
 
   // ---------------------------------------------------------------- what's slowly changing, every frame
   _controls(now, F, dt) {
-    const sm = this.smooth, ease = tau => 1 - Math.exp(-dt / tau);
+    const sm = this.smooth, ease = tau => 1 - Math.exp(-dt / tau), tz = this.touch;
+    tz.update(F, dt, now);
     // element size, seen in the picture: edges per column and per row, as cycles per picture height
     const k = clamp(Math.max(F.tv / 2, F.th / 2 * (F.H / F.W)), 0.5, 18);
     this.k += (k - this.k) * ease(0.8);
@@ -174,20 +199,22 @@ export class Brain {
     const mix = n => lerp(a[n], b[n], T);
     this.fam = T > 0.5 ? b : a;
     // bigger shapes lower, finer shapes higher, and the hand's zoom sweeps it straight away
-    const center = lerp(48, 76, clamp((Math.log2(this.k) + 0.3) / 3.8)) + mix('reg') - clamp(F.journey, -3, 3) * 3.5;
-    this.center += (center - this.center) * ease(1.2);
+    const handReg = -clamp(F.journey, -3, 3) * 3.5 + tz.center;
+    const center = lerp(48, 76, clamp((Math.log2(this.k) + 0.3) / 3.8)) + mix('reg') + handReg;
+    this.center += (center - this.center) * ease(tz.fast ? 0.25 : 1.2);
     this.span = mix('span');
 
     const breathe = Math.sin(this.lastPhi * Math.PI * 2 * 0.5) * mix('breathe');
     // white opens it, the press opens it a lot, the long slow swell of the whole thing underneath
     const open = Math.exp(1.1 * (sm.white - 0.5) + 1.2 * sm.press + breathe * 1.1);
-    const cut = (260 + 1500 * mix('padCut') * mix('padCut') * 2.2) * open;
-    sm.bright = clamp(mix('bright') + 0.5 * (sm.white - 0.5) + 0.45 * sm.press);
+    const cut = (260 + 1500 * mix('padCut') * mix('padCut') * 2.2) * open * tz.cut;
+    sm.bright = clamp(mix('bright') + 0.5 * (sm.white - 0.5) + 0.45 * sm.press + clamp(0.35 * Math.log(tz.band), -0.4, 0.4));
     const energy = 0.86 + 0.14 * Math.sin(this.lastPhi * Math.PI * 2 / 13);
     this.energy = energy;
-    const stepsDelay = 3 / 32 / Math.max(this.rate, 0.02);
-    const moire = F.sheet * clamp(2.5 + Math.abs(F.sheetRot) * 90, 0, 11);    // a beat, not a sour note
-    this.moire = moire;
+    const stepsDelay = 3 / 32 / Math.max(this.drive || this.lastRate, 0.02);   // stopped, it stays in time with where it was, for whatever's still ringing
+    const moire = Math.max(F.sheet * clamp(2.5 + Math.abs(F.sheetRot) * 90, 0, 11), tz.moire);    // a beat, not a sour note
+    this.moire = Math.min(moire, NOTE_MOIRE);
+    const sunk = this.stall > 0.5 && !tz.busy;
 
     if (now - this.lastCtl > 0.05) {
       this.lastCtl = now;
@@ -195,10 +222,12 @@ export class Brain {
       const sends = {};
       for (const f of [a, b]) sends[f.main] = { delay: mix('delay') * (f === (T > 0.5 ? b : a) ? 1 : 0.6), verb: mix('verb') };
       sends.ping = { delay: 0.5, verb: 0.6 };
+      sends.strum = { delay: 0.36, verb: 0.42 };
       if (!this.lastDelay || Math.abs(stepsDelay / this.lastDelay - 1) > 0.05) this.lastDelay = stepsDelay;
       this.synth.controls(now, {
-        padCut: cut, padLevel: mix('pad') * 0.8 * (this.stall > 0.5 ? 0.45 : 1) * lerp(0.9, 1.05, energy), padVerb: 0.14 + mix('verb') * 0.5,
-        drone: mix('drone') * 0.34 * (this.stall > 0.5 ? 0.4 : 1), moire, delay: this.lastDelay, feedback: 0.3 + mix('delay') * 0.28, sends,
+        padCut: cut, padLevel: mix('pad') * 0.8 * (sunk ? 0.45 : 1) * lerp(0.9, 1.05, energy) * tz.pad, padVerb: 0.14 + mix('verb') * 0.5,
+        drone: mix('drone') * 0.34 * (sunk ? 0.4 : 1), moire, delay: this.lastDelay, feedback: 0.3 + mix('delay') * 0.28 + tz.feedback, sends,
+        bend: tz.bend, pan: tz.pan, level: tz.level, band: tz.band,
       });
       this.main = main;
     }
@@ -217,10 +246,55 @@ export class Brain {
         this._play({ voice: 'ping', midi: m, t: now + 0.01, vel: clamp(0.5 + Math.abs(r.height || 0) * 0.4, 0.3, 0.9), dur: 0.6, pan: clamp(r.x / 1.7, -0.8, 0.8), bright: 0.5 }, 'ripple');
       }
     }
-    this.pw = clamp(sm.white, 0.14, 0.5);
-    this.gateK = Math.pow(2, -1.7 * clamp(F.theta, -0.9, 0.9));
+    this.pw = clamp(Math.min(sm.white, tz.pw), 0.14, 0.5);
+    this.gateK = Math.pow(2, -1.7 * clamp(F.theta, -0.9, 0.9)) * tz.gate;
     this._harmony(now, F);
+    this._register(now, F, handReg);
+    this._hands(now, F);
   }
+
+  // ---------------------------------------------------------------- what the hands play themselves
+  _hands(now, F) {
+    const tz = this.touch;
+    // The comb's strum: a note on the ladder by height, panned by where it is
+    if (tz.strums.length) {
+      const lad = this._ladder();
+      for (const s of tz.strums) {
+        let m = lad[Math.round(clamp((s.y + 1) / 2) * (lad.length - 1))];
+        while (m < 55) m += 12;
+        while (m > 88) m -= 12;
+        this._play({ voice: 'strum', midi: m, t: now + 0.006, vel: s.vel, dur: 0.16, pan: clamp(s.x / 1.7, -0.85, 0.85), bright: this.smooth.bright }, 'comb', null, this.S, F);
+      }
+      tz.strums.length = 0;
+    }
+    // A fist: one low note on the root, for as long as it's closed
+    const root = this._lowRoot(this.chord);
+    if (tz.fistEvent > 0 && !this.fist) {
+      this.fist = this.synth.hold(root, now + 0.006, 0.8);
+      this.fistRoot = root;
+      if (this.logging) this.log.push({ t: +now.toFixed(3), m: root, v: 'sub', vel: 0.8, d: 0, r: 'fist', c: this.chord.name, pat: F.A?.id ?? null });
+    } else if (tz.fistEvent < 0 || (this.fist && !tz.fisted)) this.letGo(now + 0.006);
+    if (this.fist && root !== this.fistRoot) { this.fist.to(root, now + 0.01); this.fistRoot = root; }
+  }
+
+  // The pad's range follows the hands: a zoom, a pinch or a hand moves the register of the chord, in the chord's own notes, one voice at a time.
+  // Only ever on what the hands have done, so with nothing touched it's where it always was.
+  _register(now, F, handReg) {
+    const want = clamp(Math.round(handReg), -9, 12);
+    if (want === this.padShift || (Math.abs(want - this.padShift) < 3 && want !== 0)) return;
+    this.padShift = want;
+    if (this.morphTo) {
+      this.nextPad = this._lead(this.nextChord.tones);
+      this.order = [0, 1, 2, 3].sort((p, q) => Math.abs(this.nextPad[p] - this.pad[p]) - Math.abs(this.nextPad[q] - this.pad[q]));
+      this.moved = 0;
+      return;
+    }
+    const v = this._lead(this.chord.tones);
+    v.forEach((m, i) => { if (m !== this.pad[i]) { this.synth.padVoice(i, m, now, 0.75); this._padLog(now, i, this.pad[i], m, F); } });
+    this.pad = v;
+  }
+
+  _lead(tones) { return voiceLead(this.pad, tones, PAD_LO + this.padShift, PAD_HI + this.padShift); }
 
   // ---------------------------------------------------------------- the chord
   _harmony(now, F) {
@@ -233,7 +307,7 @@ export class Brain {
         this.nextProg = this._home(F.B, nf);
         this.nextChord = this.key.chord(nf.prog[this.nextProg]);
         if (this.nextChord.name === this.chord.name) { this.nextProg = (this.nextProg + 1) % nf.prog.length; this.nextChord = this.key.chord(nf.prog[this.nextProg]); }
-        this.nextPad = voiceLead(this.pad, this.nextChord.tones);
+        this.nextPad = this._lead(this.nextChord.tones);
         this.moved = 0;
         this.order = [0, 1, 2, 3].sort((p, q) => Math.abs(this.nextPad[p] - this.pad[p]) - Math.abs(this.nextPad[q] - this.pad[q]));
       }
@@ -262,7 +336,7 @@ export class Brain {
 
   _change(chord, t) {
     this.chord = chord;
-    const v = voiceLead(this.pad, chord.tones);
+    const v = this._lead(chord.tones);
     v.forEach((m, i) => { if (m !== this.pad[i]) { this.synth.padVoice(i, m, t + i * 0.09, 0.9); this._padLog(t + i * 0.09, i, this.pad[i], m); } });
     this.pad = v;
   }
@@ -283,7 +357,7 @@ export class Brain {
     if (n % S === 0) this.walked = 0;     // the walk starts again with the phrase, so a pattern that returns plays the same phrase
     const beatN = S / 8, barN = S / 2;
     const onBeat = n % Math.max(1, Math.round(beatN)) === 0, onBar = n % Math.max(1, Math.round(barN)) === 0;
-    const stepDur = 1 / (S * this.rate);
+    const stepDur = 1 / (S * this.drive);
     // the chord clock: only when nothing's morphing. A held pattern still goes somewhere.
     const fam0 = familyOf(F.A);
     if (!F.B && !this.morphTo && onBar) {
@@ -309,7 +383,7 @@ export class Brain {
     const dirSign = flow.dir < 0 ? -1 : 1;
     const x = ((phase % 1) + 1) % 1, u = dirSign < 0 ? 1 - x : x;
     const col = Math.min(F.W - 1, Math.floor(u * F.W));
-    const pan = (u * 2 - 1) * 0.55;
+    const pan = clamp((u * 2 - 1) * 0.55 + this.touch.pan * 0.5, -0.9, 0.9);
     const { grid, W, H } = F;
     const rows = H - BASS_ROWS;
 
@@ -390,7 +464,14 @@ export class Brain {
     return m;
   }
 
-  _nearOctave(m, near, reach) { while (m - near > reach) m -= 12; while (near - m > reach) m += 12; return m; }
+  // The nearest octave of m to where the line has got to, but always inside the ladder: when the register moves, the line goes with it and isn't left behind.
+  _nearOctave(m, near, reach) {
+    while (m - near > reach) m -= 12;
+    while (near - m > reach) m += 12;
+    const lad = this.lad;
+    if (lad?.length) { while (m < lad[0]) m += 12; while (m > lad[lad.length - 1]) m -= 12; }
+    return m;
+  }
 
   // Thin what the read line found down to a few notes, the way this family plays them.
   _choose(cands, fam, flow, n, S, onBeat, onBar, sig) {

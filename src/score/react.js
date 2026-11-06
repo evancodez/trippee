@@ -7,8 +7,10 @@
 //   energy  how big this moment of the song is, slowly
 //   chords  when the harmony changes, and to what
 import { clamp, rng, smoother, lerp } from './curves.js';
+import { understand } from '../music/understand.js';
 
 const HZ = 60;
+const LENS_WALK = 4.5;    // seconds it takes the chord lenses to get all the way to a new chord's shape
 const smooth = (a, r) => {
   const out = Float32Array.from(a);
   const k = Math.exp(-1 / Math.max(r, 1e-3));
@@ -81,7 +83,7 @@ export function buildReact(A, seed = 1) {
     const { b, t, main } = pulses[k], next = pulses[k + 1]?.t ?? t + 2, len = Math.max(next - t, 0.5);
     const present = clamp((energyAt(t) - 0.03) / 0.15);
     const s = (0.55 + 0.45 * clamp(weight[b] / hi)) * (main ? 1 : 0.72) * present;
-    const atk = Math.min(0.2, len * 0.14), dec = Math.min(1, len * 0.42);
+    const atk = Math.min(0.32, len * 0.2), dec = Math.min(1, len * 0.42);     // a swell that arrives on the beat, not a kick: the whole sheet takes it
     const i0 = Math.max(0, Math.floor((t - atk) * HZ)), i1 = Math.min(n - 1, Math.ceil((t + dec * 4) * HZ));
     for (let i = i0; i <= i1; i++) {
       const x = i / HZ - t;
@@ -97,8 +99,8 @@ export function buildReact(A, seed = 1) {
     const v = vRaw[i] > 0.35 ? clamp(mRaw[i] / 6, -1.4, 1.4) : held * 0.992;
     held = v; melody[i] = v;
   }
-  // A sung note changes pitch in a moment. Smoothed over a tenth of a second, it arrives as a glide, or the lines would twitch on every note.
-  const mel = smooth(melody, HZ * 0.1);
+  // A sung note changes pitch in a moment. Smoothed over about a seventh of a second, it arrives as a glide, or the lines would twitch on every note.
+  const mel = smooth(melody, HZ * 0.14);
   // How much the tune is there at all, and a slower version of it, for what moves the whole sheet
   const voiced = smooth(vRaw.map(v => (v > 0.35 ? 1 : 0)), HZ * 0.5);
   const melSlow = smooth(melody, HZ * 0.45);
@@ -112,7 +114,8 @@ export function buildReact(A, seed = 1) {
   const shapeOf = c => {
     if (!shapes.has(c)) {
       const r = rng(((c + 3) * 2654435 + seed * 97) >>> 0);
-      shapes.set(c, [0, 1, 2].map(() => ({ x: r.range(-1.25, 1.25), y: r.range(-0.75, 0.75), a: r.sign() * r.range(0.32, 0.62), R: r.range(0.45, 0.95) })));
+      // Each lens keeps its sign from chord to chord. One turning inside out in the two seconds before a chord pulled the whole picture with it, and that's a lurch, not a shape arriving.
+      shapes.set(c, [0, 1, 2].map(i => ({ x: r.range(-1.25, 1.25), y: r.range(-0.75, 0.75), a: (i === 1 ? -1 : 1) * r.range(0.32, 0.62), R: r.range(0.45, 0.95) })));
     }
     return shapes.get(c);
   };
@@ -122,12 +125,18 @@ export function buildReact(A, seed = 1) {
     let last = -1, lastT = -9;
     for (let i = 0; i < A.chord.length; i++) {
       const c = A.chord[i], t = i * step;
-      if (c !== last && t - lastT > 0.8) { chords.push({ t, shape: shapeOf(c) }); last = c; lastT = t; }
+      if (c !== last && t - lastT > 2.0) { chords.push({ t, shape: shapeOf(c) }); last = c; lastT = t; }
     }
   }
   if (!chords.length) chords.push({ t: 0, shape: shapeOf(0) });
+  // A chord's shape arrives with it, and it's only reached if there's time. Harmony changing every two seconds would otherwise sweep three lenses across the whole frame
+  // from one random place to another, nonstop: so they head that way, as far as they can go at a walk, and a chord that's been waited for gets all of it.
+  for (let k = 1; k < chords.length; k++) {
+    const b = clamp((chords[k].t - chords[k - 1].t) / LENS_WALK), was = chords[k - 1].shape;
+    chords[k].shape = chords[k].shape.map((s, i) => ({ x: lerp(was[i].x, s.x, b), y: lerp(was[i].y, s.y, b), a: lerp(was[i].a, s.a, b), R: lerp(was[i].R, s.R, b) }));
+  }
   const dummy = rand();
-  return { hz: HZ, n, pulse, pulses: pulses.map(p => p.t), choices, melody: mel, melSlow, voiced, tone, energy, chords, dummy };
+  return { hz: HZ, n, pulse, pulses: pulses.map(p => p.t), choices, melody: mel, melSlow, voiced, tone, energy, chords, dummy, M: understand(A) };
 }
 
 // Flow surges just after a strong beat and glides until the next, arriving at the same place on the beat clock each time, so it stays
@@ -149,14 +158,14 @@ export function reactAt(R, t) {
 }
 
 // The three lenses of the chord in the air at time t. A shape arrives exactly when its chord does.
-const GLIDE = 1.4;
+const GLIDE = 3;
 export function chordLenses(R, t, out) {
   const c = R.chords;
   let lo = 0, hi = c.length - 1;
   while (lo < hi) { const m = (lo + hi + 1) >> 1; if (c[m].t <= t) lo = m; else hi = m - 1; }
   // Heading for the next chord in the last moments before it
   const next = c[lo + 1], cur = c[lo];
-  const span = next ? Math.min(GLIDE, (next.t - cur.t) * 0.7) : 1;
+  const span = next ? Math.min(GLIDE, (next.t - cur.t) * 0.9) : 1;
   const k = next ? smoother((t - (next.t - span)) / span) : 0;
   for (let i = 0; i < 3; i++) {
     const a = cur.shape[i], b = next ? next.shape[i] : a;

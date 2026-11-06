@@ -83,7 +83,7 @@ export default async ({ page, log, save }) => {
     await hold(stripe);
     await move(900, 200); await sleep(300);
     await page.shot('journey-0');
-    const under = () => page.eval(() => { const A = app.R.slotA, O = trippee.app.hand.offsets; const s = A[O.scale], a = -A[O.rot], c = [(900 - 640) / 360, -(200 - 360) / 360]; return [(Math.cos(a) * c[0] - Math.sin(a) * c[1]) / s + A[O.tx], (Math.sin(a) * c[0] + Math.cos(a) * c[1]) / s + A[O.ty]].map(v => +v.toFixed(4)); });
+    const under = () => page.eval(() => { const E = app.edits, A = app.R.slotA, O = trippee.app.hand.offsets, z = Math.exp(-(E.journey || 0)), a = -(E.spin || 0), c = [(900 - 640) / 360, -(200 - 360) / 360], p = [(Math.cos(a) * c[0] - Math.sin(a) * c[1]) * z + (E.jx || 0), (Math.sin(a) * c[0] + Math.cos(a) * c[1]) * z + (E.jy || 0)], s = A[O.scale], b = -A[O.rot]; return [(Math.cos(b) * p[0] - Math.sin(b) * p[1]) / s + A[O.tx], (Math.sin(b) * p[0] + Math.cos(b) * p[1]) / s + A[O.ty]].map(v => +v.toFixed(4)); });
     log('pattern point under the cursor before', await under());
     for (let i = 0; i < 16; i++) { await wheel(900, 200, 0, -80); await sleep(50); }
     await sleep(800);

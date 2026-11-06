@@ -5,7 +5,7 @@ import { Stage } from './stage.js';
 import { Governor } from './gl/governor.js';
 import { patterns, byId, families } from './pattern/library.js';
 
-export const VERSION = 'v2';
+export const VERSION = 'v2.1';
 const canvas = document.getElementById('c');
 const R = new Renderer(canvas);
 // A different wander each visit, from a count rather than the clock, so a given seed always gives the same picture.
@@ -13,13 +13,14 @@ let visit = 1;
 try { visit = (+localStorage.getItem('trippee.visit') || 0) + 1; localStorage.setItem('trippee.visit', visit); } catch { /* the first wander, then */ }
 const stage = new Stage(visit * 7919 % 100000);
 const governor = new Governor(R);
+stage.now = () => app.pictureT();
 
 const app = window.app = {
   R, stage, patterns, byId, families, canvas, VERSION, governor,
   t: 0, manual: false, paused: false, edits: {}, lastFrame: null, onFrame: [],
   clock: null,    // when a song is playing, a function returning song seconds
   // The time the picture is actually at. Colour can rest the picture's clock for a few seconds, so anything that plans a change goes by this.
-  pictureT: (t = app.t) => (app.edits.beyond ? app.edits.beyond.time(t, stage.score) : t),
+  pictureT: (t = app.t) => { if (stage.score.time) t = stage.score.time(t); return app.edits.beyond ? app.edits.beyond.time(t, stage.score) : t; },
 };
 
 let dprSeen = 0;
@@ -31,9 +32,12 @@ function fit() {
 new ResizeObserver(fit).observe(canvas);
 fit();
 
-function render() {
-  stage.update(app.pictureT());
+// dtReal: real seconds since the last frame. A pick runs on these, so nothing can stop it. Stepping by hand, the time stepped stands in for them.
+function render(dtReal = 0) {
+  const pt = app.pictureT();
+  stage.update(pt, dtReal);
   app.edits.staticG = stage.staticG;
+  app.edits.inHandover = stage.handingOver(app.pictureT());
   app.lastFrame = frame(stage.score, app.t, R, app.edits);
   R.brush(app.brush || {});
   app.brush = null;
@@ -49,7 +53,7 @@ function loop(now) {
   last = now;
   if (app.clock) app.t = app.clock();
   else if (!app.paused) app.t += dt;
-  render();
+  render(Math.min(real, 0.25));
   governor.tick(real);
   requestAnimationFrame(loop);
 }
@@ -58,9 +62,9 @@ function loop(now) {
 window.trippee = {
   ready: false, canvas, version: VERSION, app,
   time: () => app.t,
-  step(dt) { app.manual = true; app.t += dt; render(); return app.t; },
+  step(dt) { app.manual = true; app.t += dt; render(dt); return app.t; },
   run() { app.manual = false; if (!looping) { looping = true; last = 0; requestAnimationFrame(loop); } },
-  seek(t) { app.manual = true; app.t = t; render(); },
+  seek(t) { app.manual = true; const d = Math.max(0, t - app.t); app.t = t; render(d); },
   list: () => patterns.map(({ id, name, family }) => ({ id, name, family })),
   // Show one pattern straight away, with no way in: for looking at a pattern on its own.
   // With sweep: true it plays one whole gesture of `len` seconds, and doesn't stop there.

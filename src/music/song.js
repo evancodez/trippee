@@ -147,20 +147,25 @@ export function init(app) {
   // play or a seek goes back to the film.
   const rest = () => {
     resting = true; endedAt = 0;
-    const t = app.t, stage = app.stage, snap = stage.snapshot(t);
-    stage.score = { gestures: [{ t0: t, t1: t + 16, arcEnd: t + 16, pattern: snap.G.pattern, arcs: [], morph: 12 }], phi: x => (x * 76 / 60) / 8, song: null };
-    stage.hold = false;
-    stage._extend(t);
-    app.clock = null;
-    stage.morphFrom(snap, t, 3);
+    const stage = app.stage;
+    stage.settle(app.pictureT(), () => {
+      const t = app.t, snap = stage.snapshot(app.pictureT());
+      stage.score = { gestures: [{ t0: t, t1: t + 16, arcEnd: t + 16, pattern: snap.G.pattern, arcs: [], morph: 12 }], phi: x => (x * 76 / 60) / 8, song: null };
+      stage.hold = false;
+      stage._extend(t);
+      app.clock = null;
+      stage.morphFrom(snap, t, 3);
+    });
   };
   const wake = () => {
     resting = false; endedAt = 0;
-    const snap = app.stage.snapshot(app.t);
-    app.stage.setScore(score);
-    app.clock = clock;
-    needSnap = true;
-    app.stage.morphFrom(snap, Math.max(0, offset), 6);
+    app.stage.settle(app.pictureT(), () => {
+      const snap = app.stage.snapshot(app.pictureT());
+      app.stage.setScore(score);
+      app.clock = clock;
+      needSnap = true;
+      app.stage.morphFrom(snap, Math.max(0, offset), 6);
+    });
   };
   app.onFrame.push(() => { if (endedAt && !resting && performance.now() - endedAt > END_HOLD * 1000) rest(); });
 
@@ -205,12 +210,15 @@ export function init(app) {
       app.governor?.quiet(3);    // the rehearsal holds up the frame loop for a moment; that's not the pixels' fault
       await rehearseNow(p => onProgress(0.98 + 0.02 * p));
       if (token !== loadToken) return null;
-      const snap = app.stage.snapshot(app.t);
+      // Something on its way somewhere gets there first. A film has to come out of one pattern, or it would pop.
+      if (!app.manual && app.stage.morphing(app.pictureT())) await new Promise(res => app.stage.settle(app.pictureT(), res, 2.5));
+      if (token !== loadToken) return null;
+      const snap = app.stage.snapshot(app.pictureT());
       app.stage.setScore(score);
       app.clock = clock;
       app.t = 0;
       lastPerf = 0; tEst = 0; needSnap = true;
-      app.stage.morphFrom(snap, 0, 7);
+      app.stage.morphFrom(snap, 0, 7, { clocked: true });
       onProgress(1);
       if (autoplay) song.play();
       return song;
@@ -252,7 +260,8 @@ export function init(app) {
     },
 
     // The same song, another film. The clock doesn't stop.
-    rebuild({ seed, family, pattern } = {}) {
+    // quiet: no rehearsal behind it, for a pick, which happens right there in the middle of the picture.
+    rebuild({ seed, family, pattern, quiet = false } = {}) {
       if (!analysis) return null;
       const next = {};
       if (seed !== undefined) next.seed = seed;
@@ -260,6 +269,7 @@ export function init(app) {
       if (pattern !== undefined) next.pattern = pattern;
       composeNow(next);
       if (!resting && !song.aside) app.stage.setScore(score);
+      if (quiet) return score;
       // It's called from under a solid, so it answers now; what this rehearsal learns is for the next take.
       rehearse(score, Math.min(analysis.duration, 1200)).then(r => {
         song.rehearsal = r;
@@ -277,11 +287,13 @@ export function init(app) {
       playing = false; buffer = null; analysis = null; score = null; duration = 0; offset = 0; song.aside = false;
       song.analysis = null; song.score = null;
       app.clock = null;
-      app.stage.score = { ...app.stage.score, song: null, gestures: [], phi: t => (t * 76 / 60) / 8 };
+      // A new score: nothing of the film's (its reactions, its clock) stays on the wander.
+      app.stage.score = { song: null, gestures: [], phi: t => (t * 76 / 60) / 8, handover: app.stage.score.handover };
       app.stage.hold = false;
       app.stage._extend?.(app.t);
     },
   };
 
+  app.stage.rebuild = o => song.rebuild(o);
   if (window.trippee) window.trippee.song = (src, o) => song.load(src, o);
 }

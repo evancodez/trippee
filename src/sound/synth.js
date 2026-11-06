@@ -1,7 +1,7 @@
 // The instruments. Only Web Audio, no samples. Everything is built on whatever context it's given, so the same graph runs live and
 // through an OfflineAudioContext for measuring. Every note is scheduled ahead at an exact time and cleans up after itself.
 //
-//   voices -> mix -> saturation -> tone -> glue -> limiter -> ceiling -> fade -> volume -> out
+//   voices -> mix -> saturation -> tone -> hands -> glue -> limiter -> ceiling -> fade -> volume -> out
 //   voices -> delay (ping-pong, in time with the flow), reverb (a made-up room) -> tone
 import { rng, clamp } from '../score/curves.js';
 
@@ -58,9 +58,14 @@ export class Synth {
     this.fade = G(0);
     this.volume = G(1);
     this.wet = G(1);
+    // The tools' say over the whole band, before the compressors, so it can't get past the ceiling: a filter that closes, a lift that opens, a level.
+    this.hands = G(1);
+    this.handsLP = BQ('lowpass', 16000, 0.5);
+    this.handsAir = BQ('highshelf', 1800, 0.707, 0);
+    this.bend = 0;         // cents, on everything that starts from now on
     this.mix.connect(sat); sat.connect(shelf);
     this.wet.connect(shelf);
-    shelf.connect(top); top.connect(floor); floor.connect(glue); glue.connect(lim); lim.connect(trim); trim.connect(ceil); ceil.connect(this.fade); this.fade.connect(this.volume);
+    shelf.connect(top); top.connect(floor); floor.connect(this.handsLP); this.handsLP.connect(this.handsAir); this.handsAir.connect(this.hands); this.hands.connect(glue); glue.connect(lim); lim.connect(trim); trim.connect(ceil); ceil.connect(this.fade); this.fade.connect(this.volume);
     this.output = this.volume;
     this.analyser = null;
 
@@ -94,7 +99,7 @@ export class Synth {
     this.arpTrim = G(1.55);
     arpHP.connect(this.arpTrim); this.arpTrim.connect(this.mix);
     this.arpBus = arpHP;
-    for (const [name, trimV] of Object.entries({ glass: 1, bell: 1, pluck: 1, analog: 1, stab: 1, pulse: 1, swell: 1, ping: 1 })) {
+    for (const [name, trimV] of Object.entries({ glass: 1, bell: 1, pluck: 1, analog: 1, stab: 1, pulse: 1, swell: 1, ping: 1, strum: 1 })) {
       const b = G(trimV), d = G(0), v = G(0);
       b.connect(arpHP); b.connect(d); b.connect(v); d.connect(this.delayIn); v.connect(this.verbIn);
       this.bus[name] = { in: b, delay: d, verb: v };
@@ -125,7 +130,8 @@ export class Synth {
     merge.connect(this.padOut);
     const hp = BQ('highpass', 70, 0.6);
     this.padTrim = G(0.5);
-    this.padOut.connect(hp); hp.connect(this.padTrim); this.padTrim.connect(this.mix);
+    this.padPan = ctx.createStereoPanner();
+    this.padOut.connect(this.padPan); this.padPan.connect(hp); hp.connect(this.padTrim); this.padTrim.connect(this.mix);
     this.padVerb = G(0.25); this.padOut.connect(this.padVerb); this.padVerb.connect(this.verbIn);
     this.pad = [];
     for (let i = 0; i < 4; i++) {
@@ -161,7 +167,20 @@ export class Synth {
     if (c.padLevel != null) to(this.padLevel.gain, c.padLevel, 0.5);
     if (c.padVerb != null) to(this.padVerb.gain, c.padVerb, 0.8);
     if (c.drone != null) to(this.droneLevel.gain, c.drone, 0.9);
-    if (c.moire != null) for (const v of this.pad) { to(v.oscs[0].detune, -7 - c.moire, 0.2); to(v.oscs[1].detune, 7 + c.moire, 0.2); }
+    if (c.moire != null || c.bend != null) {
+      // Two saws apart by the moire, and all three by the bend
+      const moire = c.moire ?? this._moire ?? 0, bend = c.bend ?? this.bend;
+      this._moire = moire; this.bend = bend;
+      this.pad.forEach((v, i) => { to(v.oscs[0].detune, -7 - i - moire + bend, 0.1); to(v.oscs[1].detune, 7 + i + moire + bend, 0.1); to(v.oscs[2].detune, bend, 0.1); });
+      to(this.droneA.detune, bend, 0.1); to(this.droneB.detune, bend, 0.1);
+    }
+    if (c.pan != null) to(this.padPan.pan, clamp(c.pan, -0.85, 0.85), 0.12);
+    if (c.level != null) to(this.hands.gain, c.level, 0.12);
+    if (c.band != null) {
+      // Steep, so a little lean is nearly nothing and a lot is a hand over the speaker. It stops short of silence.
+      to(this.handsLP.frequency, clamp(16000 * Math.pow(Math.min(c.band, 1), 3.5), 500, 16000), 0.1);
+      to(this.handsAir.gain, clamp(3 * Math.log(Math.max(c.band, 1)), 0, 3.5), 0.1);
+    }
     if (c.delay != null) { const d = clamp(c.delay, 0.09, 1.3); to(this.dL.delayTime, d, 0.25); to(this.dR.delayTime, d * 1.002, 0.25); }
     if (c.feedback != null) for (const f of this.fbs) to(f.gain, clamp(c.feedback, 0, 0.62), 0.5);
     if (c.sends) for (const name in c.sends) {
@@ -209,7 +228,7 @@ export class Synth {
     if (live > MAX_LIVE + (low ? 8 : 0)) return false;
     const fn = this['_' + voice];
     if (!fn) return false;
-    fn.call(this, { midi, f: mtof(midi), t, vel, dur, pan, bright, pw, cents });
+    fn.call(this, { midi, f: mtof(midi) * Math.pow(2, this.bend / 1200), t, vel, dur, pan, bright, pw, cents });
     return true;
   }
 
@@ -278,8 +297,8 @@ export class Synth {
   }
 
   // A soft pluck: a triangle and a little saw through a filter that closes fast.
-  _pluck({ f, t, vel, dur, pan, bright, cents }) {
-    const out = this._out(this.bus.pluck.in, pan), p = this._pan;
+  _pluck({ f, t, vel, dur, pan, bright, cents }, bus = 'pluck') {
+    const out = this._out(this.bus[bus].in, pan), p = this._pan;
     const A = this._osc('triangle', f, t, cents), B = this._osc('sawtooth', f, t, 5 + cents), gB = this.G(0.55), lp = this.BQ('lowpass', 1000, 1.4);
     A.connect(lp); B.connect(gB); gB.connect(lp); lp.connect(out);
     const base = clamp(f * 2.4, 160, 3200), peak = clamp(f * (6 + 12 * bright), 900, 8000);
@@ -291,6 +310,9 @@ export class Synth {
     g.setTargetAtTime(0, t + 0.002, tau);
     this._end([A, B], [gB, lp, out, p].filter(Boolean), t + tau * 7);
   }
+
+  // The comb's strum: the same pluck, with sends of its own whatever the band is playing.
+  _strum(n) { this._pluck(n, 'strum'); }
 
   // A swell: slow in, slow out, opening as it comes.
   _swell({ f, t, vel, dur, pan, bright, pw, cents }) {
@@ -342,6 +364,27 @@ export class Synth {
     const end = t + 0.008 + Math.max(dur, 0.05);
     g.setTargetAtTime(0, end, 0.07);
     this._end([A, B, C], [gC, lp, out], end + 0.5);
+  }
+
+  // A sub with no length decided: it sounds until it's let go. What a fist plays. It follows the chord if that moves while it's held.
+  hold(midi, t, vel = 0.7) {
+    const f = mtof(midi), out = this.G(0), gB = this.G(0.22);
+    out.connect(this.lowBus);
+    const A = this._osc('sine', f, t), B = this._osc('triangle', f * 2, t);
+    A.connect(out); B.connect(gB); gB.connect(out);
+    const g = out.gain, v = 0.34 * vel;
+    g.setValueAtTime(0, t);
+    g.linearRampToValueAtTime(v, t + 0.06);
+    return {
+      to(m, at) { A.frequency.setTargetAtTime(mtof(m), at, 0.12); B.frequency.setTargetAtTime(mtof(m) * 2, at, 0.12); },
+      release: at => {
+        g.cancelScheduledValues(at);
+        g.setTargetAtTime(0, at, 0.14);
+        const end = at + 1;
+        A.stop(end); B.stop(end);
+        A.onended = () => { for (const n of [A, B, gB, out]) { try { n.disconnect(); } catch { /* gone */ } } };
+      },
+    };
   }
 
   // Sub: nothing but weight.
