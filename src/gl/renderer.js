@@ -82,12 +82,22 @@ export class Renderer {
   wantFold(v = null, now = false) {
     if (v == null) this.foldAsked = true;
     const add = v != null ? [v, v ^ FLIGHT] : ORDER.slice(0, this.bare ? 4 : 8).map(n => n | FOLD);       // the hand's only if it's ever drawn over one. One asked for by a frame brings its other half, flying or not: a click's flight into a fold had only the flight's, and the landing drew two frames without its mirrors and popped (folds.crumplerings, 96 /255)
+    if (!this.bare) add.push((v ?? FOLD) | FLIGHT | SPACE);      // ...and the way out of one into a sheet in space, whose flight starts on the click's own frame with no plan to wait for (folds.pearls into space.hall: 58 /255 on its first frame)
     const more = add.filter(n => !this.order.includes(n));
     if (!more.length) return;
     this.order = [...this.order, ...more];
     // A frame that's drawing a fold now can't wait a quarter second for it: it went without the fold that long and then popped into it
     if (now) { if (!this._pending && !this._warming) this._next(); }
     else this._soon();
+  }
+  // A transformation about to begin between these two slots (src/score/frame.js, as its plan's begun): what it and what it lands on will be drawn with, built while the plan's being worked out. A click
+  // into a fold flew its first frames without its mirrors and popped when the program came (folds.pearlscheck, 107 /255 on the first frame of its flight).
+  ahead(a, b, space = false) {
+    if (this.wp || this.bare) return;
+    const keep = this.variant & (HAND | PLATES), bits = s => (s[OFF['sf.on']] > 0.5 ? FOLD : 0) | (this._extra(s) ? EXTRA : 0) | (s[OFF['space.kind']] > 0.5 ? SPACE : 0);
+    const fly = bits(a) | bits(b) | FLIGHT | keep | (space ? SPACE : 0);
+    const want = [fly, bits(b) | keep, ...(this.timeOn ? [fly | TIME] : [])].filter(v => !this.progs[v]);      // leaving a time trick, it fades out over the first half of the flight (time.venetian into dials.diamonds: 123 /255 when that program came, mid-flight)
+    if (want.length) this.whenBuilt(want);
   }
   // Start building on a frame of its own. Asked for from the middle of composing a film, a build starting there made that one long frame longer by what the GPU takes to begin it.
   _soon() {

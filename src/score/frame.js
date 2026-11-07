@@ -51,8 +51,9 @@ function planFor(m, dtf, stop, phiOf, R, aspect, now, world) {
     // A handover can only ever fly in. Rising needs the next pattern at rest with its element where the plan found it, and a film's clock doesn't
     // stop for that: its element would have moved on, and the frame would sit inside whatever had moved there, one flat colour.
     // A change from one world to another flies: its inks drain and arrive band by band, and only a flight's program has that. The arriving pattern's own way in (Dusk's flare, from Flower Power) drew the second half pure black for 6 to 8 s.
-    const hurry = { now };
-    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? (holder.change?.from && holder.change.to ? null : to.pattern.via ?? to.pattern.arrive ?? null) : from.xform ?? world?._xform, noGlide: handover ? holder.noGlide : from.noGlide, quick: !handover && from.quick, ink: world?.ink }, hurry) };
+    const hurry = { now }, xform = handover ? (holder.change?.from && holder.change.to ? null : to.pattern.via ?? to.pattern.arrive ?? null) : from.xform ?? world?._xform;
+    R.ahead?.(lim, lim3, !!(xform && xformOf(xform.id)?.long));      // its programs, built while this is worked out
+    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform, noGlide: handover ? holder.noGlide : from.noGlide, quick: !handover && from.quick, ink: world?.ink }, hurry) };
   }
   w.hurry.now = now;
   let step = w.steps.next();
