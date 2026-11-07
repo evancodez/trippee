@@ -629,6 +629,7 @@ export function compose(A, seed = 1, opts = {}) {
       G.arrival = M.arrivalAt(b);
     }
     if (flowOver) { G.flow = flowOver; G.flowOver = flowOver; }
+    if (P) { G.part = P.parts[k]; G.quick = true; }
 
     // Gears: one element passes per N beats, N from lambda and the scale of the moment. Closed form: a track in tau.
     // The rehearsal may yet narrow the part of the long move this gesture rides, or add to it, so it can ask what the gears would then be. x is how far through the gesture.

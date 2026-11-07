@@ -313,7 +313,6 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
     gestures.forEach((G, i) => {
       const part = parts[i];
       if (!part) return;
-      G.part = part; G.quick = true;
       if (part.way !== 'relay' && part.way !== 'riot') return;
       const lvl = part.level, a = G.t0, end = G.t1 - (G.morph || 0);
       const fixed = () => { G.fixedRange = true; G.range = [0, 1]; G.phiTrack = [{ t: tau(a), x: 0, v: 1 / GEAR[lvl] }]; G.gears = []; G.melMode = 0; };
@@ -330,7 +329,8 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
             if (((i - first) % most + most) % most === 0 && bars[i] > keys[k] + 0.5 * bar) stops.push(bars[i]);
           }
         }
-        const on = [...new Set(stops)].sort((x, y) => x - y).map(time).filter((t, n, all) => t - lead > a + clear && t + tail < end && (!n || t - all[n - 1] > (name === 'riot' && lvl >= 3 ? 0.8 : 1.5) * bar));
+        const on = [], apart = (name === 'riot' && lvl >= 3 ? 0.8 : 1.5) * bar;
+        for (const t of stops.sort((x, y) => x - y).map(time)) if (t - lead > a + clear && t + tail < end && (!on.length || t - on.at(-1) > apart)) on.push(t);
         if (on.length) {
           fixed();
           const from = done.get(part.seq) ?? 0;
@@ -377,14 +377,16 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
     earn(score, cast);
     for (let i = 0; i < last - 1; i++) {
       const G = g[i], N = g[i + 1];
-      if (!G.morph || G.xform || !G.part || G.peak) continue;
+      if (!G.morph || G.xform || G.peak) continue;
       const end = G.t1, atRest = score.landings?.find(l => Math.abs(l.B - end) < 0.05)?.rest;
       if (atRest || lags.some(x => end < x.b && end + bar > x.from)) continue;
-      const tail = Math.min(tailOf(G.part, G.pattern, N.pattern), roomIn(N, cast));
+      const part = G.part ?? { level: levelAt(end - bar) }, tail = Math.min(tailOf(part, G.pattern, N.pattern), roomIn(N, cast));
       if (tail < 0.5 * bar || tail < 0.5) continue;
       G.t1 = N.t0 = end + tail;
       G.morph = Math.min(G.morph + tail, G.t1 - G.t0 - 0.25);
       G.peak = { hit: end, q: 2 };
+      // A star's arcs are shares of its gesture, and its roll's on the clock, so where the gesture starts later they're rewritten to stay with it (land.js)
+      if (N.fixedRange && N.arcs?.length && N.moves?.some(m => m.id === 'star' || m.id === 'coin')) { const was = end, E = N.arcEnd ?? N.t1, H0 = E - was, H1 = E - N.t0; for (const x of N.arcs) if (x.at) x.at = x.at.map(u => Math.max(0, (was + u * H0 - N.t0) / H1)); }
       if (!G.fixedRange && G.regear) G.arcEnd = G.t1 - G.morph + Math.min(G.morph * 0.4, 3.5) / 2;
       forget(G);
     }
