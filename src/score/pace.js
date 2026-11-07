@@ -31,7 +31,7 @@ const DROP = 0.25, DROP_WORTH = 6;  // a jump of this much energy across 2 bars 
 const JUMP_WORTH = [[4, 7], [2.5, 3]];     // ...and the same for one of the song's own jumps, by how big
 const KIND_LEAD = { rise: 0.8, fall: 1.35, break: 1.35 };     // a change takes longer where the song falls away, and it's quicker where it's rising
 const JITTER = 0.18;
-const HANG_TOP = 3, HANG_WORTH = 6, HANG_BARS = 2, HANG_SLOW = 0.35, HANG_FAST = 2;      // the song's biggest moments: what it's worth to land on one, and how the flow's clock goes for the bars either side of it
+const TOP = 3, TOP_WORTH = 6;       // the song's biggest moments, and what it's worth to land on one
 const IRIS_ROOM = 10.5;               // seconds the gesture before the climax's landing keeps, plain, so that the Iris can roll it up
 const CLIMAX_NEAR = 16;             // bars around the climax that may go at the peak's pace. Everything else is held to the chorus's, so there's something saved
 const OPENS = 14;                   // seconds: the arrival. The first thing that's looked at, plain
@@ -192,8 +192,8 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   const barsWanted = t => (own ? own.bars : BARS[name])[levelAt(t)];
 
   const jumpAt = new Map();
-  const jumps = jumpsOf(A, M), tops = [...jumps].filter(j => bars[j.i] > OPENS && j.s >= JUMP_WORTH[1][0]).sort((x, y) => y.s - x.s).slice(0, HANG_TOP).map(j => j.i);
-  for (const j of jumps) { const w = JUMP_WORTH.find(x => j.s >= x[0]); if (w) jumpAt.set(j.i, w[1] + (tops.includes(j.i) ? HANG_WORTH : 0)); }
+  const jumps = jumpsOf(A, M), tops = [...jumps].filter(j => bars[j.i] > OPENS && j.s >= JUMP_WORTH[1][0]).sort((x, y) => y.s - x.s).slice(0, TOP).map(j => j.i);
+  for (const j of jumps) { const w = JUMP_WORTH.find(x => j.s >= x[0]); if (w) jumpAt.set(j.i, w[1] + (tops.includes(j.i) ? TOP_WORTH : 0)); }
 
   // ---------------------------------------------------------------- what each kind of section wears
   const bags = {
@@ -337,7 +337,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       const lvl = part.level, a = G.t0, end = G.t1 - (G.morph || 0);
       const fixed = () => { G.fixedRange = true; G.range = [0, 1]; G.phiTrack = [{ t: tau(a), x: 0, v: 1 / GEAR[lvl] }]; G.gears = []; G.melMode = 0; };
       if (part.way === 'relay') {
-        const lead = (lvl >= 3 ? 1.1 : lvl === 2 ? 1.5 : 2.2) * bar, tail = (lvl >= 3 ? 0.4 : lvl === 2 ? 0.75 : 1.25) * bar;
+        const lead = (lvl >= 3 ? 1 : lvl === 2 ? 1.5 : 2.2) * bar, tail = (lvl >= 3 ? 0.65 : lvl === 2 ? 1 : 1.5) * bar;      // a step that's too sudden is a jolt
         // Not while the Iris is still opening onto it
         const clear = part.a === climaxAt ? 6 : 0.5 * bar;
         const keys = [part.a, ...part.hits, part.b], stops = [...part.hits];
@@ -348,8 +348,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
           if (((i - first) % most + most) % most === 0 && !keys.some(t => Math.abs(bars[i] - t) < 0.5 * bar)) stops.push(bars[i]);
         }
         const on = [], apart = (lvl >= 4 || (name === 'riot' && lvl >= 3) ? 0.8 : 1.5) * bar;
-        const held = tops.map(i => time(bars[i]));      // nothing new in the 2 bars before one of the biggest moments
-        for (const t of stops.sort((x, y) => x - y).map(time)) if (t - lead > a + clear && t + tail < end && (!on.length || t - on.at(-1) > apart) && !held.some(h => t > h - HANG_BARS * bar && t < h - 0.1)) on.push(t);
+        for (const t of stops.sort((x, y) => x - y).map(time)) if (t - lead > a + clear && t + tail < end && (!on.length || t - on.at(-1) > apart)) on.push(t);
         if (on.length) {
           fixed();
           const from = done.get(part.seq) ?? 0;
@@ -363,19 +362,6 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       const made = MOVES[part.riot].cue(m, ctx(G)) ?? MOVES[part.riot].cue({ ...m, beats: 'half' }, ctx(G));
       if (made) { fixed(); G.moves = [made]; G.hero = part.riot; }
     });
-  };
-
-  // The biggest moments are prepared. For the 2 bars before each, whatever flows hangs back, and it surges through the hit and catches up over the 2 bars after: nothing that lands has moved, only the flow's clock, and it's all one smooth curve.
-  // A clock in film seconds, for score.phi. Not over a rest, whose clock is doing something of its own.
-  const warp = (time, windows = []) => {
-    const W = HANG_BARS * bar, e = 0.12, K = [];
-    for (const h of tops.map(i => time(bars[i])).sort((x, y) => x - y)) {
-      const a = h - W, b = h + W;
-      if (windows.some(l => a < l.paid && b > l.from) || a < (K.at(-1)?.t ?? OPENS)) continue;
-      const x0 = a + (W - e) * (1 + HANG_SLOW) / 2, x1 = x0 + 2 * e * (HANG_SLOW + HANG_FAST) / 2;
-      K.push({ t: a, x: a, v: 1 }, { t: h - e, x: x0, v: HANG_SLOW }, { t: h + e, x: x1, v: HANG_FAST }, { t: b, x: b, v: 1 });
-    }
-    return K.length ? t => evalTrack(K, t) : null;
   };
 
   // A pattern's long move rides at its own speed. A gesture that has less time rides less of it, around the middle: at 4x it's a flash.
@@ -405,7 +391,13 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   };
   const timeHits = (score, cast = []) => {
     if (own) return;
-    const g = score.gestures, lags = score.time?.windows ?? [], last = g.length - 1;
+    const g = score.gestures, lags = score.time?.windows ?? [];
+    // What the big moves have left between them can be too short to be anything: a change wants more time than that
+    for (let i = 1; i < g.length - 2; i++) {
+      const G = g[i], N = g[i + 1], plain = x => !x.moves?.length && !x.xform && !x.carry && !x.hero;
+      if (plain(G) && plain(N) && G.t1 - G.t0 < SUITE_LEAST && !glides(G.pattern, N.pattern)) { G.t1 = N.t1; G.morph = N.morph; G.kindOut = N.kindOut; if (G.arcEnd != null && !G.fixedRange) G.arcEnd = G.t1 - (G.morph || 0) + Math.min((G.morph || 0) * 0.4, 3.5) / 2; forget(G); g.splice(i + 1, 1); i--; }
+    }
+    const last = g.length - 1;
     earn(score, cast);
     for (let i = 0; i < last - 1; i++) {
       const G = g[i], N = g[i + 1];
@@ -413,8 +405,9 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       const end = G.t1, atRest = score.landings?.find(l => Math.abs(l.B - end) < 0.05)?.rest;
       const part = G.part ?? { level: levelAt(end - bar) }, flying = !glides(G.pattern, N.pattern);
       // What has to be home on time, a landing on a rest or into a Countdown, gets all of its time before it
-      const home = () => { if (flying && G.morph < FLIGHT_LEAST) { G.morph = Math.min(FLIGHT_LEAST, 0.8 * (G.t1 - G.t0)); forget(G); } };
-      if (atRest || lags.some(x => end < x.b && end + bar > x.from)) { home(); continue; }
+      const home = () => { if (flying && G.morph < FLIGHT_LEAST) { G.morph = Math.min(FLIGHT_LEAST, 0.8 * (G.t1 - G.t0)); forget(G); } G.peak = { hit: end, q: 0 }; };
+      // A big move has its own timing, all the way to its end: a landing that moved under it would pop
+      if (atRest || G.moves?.some(m => ['star', 'coin', 'slip'].includes(m.id)) || lags.some(x => end < x.b && end + bar > x.from)) { home(); continue; }
       const tail = Math.min(tailOf(part, G.pattern, N.pattern), roomIn(N, cast));
       if (tail < 0.5 * bar || tail < 0.5) { home(); continue; }
       G.t1 = N.t0 = end + tail;
@@ -459,6 +452,6 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
 
   return {
     register: name, registerScore: reg.score, least: own ? own.morph[0] + 4 : Math.max(LEAST_S, 1.8 * bar), most: Math.min(MOST_S, MOST_BARS * bar), oneMore: ONE_MORE, stiff: STIFF, bar,
-    want: t => barsWanted(t) * bar, isLoud: t => classAt(t) === 'loud' || classOfLabel((A.segments.find(x => t >= x.t0 && t < x.t1) ?? A.segments.at(-1)).label) === 'loud', shrinkArcs, warp, dropWorth: (dE, i) => (Math.abs(dE) >= DROP ? DROP_WORTH : 0) + (jumpAt.get(i) ?? 0), levelAt, classAt, get climaxAt() { return climaxAt; }, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
+    want: t => barsWanted(t) * bar, isLoud: t => classAt(t) === 'loud' || classOfLabel((A.segments.find(x => t >= x.t0 && t < x.t1) ?? A.segments.at(-1)).label) === 'loud', shrinkArcs, dropWorth: (dE, i) => (Math.abs(dE) >= DROP ? DROP_WORTH : 0) + (jumpAt.get(i) ?? 0), levelAt, classAt, get climaxAt() { return climaxAt; }, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
   };
 }
