@@ -63,6 +63,7 @@ export class Renderer {
     this.vs = compile(gl, gl.VERTEX_SHADER, VERT);
     this.progs = new Array(128).fill(null);
     this.timeOn = false; this.timeT = null; this._tLocs = new Map();      // set by src/score/time-sheet.js for a frame that wants time local to each pixel
+    this.camoField = null; this._cLocs = new Map();      // camouflage (src/tools/webcam.js): you, as a distance field, which only a time program reads. Null, and nothing here does anything
     this.variant = 0;
     this._start(0);
     this._whenReady = new Promise(res => { this._resolveReady = res; });
@@ -224,6 +225,28 @@ export class Renderer {
     const got = this.progs[v] ? v : v & SPACE ? [v & ~EXTRA, v & (FLIGHT | SPACE), v & (FLIGHT | EXTRA), v & FLIGHT].find(n => this.progs[n]) ?? (v & FLIGHT) : this.progs[fold] ? fold : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
     this.variant = got;
     return this.progs[got];
+  }
+
+  // Camouflage: you from the webcam, w x h cells of two numbers, the distance to your outline in frame units and how much of you shows. A small texture on a unit of its own (3: a world's are 1 and 2), only ever bound for a time program. Null takes it away.
+  setCamo(field, w = 160, h = 90) {
+    this.camoField = field; this.camoW = w; this.camoH = h; this.camoDirty = !!field;
+  }
+  _camoBind(prog) {
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE3);
+    if (!this.camoTex || this.camoTexW !== this.camoW || this.camoTexH !== this.camoH) {
+      this.camoTex ??= gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, this.camoTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, this.camoW, this.camoH, 0, gl.RG, gl.FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.camoTexW = this.camoW; this.camoTexH = this.camoH; this.camoDirty = true;
+    } else gl.bindTexture(gl.TEXTURE_2D, this.camoTex);
+    if (this.camoDirty) { gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.camoW, this.camoH, gl.RG, gl.FLOAT, this.camoField); this.camoDirty = false; }
+    if (!this._cLocs.has(prog)) { const loc = gl.getUniformLocation(prog, 'uCamo'); this._cLocs.set(prog, loc); if (loc) gl.uniform1i(loc, 3); }
+    gl.activeTexture(gl.TEXTURE0);
   }
 
   // A time program is never built until a frame asks for it, so nobody else waits for it or pays for it. The plain and flight ones of its kind come up together.
@@ -397,6 +420,7 @@ export class Renderer {
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.block);
     if (this.wp) this.wp.upload();
+    if (this.timeOn && this.camoField) this._camoBind(prog);
     const timing = this._timeBegin(F);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     if (timing) gl.endQuery(this.timer.TIME_ELAPSED_EXT);

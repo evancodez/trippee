@@ -5,7 +5,7 @@
 //     want.ghost { slide, shares, capsules: [[ax, ay, bx, by, r]] }, want.fringe { amp, shares, turn, size, bumps: [[x, y, rx, ry, a]] }, want.snakes { amt, dark, light, way, along, across }
 import { OFF, SLOT_FLOATS, FRAME, FAMILIES } from '../pattern/layout.js';
 import { fillSlot } from './slot.js';
-import { clamp } from './curves.js';
+import { clamp, smoother } from './curves.js';
 import { writeHear } from './hear.js';
 import { MOVES } from './moves/index.js';
 import { XFORMS } from './xform/index.js';
@@ -52,6 +52,11 @@ function table(want, st, score, edits, tReal, phiOf, walkT, G, t) {
 }
 
 export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
+  movesSheet(st, score, R, edits, tReal, phiOf, walkT);
+  if (edits?.camo) camoSheet(st, score, R, edits.camo, tReal);
+}
+
+function movesSheet(st, score, R, edits, tReal, phiOf, walkT) {
   R.timeOn = false;
   // A pattern picked by hand: when its trick starts is read while the flight into it is still on, and its program is built meanwhile. Read on the landing, the flight had already gone, so it was taken from the click, and the whole trick came on in that one frame (a pop of 80 to 110 /255, time.wave and time.fringe).
   const h = score.handover, to = st.to;
@@ -113,4 +118,49 @@ function writeEcho(e, st, score, edits, tReal, phiOf, walkT, G, t) {
 function handBegin(G, score) {
   if (G._timeBegin == null) { const h = score.handover; G._timeBegin = G.t0 + (h && h.G !== G && h.wall ? h.D : 0); }
   return G._timeBegin;
+}
+
+// ---------------------------------------------------------------- camouflage
+// You, from the webcam (src/tools/webcam.js), as the figure, in place of the ghost's capsules: inside your outline the sheet slides along one of its families, by up to half a step and back.
+// Back where it was it's the sheet again, and it never goes past half a step, so how much of you shows can fade in and out with no jump.
+// With a song it's half a step and back through each of the film's strong beats, at its widest on the beat, so you appear on it and you're gone between. No more often than CAMO_SPEED a second:
+// a beat that comes sooner is let go by. With none it's the camera's own slide, which opens while you move and closes when you stop. Whatever else a move asked of the time program stays as it was.
+// c is app.edits.camo. It's live input, like the hand, and two things go back into it: would (how far it's slid, shown or not) and fam (the family it slides, chosen only while it's closed).
+const CAMO_SPEED = 0.9, CAMO_W = 0.55;
+function camoSheet(st, score, R, c, tReal) {
+  const song = !!score.song && score.react?.pulses?.length > 1;
+  const e = song ? camoBeats(score.react.pulses, tReal) : clamp(c.slide, 0, 0.5);
+  c.song = song; c.would = e;
+  if (e < 1e-4) c.fam = camoFamily(st.A, score.world);
+  // Only while the tear's open: a time program costs a third more than a plain one, and slid by nothing it's exactly the plain picture, so it can come and go
+  if (!c.shown || !c.armed || c.fam < 0 || e < 1e-5) return;
+  if (!R.timeOn) { T.fill(0, 0, T_B * 4); R.timeT = T; }
+  T[3] = 1; T[12] = e; T[13] = 0; T[14] = 0; T[15] = 0;
+  for (let i = 0; i < FAMILIES; i++) T[16 + i] = i === c.fam ? 1 : 0;
+  R.timeOn = true;
+}
+// Half a step out and back through each beat it keeps, taking CAMO_W seconds or less, widest on the beat, and nothing between. Memoised by the pulses themselves, so it's the same for the whole song.
+let camoFor = null, camoHits = null;
+function camoBeats(P, t) {
+  if (camoFor !== P) { camoFor = P; camoHits = []; for (const p of P) if (!camoHits.length || p - camoHits[camoHits.length - 1] >= 1 / CAMO_SPEED) camoHits.push(p); }
+  const B = camoHits;
+  let lo = 0, hi = B.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (B[m] < t) lo = m + 1; else hi = m; }
+  const k = lo > 0 && t - B[lo - 1] < B[lo] - t ? lo - 1 : lo, b = B[k];
+  const w = Math.min(CAMO_W, 0.45 * ((B[k + 1] ?? b + 9) - b), 0.45 * (b - (B[k - 1] ?? b - 9))), u = (t - b) / w + 0.5;
+  return u <= 0 || u >= 1 ? 0 : 0.5 * Math.sin(Math.PI * smoother(u));
+}
+// Which family slides: one that's on and open, not numbered by a world's inks (a slide there would change lines' inks), with lines about an eighth of a frame unit apart. None, and it's -1.
+function camoFamily(S, world) {
+  const numbered = world?.ink?.fams ?? [];
+  let best = -1, cost = Infinity;
+  for (let i = 0; i < FAMILIES; i++) {
+    if (S[OFF[`f${i}.on`]] < 0.5 || Math.abs(S[OFF[`f${i}.d`]]) > 0.98 || numbered.includes(i)) continue;
+    const g = n => Math.abs(S[OFF[`f${i}.${n}`]]);
+    const k = (Math.hypot(g('x'), g('y')) + g('r1') + g('r2') + (g('l1') + g('l2')) / 0.5 + (g('t1') + g('t2')) / 3.14) * Math.max(S[OFF.freq], 1e-3) / Math.max(S[OFF.scale], 1e-5);      // cycles a frame unit, near enough
+    if (k < 0.8) continue;      // lines more than a frame apart have nothing to slide
+    const q = Math.abs(Math.log(k / 8));
+    if (q < cost) { cost = q; best = i; }
+  }
+  return best;
 }
