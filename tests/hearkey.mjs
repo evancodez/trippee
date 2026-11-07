@@ -66,9 +66,9 @@ export default async ({ page, sleep, log }) => {
     // A pop is one frame far out of line with those around it, whatever speed things are going at.
     let worst = 0, usual = 0.5;
     for (let i = Math.max(1, k - 3); i <= Math.min(rows.length - 2, k + 70); i++) { const near = rows.slice(Math.max(1, i - 6), i + 7).filter((_, q, a) => q !== Math.min(i - 1, 6)).map(r => r.diff), m = Math.max(med(near), 0.5); if (rows[i].diff / m > worst / usual) { worst = rows[i].diff; usual = m; } }
-    say(log, `h to ${want}: the song goes on`, (await page.eval('app.song.playing')) && back === 0 && (await page.eval('app.song.time()')) > was + 2, `clock went back ${back} times`);
-    say(log, `h to ${want}: eases over about a second`, settled, `took ${(rows.find(r => Math.abs(r.hear - want) < 1e-3)?.at ?? 0) - pressed.at | 0} ms`);
-    say(log, `h to ${want}: no pop`, worst <= usual * 3, `its most out-of-line frame changes ${worst} against ${usual} around it`);
+    say(log, `e to ${want}: the song goes on`, (await page.eval('app.song.playing')) && back === 0 && (await page.eval('app.song.time()')) > was + 2, `clock went back ${back} times`);
+    say(log, `e to ${want}: eases over about a second`, settled, `took ${(rows.find(r => Math.abs(r.hear - want) < 1e-3)?.at ?? 0) - pressed.at | 0} ms`);
+    say(log, `e to ${want}: no pop`, worst <= usual * 3, `its most out-of-line frame changes ${worst} against ${usual} around it`);
   };
   await flip(0);
   const off = await sample(page, 3000);
