@@ -688,7 +688,11 @@ async function guardHeard(R, score, until, colour, ctx, film = null) {
   // What it's got to look close with, so a film's load time doesn't depend on how much it has going on. A coarse look costs SCAN_LOOK of one.
   let spent = 0;
   const allowed = score.woah ? HEAR_LOOKS * until : Infinity, count = k => { spent += k; }, close = (a, b, strict = false) => lookClose(R, score, a, b, ctx, count, edits, strict);
-  const dips = H.dips = [];
+  // The opening looked at again (ctx.opening) is a look at its own few seconds, and the whole song's pass has given way all over the rest of it: this only ever adds to that. Giving the layer back
+  // puts back what was there before this look, not the layer at full everywhere, which wiped every dip in the song (bc1e377: 18 dips, then none, on PPP).
+  const part = !!ctx.opening, base = part && H.ease ? H.ease.slice() : null, earlier = part ? H.dips ?? [] : [];
+  const dips = [], giveBack = keep => { if (base) H.ease.set(base); else H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } };
+  H.dips = part ? earlier : dips;
   const E = colour ? HEAR_EDGE : HEAR_EDGE_FILM;
   const dip = (a, b, to) => { for (let i = Math.max(0, Math.floor((a - E) * H.hz)), e = Math.min(H.n - 1, Math.ceil((b + E) * H.hz)); i <= e; i++) { const t = i / H.hz, k = smoother((t - (a - E)) / E) * smoother((b + E - t) / E); H.ease[i] = Math.min(H.ease[i], 1 - (1 - to) * k); } };
   const fine = new Set();
@@ -713,7 +717,7 @@ async function guardHeard(R, score, until, colour, ctx, film = null) {
     if (left) {
       const stuck = stretches(seen.over(0, seen.n, true), fps).filter(w => !fine.has(w.b.toFixed(1))).map(w => w.b - 0.5);
       const keep = dips.filter(d => !stuck.some(t => d.b > t - 1.3 && d.a < t + 0.2));
-      if (keep.length < dips.length) { H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
+      if (keep.length < dips.length) giveBack(keep);
     }
   } else {
     // The film without the layer, as the first pass saw it: the same frames, at the same size. A hand cut was looked at another way, and has no such look.
@@ -761,7 +765,7 @@ async function guardHeard(R, score, until, colour, ctx, film = null) {
         if (spent < allowed && !(await close(w.a, w.b, true)).at.length) continue;
         for (const d of near) back.add(d);
       }
-      if (back.size) { stats.back = back.size; const keep = dips.filter(d => !back.has(d)); H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
+      if (back.size) { stats.back = back.size; giveBack(dips.filter(d => !back.has(d))); }
     }
   }
   // And with no tricks (a hand cut, or ?woah=0), the camera (src/score/camera.js): whatever's left, it goes more slowly past, and keeps that only if it helped. It's the film's own camera, so
@@ -782,7 +786,9 @@ async function guardHeard(R, score, until, colour, ctx, film = null) {
       else { score.camera.lag = kept; for (const G of g) if (G.t0 < b + 8 && G.t1 > a - 8) forget(G); }
     }
   }
-  H.guardStats = { ...stats, dips: dips.length, looked: +spent.toFixed(0), allowed: Number.isFinite(allowed) ? +allowed.toFixed(0) : null, seconds: +((performance.now() - t0) / 1000).toFixed(2) };
+  const done = { ...stats, dips: dips.length, looked: +spent.toFixed(0), allowed: Number.isFinite(allowed) ? +allowed.toFixed(0) : null, seconds: +((performance.now() - t0) / 1000).toFixed(2) };
+  if (part) { H.dips = [...earlier, ...dips]; H.guardStats = { ...H.guardStats, opening: done }; }
+  else H.guardStats = done;
   return dips;
 }
 
