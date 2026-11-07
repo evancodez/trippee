@@ -38,9 +38,9 @@ export default [
   slit('spiral', 'Time Spiral', { fams: [plane(2.2, 0), plane(2.2, 90)] }, { map: 'spiral', D: 3, arms: 1, wind: 0.9, turn: 0.5, push: 0.2 }),
   slit('cells', 'Two Moments', { fams: [plane(3.2, 0), plane(3.2, 90)] }, { map: 'cells', D: 2, wave: 1.1, turn: 0.55, spin: 0.1, ang: 0.3 }),
 
-  // A hand that exists only while it moves. At rest there's only the sheet.
-  item('ghost', 'Ghost Hand', { fams: [plane(5.5, 0)] }, { time: { id: 'ghost' } }),
-  item('ghostcheck', 'Ghost on a Board', { fams: [plane(4.4, 20), plane(4.4, 110)] }, { time: { id: 'ghost' } }),
+  // A hand that exists only while it moves. At rest there's only the sheet. Bold lines: at 5.5 and 4.4 the tiles were hairline wallpaper.
+  item('ghost', 'Ghost Hand', { fams: [plane(3.2, 0)] }, { time: { id: 'ghost' } }),
+  item('ghostcheck', 'Ghost on a Board', { fams: [plane(2.8, 20), plane(2.8, 110)] }, { time: { id: 'ghost' } }),
 
   // A face in a moire. Two line sets, a little out of step, and nothing else: it's in the bands they make.
   item('fringe', 'The Face in the Moire', { fams: [{ y: 17 }, { y: 17 }] }, {
