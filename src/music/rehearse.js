@@ -607,16 +607,15 @@ const forget = G => { if (G) G.plan = G.planFor = G.planning = null; };
 
 // ---------------------------------------------------------------- the layer that follows the song
 // Everything above looks at the film with this layer off. So here it's on: the film as it's seen, and for the second or so around whatever's still flashing, the layer itself gives way (score.hear.ease), a little more each time it doesn't clear, and nowhere else. It takes nothing from the rest of the song. What flashes with it all the way down is the film's own.
-const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 3;
+const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 2;
 async function guardHeard(R, score, until, colour, ctx) {
   const H = score.hear, g = score.gestures, edits = { hear: 1 }, fps = (colour ? HEAR_SUB_WORLD : FILM_SUB) / STEP, HH = colour ? FLASH_H : FLASH_H_FILM, W = Math.max(8, Math.round(HH * ctx.aspect)), n = Math.ceil(until * fps);
-  const seen = new FlashSeen(n + 1, W, HH, fps, colour, !colour), px = new Uint8Array(W * HH * 4);
+  const seen = new FlashSeen(n + 1, W, HH, fps, colour, !colour);
   const look = async (a, b) => {
     a = Math.max(0, a); b = Math.min(n + 1, b);
-    if (colour) { for (let i = a; i < b; i++) { const f = shot(R, score, i / fps, W, HH, px, true, edits); seen.take(i, px, f, g); await ctx.breathe(); } return; }
     const eyes = Eyes.of(R, W, HH, ctx.batch, ctx.task);
     for (let i = a; i < b; i++) {
-      const f = drawn(R, score, i / fps, W, HH, false, edits), o = { from: f.from, G: f.G, kind: f.kind };
+      const f = drawn(R, score, i / fps, W, HH, colour, edits), o = { from: f.from, G: f.G, kind: f.kind };
       if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
       await ctx.breathe();
     }
@@ -643,6 +642,12 @@ async function guardHeard(R, score, until, colour, ctx) {
       await look(Math.floor((a - 1.5) * fps), Math.ceil((b + 1.5) * fps));
     }
     if (!left) break;
+  }
+  // What's still flashing with the layer nearly gone is the film's own. Giving way there has done nothing but leave a dead second, so the layer has it back.
+  if (left) {
+    const stuck = stretches(seen.over(0, seen.n, colour), fps).filter(w => !fine.has(w.b.toFixed(1)));
+    const keep = dips.filter(d => !stuck.some(w => d.b > w.a && d.a < w.b));
+    if (keep.length < dips.length) { H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
   }
   return dips;
 }

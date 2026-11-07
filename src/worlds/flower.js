@@ -63,7 +63,7 @@ export default {
       const G = g[i], N = g[i + 1];
       if (!(G.t1 - (G.morph || 0) < w.t + 1 && G.t1 > w.t - QUIET)) continue;
       const bars = M?.bars ?? [], at = w.t - QUIET, bar = [...bars].reverse().find(b => b <= at) ?? at;
-      if (bar - G.t0 - (G.morph || 0) >= 8) { G.t1 = bar; G.arcEnd = bar; N.t0 = bar; }
+      if (bar - G.t0 - (G.morph || 0) >= 4) { G.t1 = bar; G.arcEnd = bar; N.t0 = bar; }
       else {
         // No room before it: it lands just after, if that leaves the next one a stay of its own. Carrying on through the two of them would be half a minute on one picture.
         const after = w.t + 1 + (G.morph || 0);
@@ -93,7 +93,9 @@ export default {
     if (s) {
       // Lung and the strong beats: petal depth. A flower opens on the beat, and with the phrase.
       const k = 1 + 0.3 * Math.min(s.lung, 1.2) + 0.18 * Math.min(s.pulse, 1.2);
-      A[OFF['field.ph']] *= k; B[OFF['field.ph']] *= k;
+      // A peace sign and a smile are drawn exactly at their depth, and past it their lines cross and the face tears down the middle. They take the beat in the rest of it.
+      const tender = p => p?.id === 'flower.smile' || p?.id === 'flower.peace', kOf = p => (tender(p) ? 1 + 0.15 * (k - 1) : k);
+      A[OFF['field.ph']] *= kOf((from ?? ctx.G)?.pattern); B[OFF['field.ph']] *= kOf(to?.pattern);
       // What has no petals takes the beat in whatever shape it has: a check's bulge, a chevron's teeth, a wave's bend.
       const p = 1 + Math.min(s.pulse, 1.2);
       for (const S of [A, B]) { S[BULGE] *= 1 + 0.5 * (p - 1); S[TEETH] *= 1 + 0.3 * (p - 1); S[BEND] *= 1 + 0.4 * (p - 1); }
