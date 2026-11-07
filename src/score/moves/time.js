@@ -167,14 +167,14 @@ function mouthAt(score, t) {
 const fringe = {
   id: 'fringe',
   needs(slot) { return slot[OFF['f0.on']] > 0.5 && slot[OFF['f1.on']] > 0.5; },
-  cue: cueTime,
+  cue(m, ctx) { m.keep ??= ctx.G.pattern.id !== 'time.fringe'; return cueTime(m, ctx); },
   write(out, c) { writeFringe(out, c.m, surged(evalTrack(clockOf(c.m), c.t))); },
   sheet(want, m, c) { sheetFringe(want, m, c, beatsAt(c, m), ampAt(c, m, 6)); },
 };
 function writeFringe(out, m, s) {
   // Two line sets a little out of step. A whole number of bands in the frame's height, so it holds its brightness whatever they do: 3
-  const k = m.k ?? 19;
-  out[OFF['f0.x']] = 0; out[OFF['f0.y']] = k; out[OFF['f1.x']] = 0; out[OFF['f1.y']] = k + (m.bands ?? 1.5);
+  // On a sheet of its own. Worn by something else, it goes on what's there, and a face comes up in how its lines bend.
+  if (!m.keep) { const k = m.k ?? 19; out[OFF['f0.x']] = 0; out[OFF['f0.y']] = k; out[OFF['f1.x']] = 0; out[OFF['f1.y']] = k + (m.bands ?? 1.5); }
   out[OFF['f1.ph']] += (m.dir ?? 1) * (m.perBeat ?? 0.5) * s;     // half a fringe to each strong beat, everything travelling up the head. A whole one takes every part of the frame from black to white and back on each
 }
 function sheetFringe(want, m, c, s, amp) {
@@ -290,7 +290,7 @@ function writeEchoMove(out, m, s) { out[OFF.rot] += (m.turn ?? 0.4) * s; }
 // ---------------------------------------------------------------- Rewind
 // A tape going back. Over a build the picture's clock turns round: everything you've just watched happens backward, faster and faster, every morph un-happening, and it comes forward again at a rush and lands on the hit with the song, at speed. The song's own reactions don't go with it: they're on the song's seconds.
 //   { id: 'rewind', times: { hit: 192.95 }, back: 8, bars: 4 }   back: seconds of film it goes back over. bars: how long the whole thing takes, ending on the hit.
-export function rewindTrack({ hit, back, len, turn = 0.55, land = 2.2, tail = 4 }) {
+export function rewindTrack({ hit, back, len, turn = 0.42, land = 2.2, tail = 4 }) {
   // It crosses the hit at land times the song's speed and takes the tail to come back to it. More than about 3 and it would have to stop and go back again to make that up.
   const a = hit - len, m = a + len * turn, low = a - back;
   return [{ t: a, x: a, v: 1 }, { t: m, x: low, v: 0 }, { t: hit, x: hit, v: land }, { t: hit + tail, x: hit + tail, v: 1 }];

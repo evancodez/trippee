@@ -6,7 +6,7 @@ import { clamp, lerp, smoother } from '../curves.js';
 import { canShock } from './shock.js';
 import shock from './shock.js';
 
-const WIDE = 0.86, TILT = 0.2;
+const WIDE = 0.86, TILT = 0.2, HEAVE = 0.025, ROLL = 0.5;
 export default {
   id: 'span',
   plan(a, b, ctx) {
@@ -22,7 +22,10 @@ export default {
     shock.write(st, A, B, F);
     const { plan } = st, X = FRAME.xf * 4, X2 = FRAME.xf2 * 4;
     F[X] = 4; F[X2 + 2] = plan.W; F[X2 + 3] = 0;       // a front the same width everywhere, that pushes nothing aside
+    // It heaves forward on the strong beats, a little, and lets go. It's far too wide to see one go by, so nothing about a beat lands any later.
+    const ends = smoother(st.x / 0.1) * smoother((1 - st.x) / 0.1);
+    F[X + 1] = clamp(F[X + 1] + HEAVE * (st.pulse ?? 0) * ends);
   },
   // What the time program needs: chunks/xform.js reads these.
-  time(T, st) { const { plan } = st; T[34] = Math.cos(plan.ang); T[35] = Math.sin(plan.ang); T[38] = plan.wander; T[39] = plan.waves; },
+  time(T, st) { const { plan } = st; T[32] = ROLL * st.t; T[34] = Math.cos(plan.ang); T[35] = Math.sin(plan.ang); T[38] = plan.wander; T[39] = plan.waves; },
 };

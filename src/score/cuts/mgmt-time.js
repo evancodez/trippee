@@ -13,7 +13,7 @@ export default {
     { at: 124.31, from: 110, q: 0, via: 'span', xform: { ang: 0.25 }, id: 'time.echo',  // stripes become a plaid, across the frame, over the whole of the verse's first half
       moves: [{ id: 'echo', beats: 'strong', turn: 0.35, amp: [[128, 0], [132, 1], [140, 1], [143, 0]] }], gear: [[124.31, 16]] },
     { at: 151.19, from: 143.03, via: 'rise', id: 'time.rings',                           // rings out of step, further and further, and the biggest lift puts them back. Four bars before it the tape goes back
-      moves: [{ id: 'slit', map: 'target', bands: 7, D: [[151.19, 0], [180, 3], [192.95, 0], [196, 2.5]], turn: 0.5, push: 0.18, beats: 'strong', register: 0.5 }, { id: 'rewind', times: { hit: 192.95 }, back: 8, bars: 4 }] },
+      moves: [{ id: 'slit', map: 'target', bands: 7, D: [[151.19, 0], [180, 3], [192.95, 0], [196, 2.5]], turn: 0.5, push: 0.18, beats: 'strong', register: 0.5 }, { id: 'rewind', times: { hit: 192.95 }, back: 6, bars: 4 }] },
     { at: 206.87, via: 'iris', D: 12, id: 'time.shutter',                                // the climax: the rolling shutter, as hard as it goes
       moves: [{ id: 'slit', map: 'sweep', D: [[206.87, 0], [212, 2.4]], turn: 0.5, spin: 0.15, beats: 'strong' }] },
   ],
