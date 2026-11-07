@@ -38,7 +38,7 @@ export const SCHEDULES = [
     black: [S(1, 1, 0), S(0, 1, 0), S(1, 1, 0), S(0, 0, 0.9), S(0, 1, 0), S(1, 0.5, 0), S(1, 1, 0), S(0, 1, 0)] },
   // 3 one ring in four: toner on the bare sheet, the way it looks when the band's only got one ink
   { white: [S(1, 0, 0), S(0, 0, 0), S(0, 0, 0), S(0, 0, 0), S(0.5, 0, 0), S(0, 0, 0), S(0, 0, 0), S(0, 0, 0)],
-    black: [S(0, 0, 1), S(0, 0, 1), S(1, 0, 1), S(0, 0, 0.55), S(0, 0, 1), S(1, 0, 0), S(0, 0, 1), S(0, 0, 0.7)] },
+    black: [S(0, 0, 1), S(1, 0, 0), S(0, 0, 1), S(0, 0, 0.55), S(1, 0, 0), S(0, 0, 1), S(1, 0, 0), S(0, 0, 0.7)] },
 ];
 export function writeSchedules(tex) {
   SCHEDULES.forEach((s, k) => { for (let i = 0; i < ROWS; i++) { tex.set(8 * k + i, 0, ...s.white[i]); tex.set(8 * k + i, 1, ...s.black[i]); } });

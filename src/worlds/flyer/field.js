@@ -118,6 +118,8 @@ float wFlyDrum(int k,vec2 off){
   if(!gOn[k]||abs(gDu[k])>=1.) return gOn[k]&&gDu[k]>=1.?0.:1.;
   return band(gPh[k]+dot(gGr[k],off),clamp(.5*(1.-gDu[k]),0.,1.),gGn[k]);
 }
+// Which family a drum's on. In a bend the next pattern's family has no place of its own until it's been paired, so a plate that's opening is over there.
+int wFlyWhich(int k0,int k1,int i){ int a=k0+i,b=k0+FAM+i; if(k1-k0<=FAM) return a; if(gOn[a]&&gOn[b]) return gFlyT<.5?a:b; return gOn[b]?b:a; }
 // A screen: dots riding the sheet. tone 0 nothing, 1 solid, and between them hard dots, by a pixel's worth of edge. Too small to see, they're the tone they stand for.
 float wFlyDots(vec2 X,float co,float si,float F,float tone,float px){
   if(tone<=.004) return 0.;
@@ -221,7 +223,7 @@ vec3 worldColor(int k0,int k1,float c){
   if(over>0.){
     float h=.5+.25*(cos(TAU*F*X.x)+cos(TAU*F*X.y));
     o=over>=1.?1.:clamp(.5+(over-h)/max(px*F*2.2,1e-4),0.,1.);
-    if(o>0.){ fK=wFlyDrum(k0,vec2(0.)); fA=wFlyDrum(k0+1,oA); fB=wFlyDrum(k0+2,oB); }
+    if(o>0.){ fK=wFlyDrum(k0,vec2(0.)); fA=wFlyDrum(wFlyWhich(k0,k1,1),oA); fB=wFlyDrum(wFlyWhich(k0,k1,2),oB); }
   }
   vec3 here=o<1.?wFlyPrint(blk,n,G0,G1,G2,X,p,F,px,hol,0.,1.,1.,1.,s,ld):vec3(0.);
   if(o>0.) here=mix(here,wFlyPrint(blk,n,G0,G1,G2,X,p,F,px,hol,1.,fA,fB,fK,s,ld),o);

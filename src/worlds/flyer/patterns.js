@@ -12,10 +12,12 @@ const PH = 3;
 
 // Where a ring-born line sits before the clock: so that a pole's centre has about the same number in every pattern, and a landing doesn't send rings past on top of the flow.
 const atCentre = (k, swell, e) => -k * (swell > 0.5 ? Math.log(e + 0.12) : 0.2 * swell);
+// Toner on a drum of its own, no more than a third of the sheet. A family's duty is how much of it stays white.
+const TONER = -0.36;
 function poster({ id, name, group = 'target', k = 2.5, n = 6, a = 0.2, kappa = 0, beta = 3, swell = 0.3, e = 0.16, motif = 0, poles = [], orbit = 0.12, spin = 0.14, arcs = [], over = {}, fams = [], lines = LINES, kind = 0, extra = 0, tile = 0, screen = 6, plates = 0, stencil = null, grid = null, ph = null, field = true, flow = null, can = [], pool = true, edition = null }) {
   const P = [...poles, ...Array(5).fill([0, 0, 0, 0])].slice(0, 5), kinds = Array.isArray(motif) ? motif : P.map(() => motif);
   const g = {
-    fams: [{ y: lines, ph: ph ?? (field && kind === 0 ? atCentre(k, swell, e) : PH) }, ...fams],
+    fams: [{ y: lines, ph: ph ?? (field && kind === 0 ? atCentre(k, swell, e) : PH), ...(plates ? { d: TONER } : {}) }, ...fams],
     field: { kind: 4, a: n, b: kinds.reduce((sum, m, i) => sum + (m || 0) * 16 ** i, 0), ph: a }, 'field.spin': kinds.some(Boolean) ? 1 : 0, 'field.scale': kappa, 'field._1': beta, 'field._2': swell, 'field.k0': field ? k : 0,
     'star._1': kind, 'star._2': extra, 'star._3': k,
     'spare.a': plates, 'spare.b': e, 'spare.c': screen, 'spare.d': stencil ? 1 : 0,
@@ -145,7 +147,7 @@ export const pool = [
     arcs: [{ path: 'rot', from: 0.35, to: 0.65 }, { path: 'scale', from: 1, to: 1.2, log: true }], ph: PH }),
   // ---------------------------------------------------------------- the film's, in this world's inks
   film('checks.vega', 'vega', 'Op Art Night'),
-  film('rooms.nested', 'rooms', 'Backstage'),
+  film('checks.crush', 'crush', 'Backstage'),      // not a nested room: pure log rings, and the camera rides them (B.self) at any speed it likes
   film('riley.shift', 'shift', 'Bridget'),
   film('dots.inflate', 'inflate', 'Pop Art'),
   film('lattice.star', 'latstar', 'Sheriff'),

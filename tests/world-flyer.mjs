@@ -49,11 +49,40 @@ export default async ({ page, log, save, sleep }) => {
     log(errs().slice(0, 6));
   }
 
+  if (stages.includes('pure')) {
+    // The same moments, in order, shuffled, and in order again: the same pixels each time. Colour and all.
+    const r = await page.eval(async () => {
+      const T = window.trippee, gl = app.R.gl, W = T.canvas.width, H = T.canvas.height, dur = app.song?.duration ?? 120, px = new Uint8Array(W * H * 4);
+      const times = Array.from({ length: 24 }, (_, i) => +((i + 0.37) * dur / 24).toFixed(3));
+      const hash = t => { T.seek(t); gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px); let h = 2166136261; for (let i = 0; i < px.length; i += 37) h = Math.imul(h ^ px[i], 16777619); return h >>> 0; };
+      const run = o => { const a = {}; for (const i of o) { hash(times[i]); a[i] = hash(times[i]); } return a; };
+      const ids = times.map((_, i) => i), A = run(ids), s = ids.slice().sort((x, y) => (x * 7) % 11 - (y * 7) % 11), B = run(s), C = run(ids);
+      return { bad: ids.filter(i => A[i] !== B[i]).map(i => times[i]), again: ids.filter(i => B[i] !== C[i]).map(i => times[i]), n: ids.length };
+    });
+    log('pure', JSON.stringify(r));
+  }
+
+  if (stages.includes('at')) {
+    // AT=39.8,92.5  a strip of 18 frames, STEP apart (default a sixtieth), around each, with the frame's mean step.
+    const ats = process.env.AT.split(',').map(Number), step = +(process.env.STEP ?? 1 / 60), n = +(process.env.NF ?? 18);
+    for (const at of ats) {
+      const r = await page.eval(async ({ at, step, n, grabS }) => {
+        window.__OFF = (await import(new URL('src/pattern/layout.js', location.href).href)).OFF;
+        const T = window.trippee, grab = (0, eval)(`(${grabS})`), out = [], c = document.createElement('canvas'); c.width = 96; c.height = 54; const g = c.getContext('2d', { willReadFrequently: true }); let prev = null;
+        for (let i = 0; i < n; i++) { const t = at + (i - n / 2) * step; T.seek(t); await new Promise(r => setTimeout(r, 10)); T.seek(t); g.drawImage(T.canvas, 0, 0, 96, 54); const d = g.getImageData(0, 0, 96, 54).data; let sum = 0; if (prev) for (let k = 0; k < d.length; k += 4) sum += Math.abs(d[k] - prev[k]) + Math.abs(d[k + 1] - prev[k + 1]) + Math.abs(d[k + 2] - prev[k + 2]); prev = d; out.push({ url: grab(426, 240), label: `${t.toFixed(3)} d${(sum / (3 * 96 * 54)).toFixed(1)} ${app.lastFrame?.G?.pattern?.id?.slice(6)} ${app.lastFrame?.kind ?? ''} x${(app.stage.score.flyer?.driveAt(t) ?? 0).toFixed(2)} r${(app.R.slotA[window.__OFF?.rot] ?? 0).toFixed(2)} rl${(app.R.slotA[window.__OFF?.['cam.roll']] ?? 0).toFixed(2)} s${(app.R.slotA[window.__OFF?.scale] ?? 0).toFixed(2)}` }); }
+        return out;
+      }, { at, step, n, grabS: grab.toString() });
+      save(`at-${at}.jpg`, await page.eval(sheetInPage, { items: r, cols: 6, tw: 426, th: 240 }));
+      log(at, r.map(x => x.label.split(' ')[1]).join(' '));
+    }
+    log(errs().slice(0, 6));
+  }
+
   if (stages.includes('film')) {
     const from = +(process.env.FROM ?? 20), to = +(process.env.TO ?? 80), step = +(process.env.STEP ?? 2.5);
     const r = await page.eval(async ({ from, to, step, grabS }) => {
       const T = window.trippee, grab = (0, eval)(`(${grabS})`), out = [];
-      for (let t = from; t < to; t += step) { T.seek(t); await new Promise(r => setTimeout(r, 15)); out.push({ url: grab(426, 240), label: `${t.toFixed(1)} ${app.lastFrame?.G?.pattern?.id?.slice(6)} ${app.lastFrame?.kind ?? ''}` }); }
+      for (let t = from; t < to; t += step) { T.seek(t); await new Promise(r => setTimeout(r, 15)); T.seek(t); out.push({ url: grab(426, 240), label: `${t.toFixed(1)} ${app.lastFrame?.G?.pattern?.id?.slice(6)} ${app.lastFrame?.kind ?? ''}` }); }
       return out;
     }, { from, to, step, grabS: grab.toString() });
     save(`film-${from}.jpg`, await page.eval(sheetInPage, { items: r, cols: 6, tw: 426, th: 240 }));
