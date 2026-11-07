@@ -378,11 +378,14 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       const G = g[i], N = g[i + 1];
       if (!G.morph || G.xform || G.peak) continue;
       const end = G.t1, atRest = score.landings?.find(l => Math.abs(l.B - end) < 0.05)?.rest;
-      if (atRest || lags.some(x => end < x.b && end + bar > x.from)) continue;
-      const part = G.part ?? { level: levelAt(end - bar) }, tail = Math.min(tailOf(part, G.pattern, N.pattern), roomIn(N, cast));
-      if (tail < 0.5 * bar || tail < 0.5) continue;
+      const part = G.part ?? { level: levelAt(end - bar) }, flying = !glides(G.pattern, N.pattern);
+      // What has to be home on time, a landing on a rest or into a Countdown, gets all of its time before it
+      const home = () => { if (flying && G.morph < FLIGHT_LEAST) { G.morph = Math.min(FLIGHT_LEAST, 0.8 * (G.t1 - G.t0)); forget(G); } };
+      if (atRest || lags.some(x => end < x.b && end + bar > x.from)) { home(); continue; }
+      const tail = Math.min(tailOf(part, G.pattern, N.pattern), roomIn(N, cast));
+      if (tail < 0.5 * bar || tail < 0.5) { home(); continue; }
       G.t1 = N.t0 = end + tail;
-      G.morph = Math.min(G.morph + tail, G.t1 - G.t0 - 0.25);
+      G.morph = Math.min(Math.max(G.morph + tail, flying ? FLIGHT_LEAST : 0), G.t1 - G.t0 - 0.25);
       G.peak = { hit: end, q: 2 };
       // A star's arcs are shares of its gesture, and its roll's on the clock, so where the gesture starts later they're rewritten to stay with it (land.js)
       if (N.fixedRange && N.arcs?.length && N.moves?.some(m => m.id === 'star' || m.id === 'coin')) { const was = end, E = N.arcEnd ?? N.t1, H0 = E - was, H1 = E - N.t0; for (const x of N.arcs) if (x.at) x.at = x.at.map(u => Math.max(0, (was + u * H0 - N.t0) / H1)); }
