@@ -308,10 +308,13 @@ function findSurprises(ch, runs, A, m) {
 const memo = new WeakMap();
 const flagKey = () => `${flag('understand')}${flag('rests')}${flag('conductor')}`;
 export function understand(A, ears = {}) {
-  const key = flagKey() + !!ears[2] + !!ears[11], hit = memo.get(A);
-  if (hit && hit.key === key) return hit.M;
+  // A film keeps two readings of the song, the plain one and the one src/score/hear.js follows, so each has its own place.
+  const key = flagKey() + !!ears[2] + !!ears[11];
+  let kept = memo.get(A);
+  if (!kept) memo.set(A, kept = new Map());
+  if (kept.has(key)) return kept.get(key);
   const M = work(A, ears);
-  memo.set(A, { key, M });
+  kept.set(key, M);
   return M;
 }
 function work(A, ears) {

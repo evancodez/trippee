@@ -75,7 +75,7 @@ export const SNAP = new Set(['surf.kind', 'surf.map', 'matte.kind', 'matte.outsi
 
 // Frame-wide block, after the two slots.
 export const RIPPLES = 8;
-export const FRAME_VEC4 = 63;
+export const FRAME_VEC4 = 68;
 export const FRAME = {
   compose: 0,    // x: level-set mix of A into B (0 = A only), y: B active, z: XOR A with B, w: unused
   paper: 1, ink: 2, band1: 3, band2: 4,      // rgb; a: unused
@@ -102,7 +102,9 @@ export const FRAME = {
   xf2: 59,       // x, y: its centre; z: the iris's radius
   handv: 60,     // the hand's view: zoom, spin, x, y (zoom 0 = off)
   spare: 61,     // 2 vec4
+  // How hard the picture follows the song (src/score/hear.js). All zero means off.
+  hear: 63,      // zoom - 1, rotation, x, y: a camera in front of the song's own warps. Then bloom: x, y, strength, radius. Then 3 lenses for the notes: x, y, strength, radius
 };
 
 export const GLSL_INDEX = V.map(([name, i]) => `#define I_${name} ${i}`).join('\n');
-export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}\n#define F_SPARE ${FRAME.spare}\n#define F_PAIR ${FRAME.pair}\n#define F_HAND ${FRAME.hand}\n#define F_RIP ${FRAME.ripple}\n#define NRIP ${RIPPLES}\n#define F_DIVE ${FRAME.dive}\n#define F_MEL ${FRAME.mel}\n#define F_MELS ${FRAME.melS}\n#define F_POSE ${FRAME.pose}\n#define F_WEIGHT ${FRAME.weight}\n#define F_FOCUS ${FRAME.focus}\n#define F_WT ${FRAME.wt}\n#define F_TUNE ${FRAME.tune}\n#define F_TENS ${FRAME.tens}\n#define F_XF ${FRAME.xf}\n#define F_XF2 ${FRAME.xf2}\n#define F_HANDV ${FRAME.handv}`;
+export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}\n#define F_SPARE ${FRAME.spare}\n#define F_PAIR ${FRAME.pair}\n#define F_HAND ${FRAME.hand}\n#define F_RIP ${FRAME.ripple}\n#define NRIP ${RIPPLES}\n#define F_DIVE ${FRAME.dive}\n#define F_MEL ${FRAME.mel}\n#define F_MELS ${FRAME.melS}\n#define F_POSE ${FRAME.pose}\n#define F_WEIGHT ${FRAME.weight}\n#define F_FOCUS ${FRAME.focus}\n#define F_WT ${FRAME.wt}\n#define F_TUNE ${FRAME.tune}\n#define F_TENS ${FRAME.tens}\n#define F_XF ${FRAME.xf}\n#define F_XF2 ${FRAME.xf2}\n#define F_HANDV ${FRAME.handv}\n#define F_HEAR ${FRAME.hear}`;

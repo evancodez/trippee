@@ -154,7 +154,7 @@ export class Stage {
       const sc = this.score;
       if (!sc.__shifts) {
         sc.__shifts = true;
-        const wrap = f => (tt, G) => f(G?.phiShift ? tt + G.phiShift : tt, G);
+        const wrap = f => (tt, G, now, rho) => f(G?.phiShift ? tt + G.phiShift : tt, G, now, rho);
         if (sc.__hand) sc.__hand.orig = wrap(sc.__hand.orig); else sc.phi = wrap(sc.phi);
       }
     }

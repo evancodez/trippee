@@ -12,8 +12,9 @@ import { fillSlot, noHorizon, thetaOf } from './slot.js';
 import { morphAt } from './morphclock.js';
 import { planSteps } from './xform/plan.js';
 import { xformOf } from './xform/index.js';
-import { songSheet, openFamilies } from './song-sheet.js';
+import { songSheet, openFamilies, melOf } from './song-sheet.js';
 import { handSheet } from './hand-sheet.js';
+import { hearSheet, hearStart } from './hear.js';
 
 export { base, fillSlot, arcU, boldRange, fineness, thetaOf, noHorizon } from './slot.js';
 
@@ -102,9 +103,13 @@ export function frame(score, t, R, edits) {
   const held = edits?.staticG;
   const G = held ?? g[i], N = held ? null : g[i + 1];
   const pat = G.pattern;
-  // rho: how much of that clock's speed is left, as it slows into or picks up out of a transformation. A film that walks (hearing 1) needs it, and every other clock ignores it.
+  // How far the layer that follows the song is turned up: src/score/hear.js. At 0 nothing it does reaches this frame.
+  const hearNow = score.hear ? edits?.hear ?? hearStart() : 0;
+  score.hearNow = hearNow;
+  if (score.walk) { score.walk.on = hearNow; score.walk.gain = hearNow * Math.min(1.5, edits?.reactPulse ?? 1); }
+  // rho: how much of that clock's speed is left, as it slows into or picks up out of a transformation. A film that walks needs it, and every other clock ignores it.
   const phiOf = (gg, tt, sc = score, rho) => (sc.phi ? (rho == null ? sc.phi(tt, gg) : sc.phi(tt, gg, t, rho)) : tt * 0.25);
-  const walkT = score.walk ? (tt, rho = 1) => tt + rho * score.walk(t) : null;
+  const walkT = hearNow > 0 && score.walk ? (tt, rho = 1) => tt + rho * score.walk(t) : null;
   F.fill(0);
   F.set(score.colors?.paper ?? [0, 0, 0, 1], FRAME.paper * 4);
   F.set(score.colors?.ink ?? [1, 1, 1, 1], FRAME.ink * 4);
@@ -159,12 +164,13 @@ export function frame(score, t, R, edits) {
   else songSheet(st, score, edits);
   backToKnob(A, keptA); backToKnob(B, keptB);
   // The tune's field takes its shape from the gesture, and a shape can't change while it's pushing anything: it dies away to the middle of the transformation and returns in the new one.
-  if (m && score.react && (m.from.melMode ?? 0) !== (m.to.melMode ?? 0)) {
+  if (m && score.react && melOf(m.from, hearNow) !== melOf(m.to, hearNow)) {
     const Ml = FRAME.mel * 4;
     F[Ml] *= smoother(Math.abs(2 * m.x - 1));
-    F[Ml + 2] = (m.x < 0.5 ? m.from : m.to).melMode ?? 0;
+    F[Ml + 2] = melOf(m.x < 0.5 ? m.from : m.to, hearNow);
   }
   handSheet(st, edits);
+  hearSheet(st, score, edits, tReal, st.songHx ?? 1);
 
   // Never empty, however much the song and the hand push it, except while a flight is closing one up inside an element
   if (st.kind !== 'rise') st.theta = clamp(st.theta, -0.9 * st.solid, 0.9 * st.solid);

@@ -3,7 +3,7 @@
 import { compose } from '../score/compose.js';
 import { ANALYSIS_VERSION, SR, analyse } from './analysis.js';
 import { rehearse, warmRehearsal, getRig, shot, FlashSeen } from './rehearse.js';
-import { flag } from '../score/flags.js';
+import { flag, hearing } from '../score/flags.js';
 import { cutFor } from '../score/cuts/index.js';
 import { auditCut } from '../score/cut.js';
 
@@ -228,6 +228,18 @@ export function init(app) {
     if (u < 1) return;
     hush = null;
     h.then?.();
+  });
+
+  // h: the layer that follows the song, off and on, with the song going on. Nothing's composed or rehearsed: it eases over a second, in the picture's own time, so it can't pop. See src/score/hear.js.
+  const HEAR_EASE = 1;
+  app.edits.hear = hearing.on ? 1 : 0;
+  let hearGoing = null;
+  const hearTo = on => { hearing.on = on; hearGoing = { t0: performance.now(), from: app.edits.hear, to: on ? 1 : 0 }; return on; };
+  app.onFrame.push(() => {
+    if (!hearGoing) return;
+    const q = hearGoing, u = Math.min(1, (performance.now() - q.t0) / (HEAR_EASE * 1000));
+    app.edits.hear = q.from + (q.to - q.from) * u * u * (3 - 2 * u);
+    if (u >= 1) hearGoing = null;
   });
 
   // The film that's meant to be showing.
@@ -541,5 +553,6 @@ export function init(app) {
   }
 
   app.stage.rebuild = o => song.rebuild(o);
+  song.hearTo = hearTo;
   if (window.trippee) window.trippee.song = (src, o) => song.load(src, o);
 }

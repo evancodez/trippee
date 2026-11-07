@@ -52,6 +52,15 @@ void main(){
   }
 #endif
 
+  // How hard the picture follows the song (src/score/hear.js): a camera in front of the whole sheet, so it goes on answering through every transformation. The lenses are the bloom and the notes. All zero, and this is four comparisons.
+  vec4 cam=uF[F_HEAR];
+  if(cam!=vec4(0.)) p=rot(cam.y)*(p/(1.+cam.x))+cam.zw;
+  for(int i=1;i<5;i++){
+    vec4 q=uF[F_HEAR+i];
+    if(q.z==0.) continue;
+    vec2 d=p-q.xy;
+    p+=q.z*d*exp(-dot(d,d)/max(q.w*q.w,1e-4));
+  }
   // the song in the sheet: the chord's shape and the pulse are lenses, and the tune travels out through the lines
   for(int i=0;i<4;i++){
     vec4 q=uF[F_POSE+i];

@@ -109,6 +109,15 @@ export class SongPanel {
     }
   }
 
+  // The picture following the song hard, or not, with the song going on. False if there's no film to do it to.
+  flipHearing() {
+    const song = this.app.song;
+    if (!song?.score?.hear || !song.hearTo) return false;
+    const on = song.hearTo(!(this.app.edits.hear >= 0.5));
+    this.app.ui?.say?.(on ? 'follows the song: hard' : 'follows the song: as it was', 2000);
+    return true;
+  }
+
   // Another film of the same song: it's made out of sight and rehearsed while this one carries on, then the old one bends into it, with the music going all the time.
   take() {
     this.seed = (this.seed * 2654435761 >>> 0) % 100000 + 1;

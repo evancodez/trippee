@@ -32,7 +32,7 @@ const limitRate = (a, most) => {
   for (let i = o.length - 2; i >= 0; i--) o[i] = clamp(o[i], o[i + 1] - most, o[i + 1] + most);
   return o;
 };
-const TUNE_RATE = 2;     // of the melody's units (6 semitones) per second
+const TUNE_RATE = 3.5;     // of the melody's units (6 semitones) per second
 const pct = (a, p) => { const s = Array.from(a).sort((x, y) => x - y); return s[Math.floor((s.length - 1) * p)] || 0; };
 
 // The lungs. An attack that ends on the breath, then a decay, each from wherever the last left off, so nothing jumps however the breaths fall.
@@ -273,7 +273,7 @@ export function buildReact(A, seed = 1, ears = {}) {
   const chill = (ears.depth ?? 1) * (ears[1] && A.perc ? lerp(WALK_CHILL, 1, clamp((A.perc.reduce((x, y) => x + y, 0) / A.perc.length - 0.38) / 0.22)) : 1);
   const depths = ears[1] ? Float32Array.from(pulses, p => chill * p.deep * settling(p.t) * (WALK_DRUMS + (1 - WALK_DRUMS) * (M.conductor.length ? read({ hz: HZ, n }, gDrums, C(p.t)) : 1)) * clamp((energyAt(p.t) - 0.03) / 0.15)) : null;
   const bass = ears[5] && !M.neutral && A.bass ? bassTables(M, A, n, resample) : null;
-  return { hz: HZ, n, ...bass, pulse, pulses: pulses.map(p => p.t), depths, songIs: R_song, choices, melody: mel, melNow, melSlow, voiced, tone, energy, chords, dummy, M, C, T, lung, px, py, tension, gDrums, gTune, gTone, gHarm, conducted: M.conductor.length > 0 };
+  return { hz: HZ, n, ...bass, pulse, pulses: pulses.map(p => p.t), mains: pulses.map(p => p.main), depths, songIs: R_song, choices, melody: mel, melNow, melSlow, voiced, tone, energy, chords, dummy, M, C, T, lung, px, py, tension, gDrums, gTune, gTone, gHarm, conducted: M.conductor.length > 0 };
 }
 
 // Flow surges just after a strong beat and glides until the next, arriving at the same place on the beat clock each time, so it stays
