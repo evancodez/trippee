@@ -32,6 +32,7 @@ export const SIZE = {
   whipTurn: 0.75, whipSlide: 1.5,    // a full moment's whip, in radians and frame units
   pushIn: 0.75, windTurn: 0.5,       // the top of a build
   fallBack: 0.85,                    // a falling moment's crane
+  linesBy: 3.5,             // lines a second a plain sheet can send past a place
   leash: 1.35,              // how far off its landmark a sheet with somewhere to be wanders, in frame units
   selfFall: 0.2,            // natural logs a second a dial's fall goes at, at full size
 };
@@ -58,16 +59,17 @@ const farOf = (tip, dir, lens) => { const th = Math.abs(tip) * Math.atan(lens / 
 const lim = new Float32Array(SLOT_FLOATS);
 function bearingOf(G) {
   const s = lim, n = k => s[OFF[k]], H = Math.min(G.t1 - G.t0, 60);
-  const B = { pan: 1, tip: 1, spin: 1, zoom: 1, free: true, self: false, marks: [], floor: false, lensy: false, room: false, layers: false, rings: false, arm: null };
+  const B = { pan: 1, tip: 1, spin: 1, zoom: 1, free: true, self: false, marks: [], floor: false, lensy: false, room: false, layers: false, rings: false, arm: null, twin: -1, spareFam: -1 };
   // The lines: which families are open, and what they run about. A Relay's change as it goes, so it's looked at a few times.
-  let plane = false, logs = 0, rings = 0, pole2 = false, planes = 0, armOf = 0;
+  let plane = false, logs = 0, rings = 0, pole2 = false, planes = 0, armOf = 0, spare = 15, twinOf = 0;
   for (const u of [0.1, 0.3, 0.5, 0.7, 0.9]) {
     fillSlot(s, G, G.t0 + H * u, G.pattern, { phi: 0, noCam: true });
     let here = 0;
     for (let i = 0; i < FAMILIES; i++) {
+      if (n(`f${i}.on`) >= 0.5) spare &= ~(1 << i);
       if (n(`f${i}.on`) < 0.5 || Math.abs(n(`f${i}.d`)) > 0.97) continue;
       const g = k => Math.abs(n(`f${i}.${k}`));
-      if (g('x') + g('y') > 1e-4) { plane = true; here++; }
+      if (g('x') + g('y') > 1e-4) { plane = true; here++; if (Math.hypot(g('x'), g('y')) > twinOf && g('r1') + g('l1') + g('t1') + g('r2') + g('l2') + g('t2') < 1e-4) { twinOf = Math.hypot(g('x'), g('y')); B.twin = i; } }
       if (g('r1') > 1e-4) rings++;
       if (g('r2') > 1e-4) { rings++; pole2 = true; }
       if (g('l1') + g('t1') > 1e-4) logs++;
@@ -79,6 +81,8 @@ function bearingOf(G) {
     planes = Math.max(planes, here);
   }
   const kind = n('surf.kind'), map = n('surf.map');
+  for (let i = FAMILIES - 1; i >= 0; i--) if (spare & (1 << i)) B.spareFam = i;
+  if (B.twin < 0 || n('round') > 0.01 || n('sum') > 0.01) B.spareFam = -1;
   if (rings + logs > 0) { B.free = false; B.marks.push([n('p1.x'), n('p1.y')]); if (pole2) B.marks.push([n('p2.x'), n('p2.y')]); }
   B.rings = rings > 0 && !plane;
   B.layers = !rings && !logs && planes >= 3 && kind < 0.5;
@@ -98,7 +102,7 @@ function bearingOf(G) {
   const heroic = (G.moves ?? []).some(m => m.id === 'slip' || m.id === 'star' || m.id === 'coin') || !!G.hero;
   B.self = !heroic && (droste || (logs > 0 && !plane && !rings && !pole2 && Math.abs(n('swirl.a')) < 1e-4 && Math.abs(n('bulge.a')) < 1e-4 && n('fold.n') < 2 && n('field.kind') < 0.5 && kind < 0.5));
   if (B.self) B.marks = B.marks.slice(0, 1);
-  if (heroic) B.rings = false;
+  if (heroic) { B.rings = false; B.spareFam = -1; }
   // A shape's edge is in the frame, not on the sheet: it stays where it is, and the lines inside it go about their business.
   if (n('matte.kind') > 0.5) { B.pan = 0; B.tip = 0; B.free = false; B.zoom = 0.5; }
   if (kind > 2.5) { B.pan = 0; B.tip = 0; B.spin = 0; B.zoom = 0; }                 // a world's own surface
@@ -184,7 +188,12 @@ const LANG = {
     h(i % 2 ? { alt: 0.44 * P, tip: Math.min(0.85, 0.72 * P), speed: 0.66 * P, lens: 1.8 } : { alt: -0.42 * P, tip: 0.04, speed: 0.2 * P, lens: LENS });
   },
 };
-const POOL = { quiet: ['drift', 'plate', 'survey'], mid: ['wander', 'dolly', 'rock', 'survey', 'plate'], loud: ['sweep', 'corkscrew', 'swoop', 'rock', 'dolly'] };
+// Two sheets, one under the other: a second lot of lines a little finer than the first opens up beneath it, and where they go in and out of step the lines swell and thin in great slow bands. They're what moves: a tiny move of the camera sends them right across the frame.
+LANG.veil = (h, { i, way, P }, s) => {
+  s.spin += way * 0.3 * P; s.head += way * (i % 2 ? 0.9 : -0.5); s.dir += way * 0.5;
+  h({ veil: 1, alt: 0.12 * P, tip: i % 2 ? 0.34 : 0.12, speed: 0.34 * P, lens: LENS });
+};
+const POOL = { quiet: ['drift', 'plate', 'veil', 'survey'], mid: ['wander', 'veil', 'dolly', 'rock', 'survey', 'plate'], loud: ['sweep', 'corkscrew', 'swoop', 'rock', 'dolly'] };
 
 // A track from knots [t, x]: nothing stops at a knot unless the two sides disagree, and nothing overshoots between them.
 function trackOf(keys) {
@@ -205,7 +214,7 @@ const smooth3 = (a, r) => {
 const through = (x, atk, aft) => { const f = (2 / aft) / (3 / atk + 2 / aft); return x < 0 ? f * Math.pow(clamp((x + atk) / atk), 3) : f + (1 - f) * (1 - Math.pow(1 - clamp(x / aft), 2)); };
 
 // ---------------------------------------------------------------- the whole song's tracks
-const TRACKS = ['alt', 'spin', 'tip', 'dir', 'lens', 'speed', 'head', 'kick'];
+const TRACKS = ['alt', 'spin', 'tip', 'dir', 'lens', 'speed', 'head', 'kick', 'veil'];
 function buildHands(film, A, M, H, seed, only = null) {
   const time = film.time ?? (t => t), dur = A.duration, n = Math.ceil((dur + 12) * HZ) + 2;
   const bar = M.bar || 2, random = rng((seed ^ 0x5eed) >>> 0 || 1);
@@ -242,7 +251,7 @@ function buildHands(film, A, M, H, seed, only = null) {
     let t = seg.t0;
     for (let i = 0; i < count; i++) {
       const raw = seg.t0 + span * (i + 1) / count, t1 = i === count - 1 && si < segs.length - 1 ? segs[si + 1].t0 : toHit(raw);
-      const put = o => { const at = time(o.at ?? t1); for (const k of ['alt', 'tip', 'speed', 'lens']) if (o[k] != null && at > keys[k].at(-1)[0] + 0.05) keys[k].push([at, o[k]]); for (const k of ['spin', 'dir', 'head']) if (at > keys[k].at(-1)[0] + 0.05) keys[k].push([at, s[k]]); knots.push(at); };
+      const put = o => { const at = time(o.at ?? t1); for (const k of ['alt', 'tip', 'speed', 'lens', 'veil']) if ((o[k] != null || k === 'veil') && at > keys[k].at(-1)[0] + 0.05) keys[k].push([at, o[k] ?? 0]); for (const k of ['spin', 'dir', 'head']) if (at > keys[k].at(-1)[0] + 0.05) keys[k].push([at, s[k]]); knots.push(at); };
       const lang = kind.lang[i % kind.lang.length];
       spans.push({ t0: time(t), lang, way });
       LANG[lang](put, { i: i + visit, way, P, t0: t, t1, visit }, s);
@@ -335,9 +344,11 @@ function buildRoute(cam, G, prev) {
     let lastKick = q(T.kick, ix0);
     for (let i = 0; i < N; i++) {
       if (i >= ix0) {
-        const up = smoother((i - ix0) / (2 * HZ)), kick = q(T.kick, i), d = q(T.speed, i) * B.pan * up / HZ + (kick - lastKick) * B.pan * up, head = q(T.head, i);
+        const sc = base(baseS, i) * Math.exp(q(T.alt, i) * B.zoom), lines = Math.max(base(baseK, i) * base(baseS, i) / sc, 0.5);
+        // Not so fast that the lines going past a place become a flicker
+        const up = smoother((i - ix0) / (2 * HZ)), kick = q(T.kick, i), d = Math.min(q(T.speed, i) * B.pan, SIZE.linesBy / lines) * up / HZ + (kick - lastKick) * B.pan * up, head = q(T.head, i);
         lastKick = kick;
-        const rot = base(baseR, i) + spin[i], sc = base(baseS, i) * Math.exp(q(T.alt, i) * B.zoom);
+        const rot = base(baseR, i) + spin[i];
         // u = R(-head)(0,1), on the screen. Into the pattern: R(-rot) u / scale.
         const ux = Math.sin(head), uy = Math.cos(head), c = Math.cos(rot), s = Math.sin(rot);
         px += (c * ux + s * uy) * d / sc; py += (-s * ux + c * uy) * d / sc;
@@ -432,6 +443,7 @@ function buildRoute(cam, G, prev) {
 }
 
 // ---------------------------------------------------------------- reading it, a frame at a time
+const FAM = [0, 1, 2, 3].map(i => [`f${i}.x`, `f${i}.y`, `f${i}.z`, `f${i}.ph`, `f${i}.d`, `f${i}.on`, `f${i}.r1`, `f${i}.l1`, `f${i}.t1`, `f${i}.r2`, `f${i}.l2`, `f${i}.t2`].map(k => OFF[k]));
 const LAYER = [0, 0.32, -0.32, 0.16];      // a sheet of three or more lots of lines has them at different heights, and what you see of each moves with how near it is
 function makeWrite(cam) {
   const T = cam.T, n = cam.n;
@@ -451,6 +463,20 @@ function makeWrite(cam) {
     if (B.layers && !locks.tx) {
       const fq = out[OFF.freq];
       for (let i = 1; i < FAMILIES; i++) if (out[OFF[`f${i}.on`]] > 0.5) out[OFF[`f${i}.ph`]] += LAYER[i] * fq * (out[OFF[`f${i}.x`]] * mx + out[OFF[`f${i}.y`]] * my);
+    }
+    if (B.spareFam >= 0) {
+      const v = rd(T.veil, n, p);
+      if (v > 1e-3) {
+        const a = FAM[B.twin], b = FAM[B.spareFam], fq = out[OFF.freq];
+        for (let k = 0; k < a.length; k++) out[b[k]] = out[a[k]];
+        const ax = out[a[0]], ay = out[a[1]], lines = Math.max(Math.hypot(ax, ay) * fq / out[OFF.scale], 0.5);
+        // Finer by a set number of bands across the frame, whatever size the lines are, so there's always a few and the frame's brightness stays where it was. They breathe, and a tiny change sends them a long way.
+        const e = 1 + clamp((0.78 + 0.1 * Math.sin(spin * 1.3)) / lines, 0.05, 0.6), turn = 0.05 * Math.sin(spin * 0.7 + 1) / Math.max(lines / 3, 1), c = Math.cos(turn) * e, sn = Math.sin(turn) * e;
+        out[b[0]] = c * ax - sn * ay; out[b[1]] = sn * ax + c * ay;
+        // A little further down than the first, so it comes along a little behind it, and the bands run
+        out[b[3]] += 0.035 * fq * (ax * mx + ay * my) + 0.25 * spin;
+        out[b[4]] = v - 1; out[b[5]] = 1;
+      }
     }
     if (locks.tip || !B.tip) return;
     if (B.floor || B.room || B.lensy) {
