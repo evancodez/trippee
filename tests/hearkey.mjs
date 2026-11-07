@@ -17,7 +17,7 @@ const sample = (page, ms) => page.eval(async ms => {
       const d = g.getImageData(0, 0, 96, 54).data; let s = 0;
       if (prev) for (let i = 1; i < d.length; i += 4) s += Math.abs(d[i] - prev[i]);
       prev = d;
-      rows.push({ at: +(performance.now() - t0).toFixed(1), t: +app.t.toFixed(3), song: +app.song.time().toFixed(3), hear: +(app.edits.hear ?? -1).toFixed(3), diff: +(s / (96 * 54)).toFixed(2), zoom: +(app.R.frame[FRAME.hear * 4]).toFixed(4), bloom: +(app.R.frame[FRAME.hear * 4 + 6]).toFixed(4) });
+      rows.push({ at: +(performance.now() - t0).toFixed(1), t: +app.t.toFixed(3), song: +app.song.time().toFixed(3), hear: +(app.edits.hear ?? -1).toFixed(3), diff: +(s / (96 * 54)).toFixed(2), zoom: +(app.R.frame[FRAME.hear * 4]).toFixed(4), bloom: +(app.R.frame[FRAME.hear * 4 + 6]).toFixed(4), y: +(app.R.frame[FRAME.hear * 4 + 3]).toFixed(4), turn: +(app.R.frame[FRAME.hear * 4 + 1]).toFixed(4), note: +Math.min(app.R.frame[FRAME.hear * 4 + 10], app.R.frame[FRAME.hear * 4 + 14], app.R.frame[FRAME.hear * 4 + 18]).toFixed(4), R: +(app.R.frame[FRAME.hear * 4 + 7]).toFixed(3) });
       if (performance.now() - t0 < ms) requestAnimationFrame(on); else res();
     };
     requestAnimationFrame(on);
@@ -63,10 +63,12 @@ export default async ({ page, sleep, log }) => {
     const pressed = rows.find(r => Math.abs(r.hear - rows[0].hear) > 1e-3) ?? rows[rows.length >> 1], k = rows.indexOf(pressed);
     const back = rows.filter((r, i) => i && r.t < rows[i - 1].t).length;
     const settled = Math.abs(rows.at(-1).hear - want) < 1e-3;
-    const around = rows.filter((_, i) => i >= k - 3 && i <= k + 70).map(r => r.diff), other = rows.slice(0, Math.max(k - 3, 1)).map(r => r.diff), worst = Math.max(...around), usual = Math.max(...other, 0.5);
+    // A pop is one frame far out of line with those around it, whatever speed things are going at.
+    let worst = 0, usual = 0.5;
+    for (let i = Math.max(1, k - 3); i <= Math.min(rows.length - 2, k + 70); i++) { const near = rows.slice(Math.max(1, i - 6), i + 7).filter((_, q, a) => q !== Math.min(i - 1, 6)).map(r => r.diff), m = Math.max(med(near), 0.5); if (rows[i].diff / m > worst / usual) { worst = rows[i].diff; usual = m; } }
     say(log, `h to ${want}: the song goes on`, (await page.eval('app.song.playing')) && back === 0 && (await page.eval('app.song.time()')) > was + 2, `clock went back ${back} times`);
     say(log, `h to ${want}: eases over about a second`, settled, `took ${(rows.find(r => Math.abs(r.hear - want) < 1e-3)?.at ?? 0) - pressed.at | 0} ms`);
-    say(log, `h to ${want}: no pop`, worst <= usual * 1.5 + 2, `largest frame change in it ${worst}, largest before it ${usual}`);
+    say(log, `h to ${want}: no pop`, worst <= usual * 3, `its most out-of-line frame changes ${worst} against ${usual} around it`);
   };
   await flip(0);
   const off = await sample(page, 3000);
@@ -76,7 +78,7 @@ export default async ({ page, sleep, log }) => {
 
   // ---- the sliders reach it. Real inputs, and the zoom through a few beats.
   const slide = (key, v) => page.eval(`(()=>{const i=document.querySelector('[data-react="${key}"]');i.value=${v};i.oninput();return app.edits['${key}']})()`);
-  const top = async () => { const r = await sample(page, 3500); return { z: Math.max(...r.map(x => x.zoom)), b: Math.min(...r.map(x => x.bloom)), d: med(r.map(x => x.diff)) }; };
+  const top = async () => { const r = await sample(page, 3500); return { z: Math.max(...r.map(x => x.zoom)), b: Math.min(...r.map(x => x.bloom)), y: Math.max(...r.map(x => Math.abs(x.y))), note: Math.min(...r.map(x => x.note)), turn: Math.max(...r.map(x => Math.abs(x.turn))), R: Math.min(...r.map(x => x.R)), d: med(r.map(x => x.diff)) }; };
   const seekTo = t => page.eval(`app.song.seek(${t});0`);
   for (const [key, label] of [['reactPulse', 'pulse'], ['reactMelody', 'melody'], ['reactTone', 'tone']]) {
     const got = {};
@@ -84,6 +86,7 @@ export default async ({ page, sleep, log }) => {
     await slide(key, 1);
     log(`slider ${label}: at 0 ${JSON.stringify(got[0])}; at 1 ${JSON.stringify(got[1])}; at 2 ${JSON.stringify(got[2])}`);
     if (key === 'reactPulse') say(log, 'pulse at 2 is plainly more, and at 0 the push is gone', got[2].z > got[1].z * 1.5 && got[0].z < got[1].z * 0.6);
+    if (key === 'reactMelody') say(log, 'melody at 2 is plainly more, and at 0 the lift and the notes are gone', got[2].y > got[1].y * 1.5 && got[0].note === 0 && got[2].note < got[1].note * 1.5);
   }
 
   // ---- across a recording: no file's saved, it's kept in the page and thrown away

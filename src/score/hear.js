@@ -12,7 +12,7 @@ import { clamp, lerp, smoother } from './curves.js';
 import { FRAME } from '../pattern/layout.js';
 import { hearing } from './flags.js';
 
-const HZ = 60, ATTACK = 0.14, HIT_ATTACK = 0.42;      // how far ahead of a note its bulge starts to come up; how long a moment takes to arrive
+const HZ = 60, ATTACK = 0.14, HIT_ATTACK = 0.45, LAND_LATE = 0.32;      // how far ahead of a note its bulge starts to come up; how long a moment takes to arrive
 
 // All first guesses against what the eye sees. Sizes: zoom in natural logs, shifts and lens radii in picture units (the frame's half height is 1).
 export const SIZE = {
@@ -34,7 +34,7 @@ const smooth = (a, r) => {
 };
 const meanOf = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const sdOf = a => { const m = meanOf(a); return Math.sqrt(meanOf(a.map(v => (v - m) ** 2))) || 1; };
-const skew = u => smoother(Math.pow(clamp(u), 1.35));      // sets off gently and is going fastest late, so the fastest frame's near the beat. It still stops on it
+const skew = u => smoother(Math.pow(clamp(u), 1.7));      // sets off gently and is going fastest late, so the fastest frame's near the beat. It still stops on it
 
 // ---------------------------------------------------------------- the song's moments
 // tests/shotlist.mjs's jumps: how much each bar line changes the two bars after it against the two before, in each of five things, by the song's own spread. Then section edges, arrivals, stops and landings, and the big chords.
@@ -145,17 +145,19 @@ export function buildHear(A, R, { hits = [] } = {}) {
   const moments = momentsOf(A, M, { hits }), hit = new Float32Array(n), fall = new Float32Array(n), turn = new Float32Array(n), wind = new Float32Array(n), slow = new Float32Array(n), rings = [];
   const add = (arr, m, atk, dec, k = 1) => {
     const i0 = Math.max(0, Math.floor((m.t - atk) * HZ)), i1 = Math.min(n - 1, Math.ceil((m.t + dec) * HZ));
-    for (let i = i0; i <= i1; i++) { const x = i / HZ - m.t; arr[i] += k * (x < 0 ? skew((x + atk) / atk) : 1 - smoother(x / dec)); }
+    for (let i = i0; i <= i1; i++) { const x = i / HZ - m.t; arr[i] += k * (x < 0 ? smoother((x + atk) / atk) : 1 - smoother(x / dec)); }
   };
   // Each time a kind of section comes back its first bar is bigger than the last time, whatever the jump was. Disclosure's four drops are the same music.
   const visitAt = t => { let v = 0; for (const r of rungs) { if (r.t0 <= t + bar * 0.5) v = r.visit; else break; } return v; };
   let side = 1;
   for (const m of moments) {
-    const i = Math.round(m.t * HZ), sized = Math.min(1.5, m.s * lerp(0.75, 1.15, clamp(e[clamp(i, 0, n - 1)])) * (1 + 0.22 * visitAt(m.t)));
+    const i = Math.round(m.t * HZ), sized = Math.min(1.5, m.s * lerp(0.5, 1.15, clamp(e[clamp(i, 0, n - 1)])) * (1 + 0.22 * visitAt(m.t)));
     m.size = sized;
     if (m.sign > 0) {
-      add(hit, m, HIT_ATTACK, Math.max(1.5 * bar, 1.2), sized);
-      add(turn, m, HIT_ATTACK, Math.max(1.5 * bar, 1.2), sized * (side = -side));
+      // A rest has been still, right up to the sound: what lands, lands as you hear it. Everything else has arrived by then.
+      const on = m.kind === 'lands' ? { t: m.t + LAND_LATE } : m, atk = m.kind === 'lands' ? LAND_LATE + 0.04 : HIT_ATTACK;
+      add(hit, on, atk, Math.max(1.5 * bar, 1.2), sized);
+      add(turn, on, atk, Math.max(1.5 * bar, 1.2), sized * (side = -side));
       if (sized > 0.25) rings.push({ t: m.t, a: SIZE.ringHit * clamp(sized, 0.2, 1.4) });
     } else add(fall, m, Math.min(0.5, beat), Math.max(1.5 * bar, 1.2), sized);
   }
@@ -220,9 +222,20 @@ export function buildHear(A, R, { hits = [] } = {}) {
   const sway = new Float32Array(n), swayAmt = new Float32Array(n), lead = new Float32Array(n);
   { let q = 0; for (let i = 0; i < n; i++) { const v = clamp(e[i]); q += lerp(0.05, 0.95, Math.pow(v, 1.5)) / HZ; sway[i] = q; swayAmt[i] = lerp(0.12, 1.15, v * v) * climb[i]; lead[i] = lerp(1.45, 0.85, clamp(v * 1.2)); } }
 
-  // A rest really rests: the push and the tune hold still, and only the camera lets go. The landing's in the moments.
+  // A rest really rests: everything holds where it was as the band stopped, and comes back to what it should be over the moment the sound's back. The landing's in the moments.
   const hold = new Float32Array(n);
-  for (const r of M.rests ?? []) for (let i = Math.max(0, Math.floor((r.a - 0.1) * HZ)); i < n && i / HZ < r.b + 0.1; i++) { const t = i / HZ; hold[i] = Math.max(hold[i], smoother((t - r.a + 0.1) / 0.2) * smoother((r.b + 0.1 - t) / 0.1)); }
+  for (const r of M.rests ?? []) {
+    const ia = Math.round(r.a * HZ), ib = Math.round((r.b - 0.03) * HZ), ic = Math.min(n - 1, ib + Math.round((LAND_LATE + 0.03) * HZ));
+    if (ia < 0 || ib <= ia) continue;
+    for (const T of [pump, hit, fall, turn, wind, swayAmt]) {
+      const v0 = T[ia], v1 = T[ic];
+      for (let i = ia; i <= ic; i++) T[i] = i <= ib ? v0 : lerp(v0, v1, smoother((i - ib) / Math.max(ic - ib, 1)));
+    }
+    { const v0 = sway[ia]; for (let i = ia; i <= ib; i++) sway[i] = v0; const by = sway[ib + 1] - v0; for (let i = ib + 1; i < n; i++) sway[i] -= by; }
+    for (let i = Math.max(0, ia - 6); i < n && i <= ib + 6; i++) hold[i] = smoother((i - ia + 6) / 6) * smoother((ib + 6 - i) / 6);
+  }
+  // Nothing stops or starts in one frame, however a rest fell.
+  if (M.rests?.length) for (const T of [pump, hit, fall, turn, wind]) T.set(smooth(T, HZ * 0.025));
 
   return { hz: HZ, n, dur, pump, hit, fall, turn, wind, flowLag, notes, rings, sway, swayAmt, lead, climb, hold, moments, beats: P, e };
 }
@@ -239,7 +252,7 @@ export function hearRates(film, H) {
     if (G.hero || G.t1 - G.t0 > 3000) continue;
     let s = 0, c = 0;
     for (let t = G.t0; t < Math.min(G.t1, H.dur); t += 0.5) { s += rt(H, H.e, t); c++; }
-    G.hearRate = lerp(0.62, 1.85, Math.pow(clamp(c ? s / c : 0.5), 1.4));
+    G.hearRate = lerp(0.6, 1.35, Math.pow(clamp(c ? s / c : 0.5), 1.4));
   }
 }
 
@@ -258,8 +271,8 @@ export function hearSheet(st, score, edits, tReal, hx = 1) {
   const mP = (edits?.reactPulse ?? 1) * amt * (W?.pulse ?? 1) * calm * lane, mM = (edits?.reactMelody ?? 1) * amt * (W?.melody ?? 1), mT = (edits?.reactTone ?? 1) * amt * (W?.tone ?? 1);
   const mH = (0.75 * (edits?.reactPulse ?? 1) + 0.25 * (edits?.reactMelody ?? 1)) * amt * calm * (W?.pulse ?? 1);
   const R = score.heard, c = R?.C ? R.C(t) : t, tone = R ? rdR(R, R.tone, c) : 0, still = 1 - rt(H, H.hold, t);
-  const pump = rt(H, H.pump, t) * still, hit = rt(H, H.hit, t), fall = rt(H, H.fall, t), wind = rt(H, H.wind, t), turn = rt(H, H.turn, t), lead = rt(H, H.lead, t);
-  const mel = R?.melNow ? rdR(R, R.melNow, c) : 0, sw = rt(H, H.sway, t), swA = rt(H, H.swayAmt, t) * amt * still;
+  const pump = rt(H, H.pump, t), hit = rt(H, H.hit, t), fall = rt(H, H.fall, t), wind = rt(H, H.wind, t), turn = rt(H, H.turn, t), lead = rt(H, H.lead, t);
+  const mel = R?.melNow ? rdR(R, R.melNow, c) : 0, sw = rt(H, H.sway, t), swA = rt(H, H.swayAmt, t) * amt;
   // The camera. Positive zoom: the picture larger. It's a real push, so the middle of the frame stays still and the corners run furthest.
   const z = soft(SIZE.push * pump * mP + SIZE.hitPush * hit * mH, 0.38) - SIZE.windPull * wind * mH - SIZE.fallPull * Math.min(fall, 1.4) * mH;
   const rot = SIZE.hitTurn * clamp(turn, -1.4, 1.4) * mH + SIZE.lean * tone * mT + SIZE.swayTurn * swA * Math.sin(0.61 * sw + 1.1);
