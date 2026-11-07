@@ -12,7 +12,7 @@ import { reactAt, chordLenses, pulseAt, melodyAt, melodyNowAt, bassAt } from './
 import { flag, hearOn } from './flags.js';
 import { handoverOn } from './morphclock.js';
 import { coinAmbient } from './moves/coin.js';
-import { SIZE, songEnding } from './hear.js';
+import { SIZE, songEnding, hearEase } from './hear.js';
 
 const lensTmp = new Float32Array(12), bassTmp = [0, 0];
 const BASS_LENS = -0.28, BASS_R = 0.9, LENS_REBOUND = 0.01;
@@ -116,7 +116,7 @@ export function songSheet(st, score, edits) {
   let amt = edits?.reactAmt ?? 1;
   if (hearNow > 0 && hearNow < 1) amt *= smoother(Math.abs(2 * hearNow - 1));
   // What comes after the song has none of this on it, and it's far too much to lose in one frame: it's all let go by the time the song's over.
-  if (hearNow > 0) amt *= songEnding(score, st.t);
+  if (hearNow > 0) amt *= songEnding(score, st.t) * hearEase(score, st.c ?? st.t);
   // The song leaving (a wander standing in for a film keeps its tables for a moment, score.songFades) or arriving where it wasn't (a handover from something with no song on it) comes and goes
   // gradually: it's been pushing the whole frame about, and that can't stop or start between two frames.
   if (score.songFades != null) amt *= 1 - smoother((st.t - score.songFades) / SONG_FADE);

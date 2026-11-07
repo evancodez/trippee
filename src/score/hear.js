@@ -247,6 +247,8 @@ export function buildHear(A, R, { hits = [] } = {}) {
 
 // How far a hero can turn the song down, while this is up.
 export const HEAR_FLOOR = 0.9;
+// Where the rehearsal saw this layer make a flash it gives way, for that second. src/music/rehearse.js
+export const hearEase = (score, t) => { const H = score.hear; return H?.ease ? rt(H, H.ease, t) : 1; };
 const rt = (H, arr, t) => { const x = clamp(t * HZ, 0, H.n - 1.001), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
 
 export const flowLagAt = (H, t) => rt(H, H.flowLag, t);
@@ -306,7 +308,7 @@ function writeHear(st, score, edits, tReal, hx) {
   const H = score.hear, h = score.hearNow;
   if (!H || !(h > 0)) return;
   const F = st.F, t = tReal, G = st.G;
-  let amt = h * (edits?.reactAmt ?? 1) * hx * songEnding(score, st.t);
+  let amt = h * (edits?.reactAmt ?? 1) * hx * songEnding(score, st.t) * hearEase(score, t);
   if (score.songFades != null) amt *= 1 - smoother((st.t - score.songFades) / 3);
   if (!(amt > 0)) return;
   const W = score.world?.hear, calm = G.calm ? lerp(1, Math.max(G.calm, 0.6), smoother((st.t - (G.calmWin?.[0] ?? G.t0)) / 1.5) * smoother(((G.calmWin?.[1] ?? G.t1) - st.t) / 1.5)) : 1;

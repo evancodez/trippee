@@ -10,7 +10,7 @@
 // Then the film is played through for jumps. A jump in brightness is the one thing that must never reach the screen, so a pattern that makes one sits out too.
 import { Renderer } from '../gl/renderer.js';
 import { frame } from '../score/frame.js';
-import { flag } from '../score/flags.js';
+import { flag, hearing } from '../score/flags.js';
 import { fillSlot, noHorizon, withTravel } from '../score/slot.js';
 import { OFF, SLOT_FLOATS } from '../pattern/layout.js';
 import { clamp, evalTrack, smoother } from '../score/curves.js';
@@ -502,6 +502,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
   }
   const ctxG = { W, H, px, breathe, task, mayChangeFor, opening, aspect, batch };
   const flash = guard && (!jumps.length || lastTry) ? await (onFilm ? guardFilm : guardFlashes)(R, score, seen, ctxG) : null;
+  if (flash && score.hear && hearing.on) await guardHeard(R, score, until, colour, ctxG);
   ch.port1.close();
   const sitOut = [...new Set(rides.filter(r => r.sitsOut).map(r => r.id))];
   return { jumps, bad: [...new Set([...sitOut, ...jumps.map(j => j.id)])], rides, ways, flash, sitOut, rangeSeconds, seconds: (performance.now() - t0) / 1000 };
@@ -604,15 +605,56 @@ export class FlashSeen {
 }
 const forget = G => { if (G) G.plan = G.planFor = G.planning = null; };
 
+// ---------------------------------------------------------------- the layer that follows the song
+// Everything above looks at the film with this layer off. So here it's on: the film as it's seen, and for the second or so around whatever's still flashing, the layer itself gives way (score.hear.ease), a little more each time it doesn't clear, and nowhere else. It takes nothing from the rest of the song. What flashes with it all the way down is the film's own.
+const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 3;
+async function guardHeard(R, score, until, colour, ctx) {
+  const H = score.hear, g = score.gestures, edits = { hear: 1 }, fps = (colour ? HEAR_SUB_WORLD : FILM_SUB) / STEP, HH = colour ? FLASH_H : FLASH_H_FILM, W = Math.max(8, Math.round(HH * ctx.aspect)), n = Math.ceil(until * fps);
+  const seen = new FlashSeen(n + 1, W, HH, fps, colour, !colour), px = new Uint8Array(W * HH * 4);
+  const look = async (a, b) => {
+    a = Math.max(0, a); b = Math.min(n + 1, b);
+    if (colour) { for (let i = a; i < b; i++) { const f = shot(R, score, i / fps, W, HH, px, true, edits); seen.take(i, px, f, g); await ctx.breathe(); } return; }
+    const eyes = Eyes.of(R, W, HH, ctx.batch, ctx.task);
+    for (let i = a; i < b; i++) {
+      const f = drawn(R, score, i / fps, W, HH, false, edits), o = { from: f.from, G: f.G, kind: f.kind };
+      if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
+      await ctx.breathe();
+    }
+    await eyes.flush();
+  };
+  await look(0, n + 1);
+  const dips = H.dips = [];
+  const dip = (a, b, to) => { for (let i = Math.max(0, Math.floor((a - HEAR_EDGE) * H.hz)), e = Math.min(H.n - 1, Math.ceil((b + HEAR_EDGE) * H.hz)); i <= e; i++) { const t = i / H.hz, k = smoother((t - (a - HEAR_EDGE)) / HEAR_EDGE) * smoother((b + HEAR_EDGE - t) / HEAR_EDGE); H.ease[i] = Math.min(H.ease[i], 1 - (1 - to) * k); } };
+  const fine = new Set();
+  let left = 0;
+  for (const to of HEAR_ROUNDS) {
+    left = 0;
+    for (const w of stretches(seen.over(), fps)) {
+      const key = w.b.toFixed(1);
+      if (fine.has(key)) continue;
+      const at = colour ? [w.b - 0.5] : (await lookClose(R, score, w.a, w.b, ctx, () => {}, edits)).at;
+      if (!at.length) { fine.add(key); continue; }
+      left++;
+      H.ease ??= new Float32Array(H.n).fill(1);
+      const a = Math.min(...at) - 1.05, b = Math.max(...at) + 0.1;
+      dip(a, b, to);
+      dips.push({ a: +a.toFixed(2), b: +b.toFixed(2), to });
+      await look(Math.floor((a - 1.5) * fps), Math.ceil((b + 1.5) * fps));
+    }
+    if (!left) break;
+  }
+  return dips;
+}
+
 // ---------------------------------------------------------------- is it really flashing?
 // A stretch of a film at the size the judge reads and at its rate, with a transformation twice that. Returns the seconds of what it counts, and whether any of that's the whole frame.
-async function lookClose(R, score, a, b, { aspect, task, breathe, batch }, count = () => {}) {
+async function lookClose(R, score, a, b, { aspect, task, breathe, batch }, count = () => {}, edits = FILM_ONLY) {
   const g = score.gestures, H = CLOSE_H, W = Math.round(H * aspect);
   // At a hit a change goes by too quickly for 30 a second to be sure of it
   const crossing = g.some(G => G.morph && G.peak?.q && G.peak.hit > a - 1 && G.peak.hit < b + 1), fps = crossing ? CLOSE_FPS_MORPH : CLOSE_FPS, n = Math.max(2, Math.ceil((b - a) * fps));
   const s = new FlashSeen(n, W, H, fps), eyes = Eyes.of(R, W, H, Math.min(batch, GPU_BATCH_CLOSE), task);
   for (let i = 0; i < n; i++) {
-    const f = drawn(R, score, a + i / fps, W, H), o = { from: f.from, G: f.G, kind: f.kind };
+    const f = drawn(R, score, a + i / fps, W, H, false, edits), o = { from: f.from, G: f.G, kind: f.kind };
     if (eyes.read(p => s.take(i, p, o, g))) await eyes.flush();
     await breathe();
   }

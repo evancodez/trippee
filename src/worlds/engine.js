@@ -289,7 +289,8 @@ function quietForeign(S, share) {
 
 function writeWorld(st, score, R, edits) {
   const h = score.handover, ch = h?.change && handoverOn(h, st.t) ? h.change : null;
-  const x = st.plan ? st.x : 0, W = ch ? (x < 0.5 ? ch.from : ch.to) : score.world;
+  // From the film there's nothing to drain first: the inks start arriving straight away, over the whole flight, not after half of it in black and white.
+  const x = st.plan ? st.x : 0, fresh = !!ch && !ch.from, leaving = !!ch && !fresh && x < 0.5, W = ch ? (leaving ? ch.from : ch.to) : score.world;
   if (!W) { if (R.wp) { R.wp = null; R.world = null; } return; }
   const wp = R.worldPrograms?.get(W);
   if (!wp?.ready || wp.failed) { R.wp = null; R.world = null; return; }
@@ -301,10 +302,10 @@ function writeWorld(st, score, R, edits) {
   let geo = 1;
   if (ch) {
     const out = 1 - smoother(x / 0.45), inn = smoother((x - 0.55) / 0.45);
-    E[2] = x < 0.5 ? clamp(x / 0.45) : clamp((x - 0.55) / 0.45);
-    E[6] = x < 0.5 ? -1 : 1;
-    geo = x < 0.5 ? out : inn;
-    quietForeign(A, x < 0.5 ? out : 0); quietForeign(B, x < 0.5 ? 0 : inn);
+    E[2] = fresh ? clamp((x - 0.04) / 0.96) : leaving ? clamp(x / 0.45) : clamp((x - 0.55) / 0.45);
+    E[6] = leaving ? -1 : 1;
+    geo = leaving ? out : inn;
+    quietForeign(A, leaving ? out : 0); quietForeign(B, leaving ? 0 : inn);
   } else { E[2] = 1; E[6] = 0; }
   E[3] = STAGGER;
   E[7] = st.x;

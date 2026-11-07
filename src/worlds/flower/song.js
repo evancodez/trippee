@@ -78,7 +78,7 @@ export function hearSong(A, M) {
 }
 
 // Which set of inks each ring is born in. A new set comes in where the song arrives somewhere, the bigger the arrival the stronger the set, and it's never long without one. It's the ring that's born in it, so it comes out of the flowers and takes a few seconds to reach the corners.
-const APART = 16, LONGEST = 40;       // seconds between one set and the next
+const APART = 16, LONGEST = 26;       // seconds between one set and the next
 const BY_SIZE = [4, 1, 0, 3, 5, 2];     // acid and pop for the biggest arrivals, candy for the least
 function setsOf(A, M, when, rings) {
   const set = new Int8Array(rings), end = A.duration, picked = [];
@@ -97,7 +97,7 @@ function setsOf(A, M, when, rings) {
   let cur = 0, prev = -1;
   const onSet = plan.map((p, i) => {
     if (i === 0) return { t: 0, s: 0 };
-    const order = p.a >= 0.6 ? BY_SIZE : p.a >= 0.35 ? [1, 3, 5, 0, 4, 2] : [2, 5, 0, 3, 1, 4], s = order.find(x => x !== cur && x !== prev) ?? 0;
+    const order = p.a >= 0.6 ? BY_SIZE : p.a >= 0.35 ? [1, 3, 5, 0, 4, 2] : [5, 0, 3, 1, 2, 4], s = order.find(x => x !== cur && x !== prev) ?? 0;
     prev = cur; cur = s;
     return { t: p.t, s };
   });

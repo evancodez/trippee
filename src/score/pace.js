@@ -359,7 +359,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
         }
         return;
       }
-      const m = { id: part.riot, beats: lvl >= 4 ? 'half' : 'strong', from: a, to: end };
+      const m = { id: part.riot, beats: lvl >= 4 && part.riot !== 'scissor' ? 'half' : 'strong', from: a, to: end };      // a Scissor on every half is five tile flashes a second (PPP 180 s)
       if (part.riot === 'scissor' && part.hits.length) m.teeth = part.hits.map(time);
       const made = MOVES[part.riot].cue(m, ctx(G)) ?? MOVES[part.riot].cue({ ...m, beats: 'half' }, ctx(G));
       if (made) { fixed(); G.moves = [made]; G.hero = part.riot; }
