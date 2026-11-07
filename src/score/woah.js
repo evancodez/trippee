@@ -78,7 +78,7 @@ const SUIT = {
 const LEAST = { forever: 8, limit: 8, echo: 9, screen: 9, pearls: 9, fan: 9, crumple: 9, roll: 8, slit: 7, ghost: 9, fringe: 11, snakes: 10, ouchi: 10, slice: 11, swell: 11, terraces: 11, pleats: 10, ride: 13, hallway: 14, rewind: 0, strata: 7 };
 const WANT = { forever: 18, limit: 18, echo: 14, screen: 18, pearls: 16, fan: 18, crumple: 14, roll: 9, slit: 12, ghost: 12, fringe: 16, snakes: 14, ouchi: 12, slice: 18, swell: 18, terraces: 16, pleats: 15, ride: 20, hallway: 20, rewind: 0, strata: 24 };
 // Strata (src/score/moves/space.js) is only cast with ?strata=1, and then it's put on the stays that build into a landing: the panes part as far as the build has come and lock back into register on its hit.
-const STRATA = { lead: 2, tail: 0.25, morph: 4.2, top: 0.3, build: 0.25, fond: 1.6 };      // bars of plain sheet before it comes loose, bars of it whole after it locks, the least seconds the change after that takes, how far apart the panes go (frame units), the least build it goes on, and how much a take with it on wants it
+const STRATA = { lead: 2, tail: 0.25, morph: 4.2, top: 0.36, build: 0.25, fond: 1.6 };      // bars of plain sheet before it comes loose, bars of it whole after it locks, the least seconds the change after that takes, how far apart the panes go (frame units), the least build it goes on, and how much a take with it on wants it
 const MOST = 26;
 
 const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);

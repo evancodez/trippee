@@ -22,6 +22,6 @@ export default [
   item('pleats', 'Pleats', 'pleat', { fams: [plane(1.9, 8), plane(3.4, 98)] }, (out, { t, G }) => { if (!worn(G)) writeSpace(out, 4, pleatNumbers(G, t, t, {})); }),
   // Strata: bold triangles, three sets of stripes, travelling. Then they come loose: each set lifts to a pane of glass of its own, and as the camera leans the triangles turn into hexagons and stars in broad bands, and back.
   // Then the panes sink back into register and it's the triangles, whole. Its sets are the ones a film's own sheets have, so a film casts it with ?strata=1 when what's there can't come apart
-  item('strata', 'Strata', null, { fams: triLattice(2.3, 90), rot: 0.08 }, (out, { t, G }) => { if (!worn(G)) strataLoop(out, t, G?.t0 ?? 0); },
-    { solid: 0.72, strata: true, lambda: 0.12, flow: { 'f0.ph': 1, 'f1.ph': -1 }, arcs: [{ path: 'rot', from: 0.08, to: -0.3 }, { path: 'scale', from: 0.85, to: 1.25, log: true }] }),
+  item('strata', 'Strata', null, { fams: triLattice(1.9, 90), rot: 0.08 }, (out, { t, G }) => { if (!worn(G)) strataLoop(out, t, G?.t0 ?? 0); },
+    { solid: 0.72, strata: true, lambda: 0.15, flow: { 'f0.ph': 1, 'f1.ph': -1 }, arcs: [{ path: 'rot', from: 0.08, to: -0.3 }, { path: 'scale', from: 0.85, to: 1.25, log: true }] }),
 ];

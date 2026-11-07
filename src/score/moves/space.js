@@ -192,11 +192,11 @@ const strata = {
   },
 };
 // With no song, or picked by hand: an endless round of it. It comes loose over 14 s, travels apart, and sinks back into register, then the sheet goes on whole for a few seconds.
-const STRATA_LOOP = [[0, 0], [3, 0], [9, 0.16], [16, 0.3], [20, 0.32], [22.5, 0], [27, 0]];
+const STRATA_LOOP = [[0, 0], [3, 0], [9, 0.19], [16, 0.36], [20, 0.38], [22.5, 0], [27, 0]];
 export function strataLoop(out, t, t0) {
   const L = STRATA_LOOP.at(-1)[0], n = Math.floor((t - t0) / L), u = t - t0 - n * L;
   const sep = u <= 3 || u >= 22.5 ? 0 : Math.max(0, val(STRATA_LOOP, u)), e = sep > 1e-6 ? panesOf(out) : null;
-  if (e) writeSpace(out, 8, strataNumbers(t, t, sep, 0.32, e, { from: t0 + n * L + 3, peak: t0 + n * L + 20, yaw: 0.6 + 1.9 * n, spin: 0.1 }));
+  if (e) writeSpace(out, 8, strataNumbers(t, t, sep, 0.38, e, { from: t0 + n * L + 3, peak: t0 + n * L + 20, yaw: 0.6 + 1.9 * n, spin: 0.1 }));
 }
 
 // How each of them sits on the same relief
