@@ -17,6 +17,8 @@ const WINDOW = 1, LOW_FPS = 55, HIGH_FPS = 58, SETTLE = 1;
 const FIRST_WAIT = 30, MAX_WAIT = 480, TRIAL = 5;
 const OVER = 15, FITS = 13, ROOM = 11.5;     // ms of GPU a frame: too much, what a new size aims for, and how little the next size up has to come to before it's tried
 const OVER_FRAMES = 3, ROOM_FRAMES = 480;
+// A program that's only there now and then (a ghost hand on each strong beat) used to snap the size down and back up on every one, and on fine lines each snap is a pop (PPP 92-109 s, twice a second). So a smaller size is held for a while after the program changes, and then goes back up a tier at a time.
+const HOLD = 2.5, RISE = 0.4;     // seconds
 const SHARE = { plates: 1.9, flight: 1.3, shock: 1.8, extra: 1.15, hand: 1.1 };    // how much more than a plain frame each costs, roughly. Only a first guess for a program not yet seen.
 const costOf = key => { const v = Math.floor(key), w = v >= 16 ? 1 : (v & 2 ? SHARE.plates : 1) * (v & 4 ? SHARE.flight : 1) * (v & 8 ? SHARE.extra : 1) * (v & 1 ? SHARE.hand : 1); return key !== v ? w * SHARE.shock : w; };
 
@@ -105,8 +107,21 @@ export class Governor {
       const seen = this.states.has(key);
       this.v = key; this.s = this._state(key);
       if (!seen) this.s.tier = this._guess(key);
-      if (!this.gaveUp) this.R.drawScale = TIERS[this.s.tier];
+      if (!this.gaveUp) {
+        const want = TIERS[this.s.tier], now = performance.now();
+        if (want < this.R.drawScale) this.R.drawScale = want;
+        if (this.R.drawScale < TIERS[0]) this.holdUntil = now + HOLD * 1000;
+      }
       this._reset();
+    }
+    // Back up to what this program can have, after the hold, a tier at a time
+    if (!this.gaveUp && this.R.drawScale < TIERS[this.s.tier]) {
+      const now = performance.now();
+      if (now >= (this.holdUntil ?? 0)) {
+        const i = TIERS.findIndex(x => x <= this.R.drawScale + 1e-6);
+        this.R.drawScale = Math.min(TIERS[Math.max(i - 1, 0)], TIERS[this.s.tier]);
+        this.holdUntil = now + RISE * 1000;
+      }
     }
     if (this.gaveUp || performance.now() < this.quietUntil) return;
     if (dt <= 0 || dt > 0.25) { this._reset(); return; }  // a hidden tab, a stall: says nothing about pixels
