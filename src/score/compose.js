@@ -806,6 +806,12 @@ export function compose(A, seed = 1, opts = {}) {
   if (W) {
     film.world = W;
     film.tables = W.tables?.(A, react.M) ?? null;
+    const kept = new Map([[W, film.tables]]);
+    film.tablesOf = w => {      // a world on its way out still reads its own tables through a change: this film's are the next world's. Worked out once a world, not once a frame
+      if (!w?.tables) return null;
+      if (!kept.has(w)) kept.set(w, w.tables(A, react.M) ?? null);
+      return kept.get(w);
+    };
     const m = W.motion;
     if (m?.slower) { const phi = film.phi; film.phi = (t, G, now, rho) => phi(t, G, now, rho) / m.slower; }
     if (m) for (const G of film.gestures) { if (m.glide === false) G.noGlide = true; if (m.rise != null) G.rise = m.rise; }
@@ -831,6 +837,7 @@ export function compose(A, seed = 1, opts = {}) {
   if (walk && ears.morph) film.walkMorph = (x, t, D) => x + WALK_MORPH * smoother(x / 0.2) * smoother((1 - x) / 0.2) * walk(t) / D;
   film.ears = ears;
   if (directing.cam && W?.camera !== false) wearCamera(film, A, react.M, ((seed | 0) * 7919 + songHash) >>> 0);      // src/score/camera.js. ?cam=0 is the film without it
+  if (film.camera && W?.dressCamera) W.dressCamera(film, A, react.M);
   // Hearing 2: the tune lifts and sinks the whole sheet, one way everywhere, so it goes across the lines. Out from the middle pushes opposite sides opposite ways, and that reads as a swell, not a note going up.
   for (const G of film.gestures) G.melHeard = (f => (Math.abs(f.x || 0) > Math.abs(f.y || 0) * 2 ? 2 : 1))((G.pattern.g.fams || [])[0] || {});
   return film;
