@@ -78,10 +78,11 @@ const inPage = async ({ seconds, fps, cols, rows, setup, colour = false, chanSrc
     for (let x = 1; x < W; x++) if ((L[90 * W + x] > 127) !== (L[90 * W + x - 1] > 127)) edges++;
     for (let y = 1; y < H; y++) if ((L[y * W + 160] > 127) !== (L[(y - 1) * W + 160] > 127)) edges++;
     // 4x4 tile means, for detecting flashes that affect part of the frame
+    // Every pixel of the tile. Reading every third one aliased on fine upright lines: a tile read 8 to 118 while all its pixels stayed 48 to 57 (tests/flashworld.mjs, STAGE=tiles).
     const tiles = [];
     for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) {
       let s = 0, c = 0;
-      for (let y = (ty * H / 4) | 0; y < ((ty + 1) * H / 4 | 0); y += 3) for (let x = (tx * W / 4) | 0; x < ((tx + 1) * W / 4 | 0); x += 3) { s += L[y * W + x]; c++; }
+      for (let y = (ty * H / 4) | 0; y < ((ty + 1) * H / 4 | 0); y++) for (let x = (tx * W / 4) | 0; x < ((tx + 1) * W / 4 | 0); x++) { s += L[y * W + x]; c++; }
       tiles.push(+(s / c).toFixed(1));
     }
     out.white.push(+(white / L.length).toFixed(4));
@@ -189,7 +190,7 @@ export const CHANNELS = { luma: 25.5, red: 20, rc: 25.5 };
 export const WORLD_FLASH = { whole: 0, tile: 1 };
 
 // Returns (rgba bytes, W, H) -> per-tile and whole-frame values of the three channels. A factory with nothing outside it, so watch() can send it to the page as text.
-// Tiles sample as watch() samples them, every third pixel across and down; the whole frame is every pixel. Luma truncates per pixel exactly as watch() does.
+// Tiles read every pixel, as watch() does, and so does the whole frame. Luma truncates per pixel exactly as watch() does.
 export function makeChannels() {
   const lin = new Float32Array(256);
   for (let i = 0; i < 256; i++) { const s = i / 255; lin[i] = s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); }
@@ -198,17 +199,15 @@ export function makeChannels() {
     let aL = 0, aR = 0, aC = 0;
     const tL = new Float64Array(16), tR = new Float64Array(16), tC = new Float64Array(16), tN = new Float64Array(16);
     for (let y = 0; y < H; y++) {
-      const ty = Math.min(3, Math.floor(y * 4 / H)), y0 = (ty * H / 4) | 0, onY = (y - y0) % 3 === 0;
+      const ty = Math.min(3, Math.floor(y * 4 / H));
       for (let x = 0; x < W; x++) {
         const k = (y * W + x) * 4, r = d[k], g = d[k + 1], b = d[k + 2];
         const L = (r * 0.2126 + g * 0.7152 + b * 0.0722) | 0, C = r - (g + b) / 2;
         const R = lin[r], G = lin[g], B = lin[b], S = R + G + B;
         const red = S > 0 && R / S >= 0.8 ? Math.max(0, (R - G - B) * 320) : 0;     // WCAG's saturated red
         aL += L; aR += red; aC += C;
-        if (onY) {
-          const tx = Math.min(3, Math.floor(x * 4 / W)), x0 = (tx * W / 4) | 0;
-          if ((x - x0) % 3 === 0) { const q = ty * 4 + tx; tL[q] += L; tR[q] += red; tC[q] += C; tN[q]++; }
-        }
+        const q = ty * 4 + Math.min(3, Math.floor(x * 4 / W));
+        tL[q] += L; tR[q] += red; tC[q] += C; tN[q]++;
       }
     }
     const n = W * H, luma = [], red = [], rc = [];
