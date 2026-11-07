@@ -74,6 +74,19 @@ async function stages({ page, log, save, sleep }) {
     save('stills.jpg', r.sheet);
     log('stills', r.ids.join(' '), 'variant', r.variant);
   }
+  if (want.includes('sheet')) {
+    // Every pattern on one sheet, so they can be judged against each other. EVERY=seconds apart for the columns.
+    const r = await page.eval(async ts => {
+      const W = await F_.enter();
+      const cv = document.createElement('canvas'), P = W._pool, cols = 4, w = 480, h = 270, rows = Math.ceil(P.length * ts.length / cols);
+      cv.width = cols * w; cv.height = rows * h;
+      const g = cv.getContext('2d'); let i = 0;
+      for (const p of P) for (const t of ts) { F_.show(p, t); const x = (i % cols) * w, y = Math.floor(i / cols) * h; g.drawImage(trippee.canvas, x, y, w, h); g.fillStyle = '#000'; g.fillRect(x, y, 150, 18); g.fillStyle = '#fff'; g.font = '13px monospace'; g.fillText(p.id.slice(7), x + 4, y + 13); i++; }
+      return { sheet: cv.toDataURL('image/jpeg', 0.9), n: P.length };
+    }, (process.env.TIMES || '6').split(',').map(Number));
+    save(process.env.NAME || 'sheet.jpg', r.sheet);
+    log('sheet', r.n, 'patterns');
+  }
   if (want.includes('buds')) {
     const r = await page.eval(async () => {
       const W = await F_.enter(), P = W._pool, out = [];
@@ -104,7 +117,8 @@ async function stages({ page, log, save, sleep }) {
       const s = app.stage.score, T = s.tables, g = s.gestures;
       return {
         bpm: s.song?.bpm, meter: s.song?.meter, N: T?.N, rings: T?.rings, cadences: T?.cadences?.map(c => ({ t: +c.t.toFixed(2), from: +c.from.toFixed(2), to: +c.to.toFixed(2), held: +c.held.toFixed(1) })),
-        gestures: g.map(G => `${G.pattern.id.slice(7)} ${G.t0.toFixed(1)}-${G.t1.toFixed(1)} m${(G.morph ?? 0).toFixed(1)}`),
+        gestures: g.map(G => `${G.pattern.id.slice(7)} ${G.t0.toFixed(1)}-${G.t1.toFixed(1)} m${(G.morph ?? 0).toFixed(1)} ${G.xform?.id ?? '-'} ${(G.moves ?? []).map(m => m.id).join('+')}`),
+        sets: Array.from(T?.set ?? []).join('').replace(/(.)\1+/g, (m, c) => `${c}x${m.length} `),
         inks: T?.inks, on: T?.on, blooms: Array.from(T?.bloom ?? []).slice(0, 64).join(''), grounds: Array.from(T?.ground ?? []).slice(0, 64).join(''),
         guard: app.song.rehearsal?.flash ?? null, refused: s.refused ?? null,
         ringsPerS: (s.phi(60, g[0]) - s.phi(50, g[0])) * 6 / 10, buzzMean: T ? +(T.buzz.reduce((a, b) => a + b, 0) / T.buzz.length).toFixed(3) : null, buzzMax: T ? +Math.max(...T.buzz).toFixed(2) : null,
