@@ -556,6 +556,7 @@ export function init(a) {
       case 'ArrowLeft': case 'ArrowUp': hand.step(-1); e.preventDefault(); break;
       case 'w': case 'W': hand.wander(); break;
       case 'z': case 'Z': hand.clear(); break;
+      case 'y': case 'Y': import('./webcam.js').then(c => c.toggle(app)); break;      // camouflage: you, from the webcam. Nothing's loaded and no camera asked for until then
     }
   });
 }

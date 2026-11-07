@@ -87,6 +87,7 @@ function bearingOf(G) {
   if (rings + logs > 0) { B.free = false; B.marks.push([n('p1.x'), n('p1.y')]); if (pole2) B.marks.push([n('p2.x'), n('p2.y')]); }
   B.rings = rings > 0 && !plane;
   B.layers = !rings && !logs && planes >= 3 && kind < 0.5;
+  if (G.pattern.strata || G.moves?.some(m => m.id === 'strata')) B.layers = false;      // strata (src/score/moves/space.js) is the real thing: its sets of lines are at heights of their own, and this on top would be two parallaxes
   // Warps with somewhere they are: past them there's only a plain sheet, which isn't why anyone's looking at this one.
   const at = (w, x, y) => { if (Math.abs(n(w)) > 1e-4) { B.free = false; B.marks.push([x, y]); } };
   at('swirl.a', n('swirl.cx'), 0); at('swirl.log', n('swirl.cx'), 0); at('bulge.a', n('bulge.cx'), n('bulge.cy')); at('ripple.a', n('ripple.cx'), 0);
