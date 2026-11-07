@@ -206,7 +206,7 @@ export class Stage {
       else { const G = fresh(t, t + 30); G.morph = this.rand.range(MORPH[0], MORPH[1]); G.arcEnd = t + 30; g.push(G); this._extend(t); }
     }
     // A picture standing still (paused, or in a rest) stays still while it's flown out of. Its clock starting up at full speed on a click would be a kick.
-    this.score.handover = { G: S, ts: t, phi, wall: true, e: 0, D: dur, plan: null, still: !this._moving, rings, ambient };
+    this.score.handover = { G: S, ts: t, phi, wall: true, e: 0, D: pat.via?.D ?? dur, plan: null, still: !this._moving, rings, ambient };
   }
 
   // A pattern that's showing already stays, if that's what was asked for. A film just carries on.

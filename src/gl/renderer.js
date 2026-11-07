@@ -7,9 +7,11 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // One shader, built sixteen ways: with or without the hand, colour's second plate, a flight between two patterns, and the rarer moves (slip, star, coin, fields). A GPU pays for what
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
 // The first four are what a film needs to run; the rest build behind it.
-export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8;
+export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8, SPACE = 16;     // SPACE: the sheet in space, src/gl/chunks/space.js
 const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
-export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
+// Nothing waits for these: they build once everything else has. The hand on a bent sheet is built the first time it's asked for.
+const SPACE_LATER = [SPACE, SPACE | FLIGHT, SPACE | PLATES, SPACE | PLATES | FLIGHT];
+export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -29,7 +31,7 @@ export class Renderer {
   // bare: it'll never be asked for the hand or colour, so those aren't built at all
   constructor(canvas, { bare = false } = {}) {
     this.canvas = canvas;
-    this.order = bare ? ORDER.slice(0, 4) : ORDER;
+    this.order = bare ? [...ORDER.slice(0, 4), SPACE, SPACE | FLIGHT] : ORDER;
     this.bare = bare;
     const gl = this.gl = canvas.getContext('webgl2', {
       antialias: false, alpha: false, depth: false, stencil: false,
@@ -56,7 +58,7 @@ export class Renderer {
     gl.disable(gl.BLEND);
 
     this.vs = compile(gl, gl.VERTEX_SHADER, VERT);
-    this.progs = new Array(16).fill(null);
+    this.progs = new Array(32).fill(null);
     this.variant = 0;
     this._start(0);
     this._whenReady = new Promise(res => { this._resolveReady = res; });
@@ -114,7 +116,11 @@ export class Renderer {
     const gl = this.gl, c = this.canvas;
     let i = 0;
     const one = () => {
-      if (i >= list.length) { this._resolveAll(); return; }
+      if (i >= list.length) {
+        this._resolveAll();
+        if (this.parallel && !this.bare && !this.spaceAsked) { this.spaceAsked = true; this.order = [...this.order, ...SPACE_LATER]; if (!this._pending) { this._start(SPACE); this._poll(); } }
+        return;
+      }
       const low = this._lowTarget(0.5);
       gl.useProgram(list[i++]);
       gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
@@ -129,7 +135,9 @@ export class Renderer {
 
   // The smallest program with what this frame needs. One still building, the frame goes without the hand or colour for a moment. They both come up slowly anyway.
   _variantOf(F) {
-    return (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0) | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0);
+    const v = (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0);
+    const space = !this.wp && (F[FRAME.dive * 4 + 3] > 5.5 || this.slotA[OFF['space.kind']] > 0.5 || (this.slotB[OFF['space.kind']] > 0.5 && (F[FRAME.compose * 4 + 1] > 0.5 || F[FRAME.dive * 4 + 3] > 0.5)));      // a world has its own programs, and its own bits
+    return v | (space ? SPACE : 0) | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0);
   }
 
   // Does this slot wear anything only the fuller programs have?
@@ -137,11 +145,15 @@ export class Renderer {
     return S[OFF['slip.kind']] > .5 || S[OFF['star.k']] > 0 || (S[OFF['field.kind']] > .5 && S[OFF['field.kind']] < 3.5) || S[OFF['matte.kind']] > 2.5 || S[OFF['lathe.k']] !== 0 || S[OFF['lathe.w']] !== 0 || S[OFF['meta.amt']] !== 0;
   }
 
+  // Can a transformation through space be drawn yet? Only ever no in the first seconds of a page, and then it's a flight.
+  spaceReady() { return !!this.progs[SPACE | FLIGHT]; }
+
   _programFor(F) {
     if (this.wp) return this.wp.program(F);
     const v = this._variantOf(F);
-    if (!this.progs[v] && !this.parallel && !this._pending) { this._start(v); this._poll(); }
-    const got = this.progs[v] ? v : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
+    // Something the sheet in space isn't built with up front (it's on a pattern that also slips, say) is built when it's first asked for, and meanwhile it goes without.
+    if (!this.progs[v] && (!this.parallel || v & SPACE) && !this._pending) { this._start(v); this._poll(); }
+    const got = this.progs[v] ? v : v & SPACE ? [v & ~EXTRA, v & (FLIGHT | SPACE), v & (FLIGHT | EXTRA), v & FLIGHT].find(n => this.progs[n]) ?? (v & FLIGHT) : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
     this.variant = got;
     return this.progs[got];
   }

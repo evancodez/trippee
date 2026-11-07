@@ -60,6 +60,11 @@ add('field', ['field.kind', 'field.a', 'field.b', 'field.ph']);             // t
 add('field2', ['field.spin', 'field.scale', 'field._1', 'field._2']);
 add('fieldK', ['field.k0', 'field.k1', 'field.k2', 'field.k3']);            // how much of the field goes into each family's phase
 add('spare', ['spare.a', 'spare.b', 'spare.c', 'spare.d']);
+// The sheet in space: src/gl/chunks/space.js. Kind 0 is off, and a program without the SPACE bit doesn't read these.
+add('spaceK', ['space.kind', 'space.amp', 'space.f', 'space.ph']);
+add('spaceC', ['space.pitch', 'space.yaw', 'space.roll', 'space.dist']);
+add('spaceO', ['space.x', 'space.y', 'space.z', 'space.a']);
+add('spaceE', ['space.bowl', 'space.q', 'space.pix', 'space.w']);
 
 export const SLOT_VEC4 = V.length;
 export const SLOT_FLOATS = SLOT_VEC4 * 4;
@@ -70,12 +75,12 @@ export const OFF = {};
 for (const [, i, comps] of V) comps.forEach((c, k) => { OFF[c] = i * 4 + k; });
 
 // Numbers that must jump, never slide. They take the target's value at the halfway point of a lerp.
-export const SNAP = new Set(['surf.kind', 'surf.map', 'matte.kind', 'matte.outside', 'fold.n', 'bg.on', 'slip.kind', 'slip.n', 'field.kind', 'field.a', 'field.b',
+export const SNAP = new Set(['surf.kind', 'surf.map', 'matte.kind', 'matte.outside', 'fold.n', 'bg.on', 'slip.kind', 'slip.n', 'field.kind', 'field.a', 'field.b', 'space.kind',
   ...Array.from({ length: FAMILIES }, (_, i) => `f${i}.on`)].map(n => OFF[n]));
 
 // Frame-wide block, after the two slots.
 export const RIPPLES = 8;
-export const FRAME_VEC4 = 68;
+export const FRAME_VEC4 = 73;
 export const FRAME = {
   compose: 0,    // x: level-set mix of A into B (0 = A only), y: B active, z: XOR A with B, w: unused
   paper: 1, ink: 2, band1: 3, band2: 4,      // rgb; a: unused
@@ -104,7 +109,8 @@ export const FRAME = {
   spare: 61,     // 2 vec4
   // How hard the picture follows the song (src/score/hear.js). All zero means off.
   hear: 63,      // zoom - 1, rotation, x, y: a camera in front of the song's own warps. Then bloom: x, y, strength, radius. Then 3 lenses for the notes: x, y, strength, radius
+  space: 68,     // 5 vec4: a transformation through space, src/gl/chunks/space.js
 };
 
 export const GLSL_INDEX = V.map(([name, i]) => `#define I_${name} ${i}`).join('\n');
-export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}\n#define F_SPARE ${FRAME.spare}\n#define F_PAIR ${FRAME.pair}\n#define F_HAND ${FRAME.hand}\n#define F_RIP ${FRAME.ripple}\n#define NRIP ${RIPPLES}\n#define F_DIVE ${FRAME.dive}\n#define F_MEL ${FRAME.mel}\n#define F_MELS ${FRAME.melS}\n#define F_POSE ${FRAME.pose}\n#define F_WEIGHT ${FRAME.weight}\n#define F_FOCUS ${FRAME.focus}\n#define F_WT ${FRAME.wt}\n#define F_TUNE ${FRAME.tune}\n#define F_TENS ${FRAME.tens}\n#define F_XF ${FRAME.xf}\n#define F_XF2 ${FRAME.xf2}\n#define F_HANDV ${FRAME.handv}\n#define F_HEAR ${FRAME.hear}`;
+export const GLSL_SLOT = `#define SLOT ${SLOT_VEC4}\n#define NSLOTS 2\n#define FAM ${FAMILIES}\n#define FRAMEV ${FRAME_VEC4}\n#define F_SPARE ${FRAME.spare}\n#define F_PAIR ${FRAME.pair}\n#define F_HAND ${FRAME.hand}\n#define F_RIP ${FRAME.ripple}\n#define NRIP ${RIPPLES}\n#define F_DIVE ${FRAME.dive}\n#define F_MEL ${FRAME.mel}\n#define F_MELS ${FRAME.melS}\n#define F_POSE ${FRAME.pose}\n#define F_WEIGHT ${FRAME.weight}\n#define F_FOCUS ${FRAME.focus}\n#define F_WT ${FRAME.wt}\n#define F_TUNE ${FRAME.tune}\n#define F_TENS ${FRAME.tens}\n#define F_XF ${FRAME.xf}\n#define F_XF2 ${FRAME.xf2}\n#define F_HANDV ${FRAME.handv}\n#define F_HEAR ${FRAME.hear}\n#define F_SPACE ${FRAME.space}`;

@@ -16,8 +16,9 @@ import riley from './families/riley.js';
 import impossible from './families/impossible.js';
 import still from './families/still.js';
 import riot from './families/riot.js';
+import space from './families/space.js';
 
-const groups = { lines, dots, lattice, checks, rooms, poles, voids, bodies, waves, dials, coins, riley, impossible, still, relays, riot };
+const groups = { lines, dots, lattice, checks, rooms, poles, voids, bodies, waves, dials, coins, riley, impossible, still, relays, riot, space };
 const authored = Object.values(groups).flat();
 // The starter patterns stay only until their families have real ones.
 export const patterns = authored.length >= 12 ? authored : [...authored, ...first];

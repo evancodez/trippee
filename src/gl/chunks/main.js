@@ -100,6 +100,11 @@ void main(){
   // The iris (src/score/xform/iris.js): A is wound on a tube, and flat inside it. B lies flat outside it. Each leans in to the tube where they meet. What's wound comes from further out, so one prepare each still does.
   bool iris=dv.w>4.5,rolled=false,limb=false;
   float irisB=0.;
+#ifdef SPACE
+  bool spEdge2=false;
+  if(dv.w>5.5){ spaceTwo(p,pA,pz,irisB,spEdge2); limb=spEdge2; }
+  else
+#endif
   if(iris){
     vec2 d=p-dv.xy; vec4 xa=uF[F_XF2]; float q=length(d),Rt=xa.z,s=q-dv.z;
     pz=p-d*xa.y*exp(-max(s-Rt,0.)/xa.x);
@@ -117,7 +122,11 @@ void main(){
   vec4 so=uF[7];
   float mm[3],cc[5];
   for(int j=0;j<(so.w>0.?3:2);j++){
+#ifdef SPACE
+    bool brk=gBreak; if((j==0||dv.w>5.5)&&limb) gBreak=true;
+#else
     bool brk=gBreak; if(j==0&&limb) gBreak=true;
+#endif
     mm[j]=prepare(j,j==1?SLOT:0,j==2?rot(so.z)*p+so.xy:(j==0)==bOuter?pA:pz);
     gBreak=brk;
   }
@@ -175,6 +184,9 @@ void main(){
 #endif
 #else
   if(uF[F_XF2].w!=0.) p=xfPush(p0,p);
+#ifdef SPACE
+  { bool spE; p=spaceMain(p,spE); if(spE) gBreak=true; }
+#endif
   float ma=prepare(0,0,p);
   int k1=FAM;
   if(uF[0].y>.5){

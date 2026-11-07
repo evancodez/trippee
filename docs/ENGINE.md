@@ -161,6 +161,14 @@ XOR-ed on top), `ripples`, `warp`, `hand`, `staticG`, `beyond`, `plate`, `invert
 and tries going back up after 30 calm seconds. Each program variant remembers its own tier, and a shock has its own too, so a plain picture stays sharp and a flight draws smaller only
 while it's flying. Every program draws one pixel while the page starts (`R._warmAll`), because a program's first draw is when the GPU really builds it, up to 440 ms. `R.draw` then renders to a smaller target and stretches it to fill. `canvas.width` and `canvas.height` never change for this.
 
+## The sheet in space
+
+`src/gl/chunks/space.js`, behind its own program bit (`SPACE` in `src/gl/renderer.js`), so nothing else pays for it. Only coordinates: a ray comes from a camera, lands on a surface that has left the plane, and where it lands goes into `prepare()` as if it were a point on the flat frame. So whatever the pattern is lies flat on the bent sheet, the box filter works from the real gradient, and colour, the song's lenses, the hand and the hear camera all just work. No normals, no lighting. At amount 0 every surface is exactly the frame.
+
+As a change (`G.xform = { id }`, `via` in a cut, `xform: {...}` for its numbers; dive mode 6): `flood`, `drop`, `tube`, `pleat`, `hall` in `src/score/xform/space.js`. Each is one long camera move over one physical thing. They set `long`, so a cut doesn't squeeze them onto the hit: say `from` and `tail` so that the hit is in the middle of it. A pattern with `via: { id, D }` is arrived at that way when it's clicked.
+As a stretch (`moves: [{ id }]` in a cut, on any pattern, lanes or nothing): `swell`, `terraces`, `pleats`, `ride`, `hall` in `src/score/moves/space.js`, on the slot's own `space.*` numbers. `slice` needs a pattern with four families and no shader at all. The family `space` is these by hand.
+Two patterns can only glide on the same `space.kind` (plan.js). On the plain path the sheet is worked out once, in `main()`: there are three call sites of `prepare()` there and a GPU pays for each (30 ms against 8). A world's programs don't have the bit: in a world a space change falls to a flight and a stretch shows flat.
+
 ## Testing
 
 `http://localhost:5300` is served already. `tools/lab.mjs` drives a real GPU-backed Chrome:
