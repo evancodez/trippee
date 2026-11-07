@@ -26,13 +26,14 @@ export const walk = async ({ F, W, H }) => {
   const R = await getRig(), S = app.song.score, A = app.song.analysis, dur = A.duration, N = Math.floor(dur * F);
   const px = new Uint8Array(W * H * 4), Y = new Float32Array(W * H);
   const back = Array.from({ length: 6 }, () => new Float32Array(W * H));
-  const out = { d: new Float32Array(N), d200: new Float32Array(N), cov: new Float32Array(N), gx: new Float32Array(N), gy: new Float32Array(N), gz: new Float32Array(N), white: new Float32Array(N) };
+  const out = { d: new Float32Array(N), d200: new Float32Array(N), cov: new Float32Array(N), gx: new Float32Array(N), gy: new Float32Array(N), gz: new Float32Array(N), white: new Float32Array(N), mean: new Float32Array(N), tiles: new Float32Array(N * 16) };
   let prev = null;
   for (let i = 0; i < N; i++) {
     shot(R, S, i / F, W, H, px);
     let white = 0;
     for (let k = 0; k < W * H; k++) { const v = px[k * 4 + 1]; Y[k] = v; if (v > 127) white++; }
     out.white[i] = white / (W * H);
+    { let all = 0; const q = new Float64Array(16), n = new Float64Array(16); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const v = Y[y * W + x], k = Math.min(3, (y * 4 / H) | 0) * 4 + Math.min(3, (x * 4 / W) | 0); all += v; q[k] += v; n[k]++; } out.mean[i] = all / (W * H); for (let k = 0; k < 16; k++) out.tiles[i * 16 + k] = q[k] / n[k]; }
     if (prev) {
       let d = 0, xx = 0, yy = 0, zz = 0, xy = 0, xz = 0, yz = 0, xt = 0, yt = 0, zt = 0;
       for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
@@ -61,7 +62,7 @@ export const walk = async ({ F, W, H }) => {
   const melTable = [], enTable = [], voicedT = [];
   for (let i = 0; i < N; i++) { melTable.push(+at(A.m, i / F).toFixed(3)); voicedT.push(+at(A.voiced, i / F).toFixed(2)); enTable.push(+at(A.E || A.loud, i / F).toFixed(3)); }
   const enc = a => { const b = new Uint8Array(a.buffer); let s = ''; for (let i = 0; i < b.length; i += 32768) s += String.fromCharCode(...b.subarray(i, i + 32768)); return btoa(s); };
-  const r = { d: enc(out.d), d200: enc(out.d200), cov: enc(out.cov), gx: enc(out.gx), gy: enc(out.gy), gz: enc(out.gz), white: enc(out.white) };
+  const r = { d: enc(out.d), d200: enc(out.d200), cov: enc(out.cov), gx: enc(out.gx), gy: enc(out.gy), gz: enc(out.gz), white: enc(out.white), mean: enc(out.mean), tiles: enc(out.tiles) };
   return JSON.stringify({
     ...r, melTable, voicedT, enTable, dur, N, bpm: A.bpm, meter: A.meter, beats: Array.from(A.beats || []), bars: Array.from(A.bars || []), pulses: Array.from(film.pulses || []), per, bar: m?.bar ?? (A.bars?.[1] - A.bars?.[0]) ?? 2,
     segments: (A.segments || []).map(s => ({ t0: s.t0, t1: s.t1, label: s.label })), arrivals: m?.arrivals ? m.arrivals(0.3).map(x => ({ t: x.t, a: x.a })) : [], rests: (m?.rests || []).map(x => ({ a: x.a, b: x.b })),
@@ -75,8 +76,19 @@ const med = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - 
 const r3 = x => +x.toFixed(3), r2 = x => +x.toFixed(2);
 const corr = (a, b) => { const ma = mean(a), mb = mean(b); let x = 0, y = 0, z = 0; for (let i = 0; i < a.length; i++) { x += (a[i] - ma) * (b[i] - mb); y += (a[i] - ma) ** 2; z += (b[i] - mb) ** 2; } return x / Math.sqrt(y * z || 1); };
 
+// A flash, as tools/look.mjs counts them: a pair of opposing swings of 10% of full scale, per second.
+const flashes = (series, fps) => {
+  const swings = []; let dir = 0, pivot = series[0];
+  series.forEach((v, i) => { if (dir >= 0 && v > pivot) { pivot = v; dir = 1; } if (dir <= 0 && v < pivot) { pivot = v; dir = -1; } if (dir === 1 && pivot - v >= 25.5) { swings.push(i); dir = -1; pivot = v; } else if (dir === -1 && v - pivot >= 25.5) { swings.push(i); dir = 1; pivot = v; } });
+  let worst = 0, secs = 0; const at = [];
+  for (let a = 0; a < swings.length; a++) { let b = a; while (b < swings.length && swings[b] - swings[a] < fps) b++; const n = Math.floor((b - a) / 2); if (n) { secs++; at.push(+(swings[a] / fps).toFixed(1)); } worst = Math.max(worst, n); }
+  return { worst, secs, at };
+};
+
 export function reckon(raw) {
   const q = JSON.parse(raw), d = dec(q.d), d200 = dec(q.d200), cov = dec(q.cov), gx = dec(q.gx), gy = dec(q.gy), gz = dec(q.gz), { dur, N, beats, bars, per, bar, segments, arrivals, rests, melTable, voicedT, enTable } = q;
+  const meanY = dec(q.mean), tl = dec(q.tiles), fw = flashes(Array.from(meanY), F);
+  let tileWorst = 0, tileSecs = 0; for (let k = 0; k < 16; k++) { const f = flashes(Array.from({ length: N }, (_, i) => tl[i * 16 + k]), F); tileWorst = Math.max(tileWorst, f.worst); tileSecs += f.secs; }
   const iAt = t => Math.max(0, Math.min(N - 1, Math.round(t * F))), rng = (a, b) => { const o = []; for (let i = Math.max(0, Math.ceil(a * F)); i <= Math.min(N - 1, Math.floor(b * F)); i++) o.push(i); return o; };
   const strong = new Set(q.pulses.map(t => t.toFixed(3)));
   // A strong beat by a rule no film chose as well: the bar lines. Both are reported, since v2.5.1's pulses are its own sparse pick.
@@ -131,7 +143,7 @@ export function reckon(raw) {
     tune: { up: best(iy), rate: { now: r3(rate(0)), r: r3(topRate[1]), lag: r2(topRate[0] / F) }, across: best(ix), amp: r3(tuneAmp), voiced: r2(voicedShare) },
     notes: { n: jumps.length, peak: r2(etaTop / Math.max(etaBase, 1e-3)), at: r2(etaAt), swing: r2(etaTop - Math.min(...eta)) },
     moments: { shown: r2(momentsShown), barsShown: r2(barsShown), top: top.map(p => `${r2(p.t)}${p.sign > 0 ? '+' : '-'}${r2(p.s)}:${r2(shows(p.t))}`).join(' ') },
-    grow,
+    grow, flash: { whole: fw.worst, wholeN: fw.secs, tile: tileWorst, tileN: tileSecs, at: fw.at.slice(0, 12).join(' ') },
     loud: { quiet: r2(mQuiet), loud: r2(mLoud), ratio: r2(mLoud / Math.max(mQuiet, 1e-3)) },
     ambientLow: r2(q.ambientLow), gestures: q.gestures, hasHear: q.hasHear, version: q.version,
   };

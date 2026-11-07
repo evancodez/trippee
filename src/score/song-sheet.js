@@ -12,6 +12,7 @@ import { reactAt, chordLenses, pulseAt, melodyAt, melodyNowAt, bassAt } from './
 import { flag, hearOn } from './flags.js';
 import { handoverOn } from './morphclock.js';
 import { coinAmbient } from './moves/coin.js';
+import { SIZE } from './hear.js';
 
 const lensTmp = new Float32Array(12), bassTmp = [0, 0];
 const BASS_LENS = -0.28, BASS_R = 0.9, LENS_REBOUND = 0.01;
@@ -60,7 +61,6 @@ const RING_DROP = 0.12;   // how far into a click's flight what's showing has le
 const MEL_STEP = 0.125, MEL_SPEED = 0.62;
 const TUNE_AMBIENT = 0.85;       // hearing 2: however far a hero's turned everything down, the tune goes no lower than this
 const TUNE_FLOOR = 0.55, TUNE_AGE = 0.57, FLIGHT_TUNE = 0.25;     // hearing 2: the least the tune gets; how old it is in seconds at r = 1, going as r^3; and how much of it stays through the middle of a flight
-const TONE_FINER = 0.3, WEIGHT_UP = 1.5, TUNE_UP = 1.7;      // with the layer up: how far the tone moves line density, how much more a ring weighs, how far the tune's own waves go
 const SHARP = 3.5;        // lines that move twice as far don't look twice as busy, so a lead has to be more than twice what's under it to read as one
 
 const readArr = (R, arr, c) => { const x = clamp(c * R.hz, 0, R.n - 1.001), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
@@ -145,7 +145,7 @@ export function songSheet(st, score, edits) {
   const shareA = flight ? (dive ? 1 - smoother(x / 0.35) : 1) : (moveA ? 1 : 0), shareB = flight ? (dive ? 1 : smoother((x - 0.65) / 0.35)) : (moveB ? 1 : 0);
 
   // Tone: brighter sound, finer lines. Only on flat patterns, slowly.
-  const fineBy = (loud ? TONE_FINER : 0.16) * s.tone * mTone * gTone;
+  const fineBy = (loud ? SIZE.toneFiner : 0.16) * s.tone * mTone * gTone;
   if (moveA && A[OFF['surf.kind']] < 0.5) A[OFF.freq] *= 1 + fineBy;
   if (moveB && B[OFF['surf.kind']] < 0.5) B[OFF.freq] *= 1 + fineBy;
   // A surface's lines can't change how many there are, and when the tone's leading it can't just have nothing to do. Its view comes in a little instead. That isn't a number frame() knows about.
@@ -169,8 +169,8 @@ export function songSheet(st, score, edits) {
     const rA = Math.sqrt(nA), rB = Math.sqrt(nB), rn = st.two && !flight ? lerp(rA, rB, st.T) : rA;
     // A beat's weight never pushes anything past 90% of closing, and what's closing up in a flight has to end up exactly closed: that's why the ends of a flight have shares of their own.
     // Hearing 6: all of a ring's weight comes at once now over the middle of the frame, so a ring weighs less, and gathers less as it closes.
-    const fall = loud || hearOn(score, 6), gather = fall ? FALL_GATHER : GATHER;
-    const w = WEIGHT * big * mPulse * (0.35 + 0.65 * gDrums) * (fall ? FALL_WEIGHT : 1) * (loud ? WEIGHT_UP : 1);     // however quiet the drums are, a strong beat still lands. What they lose is reach
+    const fall = (loud && SIZE.fall) || hearOn(score, 6), gather = fall ? FALL_GATHER : GATHER;
+    const w = WEIGHT * big * mPulse * (0.35 + 0.65 * gDrums) * (fall ? FALL_WEIGHT : 1) * (loud ? SIZE.weightUp : 1);     // however quiet the drums are, a strong beat still lands. What they lose is reach
     let wa, wb = 0;
     if (flight) {
       wa = w * rA * st.sa * (dive ? 1 - smoother(x / 0.35) : 1 - smoother((x - 0.55) / 0.4));
@@ -224,7 +224,7 @@ export function songSheet(st, score, edits) {
   // In a flight only the transformation moves: the tune pushing a big element's edge back and forth would be the whole frame changing colour with it.
   let still = weighs && flight ? (x < 0.25 ? 1 - smoother(x / 0.25) : x > 0.75 ? smoother((x - 0.75) / 0.25) : 0) : 1;
   if (present) still = FLIGHT_TUNE + (1 - FLIGHT_TUNE) * still;
-  F[Ml] = (0.085 + 0.09 * s.energy) * (rings ? 0.9 : 1) * mMel * gTune * still * (loud ? TUNE_UP : 1); F[Ml + 1] = present ? TUNE_AGE / MEL_STEP : 1 / (MEL_STEP * MEL_SPEED); F[Ml + 2] = melOf(G, hearNow); F[Ml + 3] = present ? 1 : 0;
+  F[Ml] = (0.085 + 0.09 * s.energy) * (rings ? 0.9 : 1) * mMel * gTune * still * (loud ? SIZE.tuneUp : 1); F[Ml + 1] = present ? TUNE_AGE / MEL_STEP : 1 / (MEL_STEP * MEL_SPEED); F[Ml + 2] = melOf(G, hearNow); F[Ml + 3] = present ? 1 : 0;
   const Ms = FRAME.melS * 4;
   const heard = present && Rc.melNow ? melodyNowAt : melodyAt;
   for (let n = 0; n < 32; n++) F[Ms + n] = heard(Rc, Math.max(0, c - n * MEL_STEP));

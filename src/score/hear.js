@@ -17,13 +17,15 @@ const HZ = 60, ATTACK = 0.14, HIT_ATTACK = 0.45, LAND_LATE = 0.32;      // how f
 // All first guesses against what the eye sees. Sizes: zoom in natural logs, shifts and lens radii in picture units (the frame's half height is 1).
 export const SIZE = {
   push: 0.13, bloom: 0.3, bloomR: 1.1,      // a full strong beat
-  hitPush: 0.2, hitBloom: 0.3, hitTurn: 0.07,     // a full moment
+  hitPush: 0.26, hitBloom: 0.3, hitTurn: 0.09,     // a full moment
   windPull: 0.14, windPinch: 0.26,          // the top of a build
-  fallPull: 0.1,                            // a falling moment
+  fallPull: 0.18, fallPinch: 0.2,                            // a falling moment
   lift: 0.15, note: 0.3, noteR: 0.6,      // the tune: per 6 semitones, and each note
   lean: 0.05,                               // the tone
   ringBeat: 0.008, ringHit: 0.022, ringSpeed: 1.15, ringLife: 1.5,
   swayShift: 0.055, swayTurn: 0.035,        // loud
+  weightUp: 1, tuneUp: 1.7, toneFiner: 0.3,      // what song-sheet.js does more of with this up: how much more a ring weighs, how far the tune's own waves go, how far the tone moves line density
+  fall: 0,                                 // the rings falling in, or going as they always went. Falling in, a ring takes the whole frame's brightness with it on the beat, and that's most of what flashes
 };
 
 const smooth = (a, r) => {
@@ -123,12 +125,12 @@ export function buildHear(A, R, { hits = [] } = {}) {
     if (rest && t < rest.b - 0.1) return;
     const present = clamp((at(A.E || A.loud, t) - 0.03) / 0.15), when = rest ? rest.b : t;
     const a = (0.3 + 0.7 * clamp(R.depths?.[k] ?? 0.6)) * (R.mains?.[k] === false ? 0.72 : 1) * present * big(Math.round(when * HZ));
-    if (a > 0.01 && (!P.length || when - P.at(-1).t > 0.3)) P.push({ t: when, a: Math.min(a, 1.3) });
+    if (a > 0.01 && (!P.length || when - P.at(-1).t > 0.3)) P.push({ t: when, a: Math.min(a, 1.15) });
   });
   const pump = new Float32Array(n);
   const K = [];       // knots of a smooth curve: [t, value, skewed]
   for (let k = 0; k < P.length; k++) {
-    const p = P[k], L = k ? p.t - P[k - 1].t : 2, atk = clamp(0.4 * L, 0.22, 0.6);
+    const p = P[k], L = k ? p.t - P[k - 1].t : 2, atk = clamp(0.4 * L, 0.22, 0.48);
     K.push([p.t - atk, 0, false]); K.push([p.t, p.a, true]);
   }
   if (P.length) K.push([P.at(-1).t + 2.4, 0, false]);
@@ -160,7 +162,7 @@ export function buildHear(A, R, { hits = [] } = {}) {
       add(hit, on, atk, Math.max(1.5 * bar, 1.2), sized);
       add(turn, on, atk, Math.max(1.5 * bar, 1.2), sized * (side = -side));
       if (sized > 0.25) rings.push({ t: m.t, a: SIZE.ringHit * clamp(sized, 0.2, 1.4) });
-    } else add(fall, m, Math.min(0.5, beat), Math.max(1.5 * bar, 1.2), sized);
+    } else { add(fall, m, 0.38, Math.max(1.5 * bar, 1.2), sized); add(turn, m, 0.38, Math.max(1.5 * bar, 1.2), 0.6 * sized * (side = -side)); }
   }
   for (const p of P) if (p.a > 0.55) rings.push({ t: p.t, a: SIZE.ringBeat * p.a });
   rings.sort((a, b) => a.t - b.t);
@@ -298,7 +300,7 @@ function writeHear(st, score, edits, tReal, hx) {
   const pump = rt(H, H.pump, t), hit = rt(H, H.hit, t), fall = rt(H, H.fall, t), wind = rt(H, H.wind, t), turn = rt(H, H.turn, t), lead = rt(H, H.lead, t);
   const mel = R?.melNow ? rdR(R, R.melNow, c) : 0, sw = rt(H, H.sway, t), swA = rt(H, H.swayAmt, t) * amt;
   // The camera. Positive zoom: the picture larger. It's a real push, so the middle of the frame stays still and the corners run furthest.
-  const z = soft(SIZE.push * pump * mP + SIZE.hitPush * hit * mH, 0.38) - SIZE.windPull * wind * mH - SIZE.fallPull * Math.min(fall, 1.4) * mH;
+  const z = soft(SIZE.push * pump * mP + SIZE.hitPush * hit * mH, 0.45) - SIZE.windPull * wind * mH - SIZE.fallPull * Math.min(fall, 1.4) * mH;
   const rot = SIZE.hitTurn * clamp(turn, -1.4, 1.4) * mH + SIZE.lean * tone * mT + SIZE.swayTurn * swA * Math.sin(0.61 * sw + 1.1);
   const lift = SIZE.lift * mel * lead * mM;
   const sx = SIZE.swayShift * swA * Math.sin(sw), sy = SIZE.swayShift * 0.6 * swA * Math.cos(0.83 * sw);
@@ -306,7 +308,7 @@ function writeHear(st, score, edits, tReal, hx) {
   // The bloom: from where the rings close, as tight as the sound's bright. A build pinches in; the hit bursts.
   const fx = F[FRAME.focus * 4], fy = F[FRAME.focus * 4 + 1];
   F[Hm + 4] = fx; F[Hm + 5] = fy;
-  F[Hm + 6] = -soft(SIZE.bloom * pump * mP + SIZE.hitBloom * hit * mH, 0.55) + SIZE.windPinch * wind * mH;
+  F[Hm + 6] = -soft(SIZE.bloom * pump * mP + SIZE.hitBloom * hit * mH, 0.55) + SIZE.windPinch * wind * mH + SIZE.fallPinch * Math.min(fall, 1.4) * mH;
   F[Hm + 7] = SIZE.bloomR * (1 - 0.22 * clamp(tone * Math.max(mT, 0.001) / Math.max(amt, 0.001), -1.5, 1.5));
   // The notes
   const N = H.notes;
