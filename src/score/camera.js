@@ -29,7 +29,7 @@ const LENS = 2.4;           // cam.dist where nothing's been asked for
 export const SIZE = {
   bold: 8,  boldFar: 19,    // cycles per picture unit: the finest the lines can be across the frame, and at the far side of a tipped sheet. 8 is a period of 45 px at 720p
   big: 1.4,                 // ...and the biggest, so nothing's one flat shape, and a few big shapes going by can't swing the whole frame's brightness
-  whipTurn: 0.75, whipSlide: 1.5,    // a full moment's whip, in radians and frame units
+  whipTurn: 0.75, whipSlide: 1.5, whipTip: 0.42,    // a full moment's whip: radians, frame units, and how far it lurches
   pushIn: 0.75, windTurn: 0.5,       // the top of a build
   fallBack: 0.85,                    // a falling moment's crane
   linesBy: 3.5,             // lines a second a plain sheet can send past a place
@@ -158,7 +158,7 @@ const LANG = {
   sweep(h, { i, way, P }, s) {
     const side = way * (i % 2 ? -1 : 1), bank = side * Math.min(0.62, 0.42 * P);
     s.dir = bank; s.head = s.dir; s.spin -= side * 0.95 * P;
-    h({ alt: 0.2 + (i % 2 ? 0.14 : -0.04) * P, tip: Math.min(0.9, 0.74 * P), speed: 0.72 * P, lens: i % 4 === 3 ? 1.5 : 1.9 });
+    h({ alt: [0.34, -0.06, 0.48, 0.02][i % 4] * P, tip: [0.86, 0.5, 0.9, 0.62][i % 4] * Math.min(P, 1.05), speed: [0.72, 0.5, 0.82, 0.6][i % 4] * P, lens: [1.9, 2.6, 1.4, 2.2][i % 4] });
   },
   // Falling while turning: a corkscrew in over two phrases, and out over one.
   corkscrew(h, { i, way, P }, s) {
@@ -272,9 +272,9 @@ function buildHands(film, A, M, H, seed, only = null) {
     for (let i = i0; i <= i1; i++) arr[i] += k * through(i / HZ - t, atk, aft);
     for (let i = i1 + 1; i < n; i++) arr[i] += k;
   };
-  const crane = new Float32Array(n), pushed = new Float32Array(n), wound = new Float32Array(n);
+  const crane = new Float32Array(n), pushed = new Float32Array(n), lurch = new Float32Array(n);
   // A build: pushing in and flattening, with a turn winding up, and the hit lets it go.
-  for (let i = 0; i < n; i++) { const w = H.wind[clamp(Math.round(i / HZ * H.hz), 0, H.n - 1)] ?? 0; pushed[i] = w; wound[i] = w; }
+  for (let i = 0; i < n; i++) pushed[i] = H.wind[clamp(Math.round(i / HZ * H.hz), 0, H.n - 1)] ?? 0;
   let side = 1;
   for (const m of moments) {
     const size = m.size ?? m.s, at = time(m.t);
@@ -285,6 +285,7 @@ function buildHands(film, A, M, H, seed, only = null) {
       const a = clamp((size - 0.35) / 0.7, 0.25, 1.2), atk = clamp(1.2 * (M.beat || 0.5), 0.35, 0.7), aft = 0.6;
       step(T.spin, at, atk, aft, side * SIZE.whipTurn * a);
       step(T.kick, at, atk, aft, SIZE.whipSlide * a);
+      add(lurch, at, atk, aft, Math.max(2 * bar, 2.2), a * side);       // ...and the whole sheet lurches as it goes, and settles
     }
   }
   const pullApart = smooth3(crane, HZ * 0.05);
@@ -293,7 +294,7 @@ function buildHands(film, A, M, H, seed, only = null) {
   for (let i = 0; i < n; i++) {
     const c = clamp(pullApart[i], 0, 1.2), w = pushed[i], kEnd = ending(i), kStart = starting(i), e = loud(i);
     T.alt[i] = (T.alt[i] + SIZE.pushIn * w - SIZE.fallBack * c) * kEnd * kStart;
-    T.tip[i] = T.tip[i] * (1 - 0.65 * w) * (1 - 0.75 * Math.min(c, 1)) * kEnd * kStart;
+    T.tip[i] = clamp(T.tip[i] * (1 - 0.65 * w) * (1 - 0.75 * Math.min(c, 1)) + SIZE.whipTip * lurch[i], -0.92, 0.92) * kEnd * kStart;
     T.lens[i] = LENS + (T.lens[i] - LENS) * kEnd;
     T.speed[i] = T.speed[i] * lerp(0.65, 1.25, e) * kEnd * kStart;
     T.spin[i] += SIZE.windTurn * side * w;
