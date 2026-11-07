@@ -37,7 +37,7 @@ function drop(st, F, o) {
 
 function pleat(st, F, o) {
   const { x } = st, kick = kickAt(st.t), n = o.n ?? 2.8, up = k(x, 0, 0.32) * (1 - k(x, 0.68, 1)), tune = tuneAt(st.c);
-  const width = o.width ?? 4.2, walk = lerp(-2 - width, 2, k(x, 0.08, 0.92));      // every cell in the frame is part way, all the time: it's the share of each that goes across
+  const width = o.width ?? 4.2, walk = lerp(-2.5 - width, 2.5, k(x, 0.08, 0.92));      // every cell in the frame is part way, all the time: it's the share of each that goes across
   put(F, 0, 4, (o.h ?? 1.15) * up * (1 + 0.14 * kick), n, walk);
   put(F, 1, (o.pitch ?? 0.72) * up, (o.yaw ?? 0.3) * up * Math.sin(Math.PI * x) + 0.03 * tune * up, 0.1 * Math.sin(Math.PI * x) * up, lerp(2.4, 1.55, up));
   put(F, 2, 0, 0, 0, width);
@@ -48,7 +48,7 @@ function pleat(st, F, o) {
 function tube(st, F, o) {
   const { x } = st, kick = kickAt(st.t), d = o.dist ?? 1.5, tune = tuneAt(st.c);
   const roll = k(x, 0, 0.3) * (1 - k(x, 0.7, 1));
-  const look = k(x, 0.18, 0.4) * (1 - k(x, 0.6, 0.82));
+  const look = k(x, 0.1, 0.44) * (1 - k(x, 0.58, 0.9));
   const Yend = o.fly ?? 16, y = Yend * lerp(x, smoother(x), 0.5), neck = (o.neck ?? 0.55) * look * (1 + 0.16 * kick);
   put(F, 0, 5, roll / d * 0.98, o.bw ?? 0.42, 2.2 * x + 0.3 * tune * look);
   put(F, 1, look * Math.PI / 2, 0, 0.35 * look * Math.sin(Math.PI * x), d);

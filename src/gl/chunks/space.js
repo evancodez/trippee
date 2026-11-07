@@ -66,7 +66,7 @@ vec3 spRelief(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,float L,out float side,out bool
     else t=prev+(t-prev)*clamp(fp/max(fp-fn,1e-6),0.,1.);
   }
   vec3 X=ro+rd*t;
-  float hA=spA(k,o,e,X);
+  float hA=spA(k,o,e,ro+rd*(t+.002));      // a hair further on: a wall's own column, not whichever one rounding says it's in
   side=L>SP_GONE?aaOf(L-hA):0.;
   float w=fwidth(t)/max(t,.05);
   edge=w>.06||(e.y>0.&&abs(X.z-hA)>.01);      // a silhouette, or a stepped wall: the one pixel across isn't a real gradient, and a wall's is only what bisecting left
@@ -81,17 +81,17 @@ vec3 spPleat(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out float side,out float fS,out 
   float Hm=k.y/n;
   float a0=n*(s0-m*Hm),a1=n*s0;
   int i0=int(floor(a0)),i1=int(floor(a1)),dir=i1>=i0?1:-1;
-  float hz=0.,hS=s0,hA=1.,hI=float(i1); bool onA=true;
+  float hz=0.,hS=s0,hA=1.,hI=float(i1),hR=1.; bool onA=true;
   int i=i0;
   for(int g=0;g<9;g++){
-    float ci=float(i),si=ci/n,sh=clamp(((ci+.5)/n-k.w)/max(o.w,1e-3)+e.y*sin(TAU*.5*(ci+.5)/n+e.x),.001,.999),H=Hm*clamp(4.*sh*(1.-sh),0.,1.);
+    float ci=float(i),si=ci/n,sR=((ci+.5)/n-k.w)/max(o.w,1e-3)+e.y*sin(TAU*.5*(ci+.5)/n+e.x),sh=clamp(sR,.001,.999),H=Hm*clamp(4.*sh*(1.-sh),0.,1.);
     float sr=si+sh/n,g1=H*n/sh,g2=H*n/(1.-sh);
     float z1=g1*(s0-si)/(1.+g1*m),s1=s0-m*z1;
     float z2=(H-g2*(s0-sr))/(1.-g2*m),s2=s0-m*z2;
     bool v1=s1>=si&&s1<=sr, v2=s2>=sr&&s2<=si+1./n;
     if(v1||v2){
       bool useA=v1&&(!v2||z1>=z2);
-      hz=useA?z1:z2; hS=useA?s1:s2; hA=sh; hI=ci; onA=useA;
+      hz=useA?z1:z2; hS=useA?s1:s2; hA=sh; hI=ci; onA=useA; hR=sR;
       break;
     }
     if(i==i1) break;
@@ -102,6 +102,7 @@ vec3 spPleat(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out float side,out float fS,out 
   float fa=(hS-si)/(hA/n),fb=(hS-sr)/((1.-hA)/n);
   side=onA?0.:1.;
   fS=onA?fa:fb;
+  if(hR>=1.||hR<=0.){ side=hR>=1.?0.:1.; fS=(hS-si)*n; }      // all one face: both ends of a transformation are exactly flat
   edge=fwidth(side)>0.||fwidth(hI)>0.;
   vec3 X=ro+rd*((ro.z-hz)/-rz);
   float w=dot(X.xy,V);

@@ -39,7 +39,7 @@ export default async ({ page, save, log }) => {
         const scan = (t0, t1, dt) => { const o = []; app.t = t0; T.step(0); let pv = grab(); for (let t = t0 + dt; t <= t1 + 1e-6; t += dt) { app.t = t; T.step(0); const f = grab(); o.push([+t.toFixed(3), +diff(pv, f).toFixed(2)]); pv = f; } return o; };
         const head = scan(0.8, 1.6, 1 / 60), mid = scan(1.6, 1 + D - 0.6, 1 / 30), tail = scan(1 + D - 0.6, 1 + D + 0.4, 1 / 60);
         const spike = list => { let best = [0, 0]; for (let i = 1; i < list.length - 1; i++) { const q = list[i][1] / Math.max(Math.max(list[i - 1][1], list[i + 1][1]), 0.5); if (q > best[1]) best = [list[i][0], +q.toFixed(2)]; } return best; };
-        return { kind: G.plan?.kind, head: spike(head), mid: spike(mid), tail: spike(tail), most: Math.max(...head.concat(mid, tail).map(x => x[1])) };
+        return { kind: G.plan?.kind, head: spike(head), mid: spike(mid), tail: spike(tail), most: Math.max(...head.concat(mid, tail).map(x => x[1])), top: head.concat(mid, tail).sort((p, q) => q[1] - p[1]).slice(0, 6) };
       }, { a, b, via, D: +(E.D || 12) });
       log(`${via} ${a}>${b}`, JSON.stringify(r));
     }
