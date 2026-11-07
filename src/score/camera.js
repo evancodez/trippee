@@ -57,23 +57,31 @@ const farOf = (tip, dir, lens) => { const th = Math.abs(tip) * Math.atan(lens / 
 // Read from its numbers at the middle of its time, and proved by looking (tests/cambear.mjs).
 const lim = new Float32Array(SLOT_FLOATS);
 function bearingOf(G) {
-  const s = lim;
-  fillSlot(s, G, Math.min((G.t0 + G.t1) / 2, G.t0 + 30), G.pattern, { phi: 0, noCam: true });
-  const n = k => s[OFF[k]], kind = n('surf.kind'), map = n('surf.map');
-  const B = { pan: 1, tip: 1, spin: 1, zoom: 1, free: true, self: false, marks: [], floor: false, lensy: false, room: false };
-  // The lines: which families are open, and what they run about.
-  let plane = false, polar = false, logs = 0, rings = 0, pole2 = false;
-  for (let i = 0; i < FAMILIES; i++) {
-    if (n(`f${i}.on`) < 0.5 || Math.abs(n(`f${i}.d`)) > 1.01) continue;
-    const g = k => Math.abs(n(`f${i}.${k}`));
-    if (g('x') + g('y') > 1e-4) plane = true;
-    if (g('r1') > 1e-4) rings++;
-    if (g('r2') > 1e-4) { rings++; pole2 = true; }
-    if (g('l1') + g('t1') > 1e-4) logs++;
-    if (g('l2') + g('t2') > 1e-4) { logs++; pole2 = true; }
+  const s = lim, n = k => s[OFF[k]], H = Math.min(G.t1 - G.t0, 60);
+  const B = { pan: 1, tip: 1, spin: 1, zoom: 1, free: true, self: false, marks: [], floor: false, lensy: false, room: false, layers: false, rings: false, arm: null };
+  // The lines: which families are open, and what they run about. A Relay's change as it goes, so it's looked at a few times.
+  let plane = false, logs = 0, rings = 0, pole2 = false, planes = 0, armOf = 0;
+  for (const u of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+    fillSlot(s, G, G.t0 + H * u, G.pattern, { phi: 0, noCam: true });
+    let here = 0;
+    for (let i = 0; i < FAMILIES; i++) {
+      if (n(`f${i}.on`) < 0.5 || Math.abs(n(`f${i}.d`)) > 0.97) continue;
+      const g = k => Math.abs(n(`f${i}.${k}`));
+      if (g('x') + g('y') > 1e-4) { plane = true; here++; }
+      if (g('r1') > 1e-4) rings++;
+      if (g('r2') > 1e-4) { rings++; pole2 = true; }
+      if (g('l1') + g('t1') > 1e-4) logs++;
+      if (g('l2') + g('t2') > 1e-4) { logs++; pole2 = true; }
+      // The arm to ride: the strongest family that's about one pole
+      const size = Math.hypot(n(`f${i}.l1`), n(`f${i}.t1`) / TAU);
+      if (size > armOf) { armOf = size; B.arm = { l: n(`f${i}.l1`), t: n(`f${i}.t1`) }; }
+    }
+    planes = Math.max(planes, here);
   }
-  polar = rings + logs > 0;
-  if (polar) { B.free = false; B.marks.push([n('p1.x'), n('p1.y')]); if (pole2) B.marks.push([n('p2.x'), n('p2.y')]); }
+  const kind = n('surf.kind'), map = n('surf.map');
+  if (rings + logs > 0) { B.free = false; B.marks.push([n('p1.x'), n('p1.y')]); if (pole2) B.marks.push([n('p2.x'), n('p2.y')]); }
+  B.rings = rings > 0 && !plane;
+  B.layers = !rings && !logs && planes >= 3 && kind < 0.5;
   // Warps with somewhere they are: past them there's only a plain sheet, which isn't why anyone's looking at this one.
   const at = (w, x, y) => { if (Math.abs(n(w)) > 1e-4) { B.free = false; B.marks.push([x, y]); } };
   at('swirl.a', n('swirl.cx'), 0); at('swirl.log', n('swirl.cx'), 0); at('bulge.a', n('bulge.cx'), n('bulge.cy')); at('ripple.a', n('ripple.cx'), 0);
@@ -85,8 +93,10 @@ function bearingOf(G) {
   const droste = Math.abs(n('droste.lnS')) > 1e-4;
   if (droste) { B.free = false; B.pan = 0; B.marks = [[0, 0]]; }
   // The same at every size: only log rings and spokes, about one point, and nothing that minds.
-  B.self = droste || (logs > 0 && !plane && !rings && !pole2 && Math.abs(n('swirl.a')) < 1e-4 && Math.abs(n('bulge.a')) < 1e-4 && n('fold.n') < 2);
+  const heroic = (G.moves ?? []).some(m => m.id === 'slip' || m.id === 'star' || m.id === 'coin') || !!G.hero;
+  B.self = !heroic && (droste || (logs > 0 && !plane && !rings && !pole2 && Math.abs(n('swirl.a')) < 1e-4 && Math.abs(n('bulge.a')) < 1e-4 && n('fold.n') < 2 && n('field.kind') < 0.5 && kind < 0.5));
   if (B.self) B.marks = B.marks.slice(0, 1);
+  if (heroic) B.rings = false;
   // A shape's edge is in the frame, not on the sheet: it stays where it is, and the lines inside it go about their business.
   if (n('matte.kind') > 0.5) { B.pan = 0; B.tip = 0; B.free = false; B.zoom = 0.5; }
   if (kind > 2.5) { B.pan = 0; B.tip = 0; B.spin = 0; B.zoom = 0; }                 // a world's own surface
@@ -192,7 +202,7 @@ const through = (x, atk, aft) => { const f = (2 / aft) / (3 / atk + 2 / aft); re
 
 // ---------------------------------------------------------------- the whole song's tracks
 const TRACKS = ['alt', 'spin', 'tip', 'dir', 'lens', 'speed', 'head', 'kick'];
-function buildHands(film, A, M, H, seed) {
+function buildHands(film, A, M, H, seed, only = null) {
   const time = film.time ?? (t => t), dur = A.duration, n = Math.ceil((dur + 12) * HZ) + 2;
   const bar = M.bar || 2, random = rng((seed ^ 0x5eed) >>> 0 || 1);
   const moments = H.moments ?? [], segs = A.segments?.length ? A.segments : [{ t0: 0, t1: dur, label: 'A' }];
@@ -206,7 +216,7 @@ function buildHands(film, A, M, H, seed) {
   const used = new Set();
   for (const l of order) {
     const r = rank(l), mean = kinds.get(l).e / Math.max(kinds.get(l).c, 1), pool = POOL[r < 0.3 && mean < 0.55 ? 'quiet' : r > 0.62 || mean > 0.72 ? 'loud' : 'mid'];
-    const open = pool.filter(x => !used.has(x)), lang = random.pick(open.length ? open : pool);
+    const open = pool.filter(x => !used.has(x)), lang = only ?? random.pick(open.length ? open : pool);
     used.add(lang); kinds.get(l).lang = lang;
   }
   const phrase = bar * 4 >= 5.5 ? 4 : 8;
@@ -214,13 +224,14 @@ function buildHands(film, A, M, H, seed) {
   const strong = moments.filter(m => (m.size ?? m.s) > 0.28);
   const toHit = t => { let b = null, d = 0.8 * bar; for (const m of strong) { const q = Math.abs(m.t - t); if (q < d) { d = q; b = m.t; } } return b ?? t; };
   const keys = {}; for (const k of TRACKS) keys[k] = [[0, k === 'lens' ? LENS : 0]];
-  const s = { spin: 0, dir: 0, head: 0 }, knots = [], seen = new Map(), plan = [];
+  const s = { spin: 0, dir: 0, head: 0 }, knots = [], seen = new Map(), plan = [], spans = [];
   segs.forEach((seg, si) => {
     const kind = kinds.get(seg.label), visit = seen.get(seg.label) ?? 0;
     seen.set(seg.label, visit + 1);
     const way = kind.way * (visit % 2 ? -1 : 1), P = Math.min(1.8, lerp(0.8, 1.2, rank(seg.label)) * (1 + 0.2 * visit));
     const span = seg.t1 - seg.t0, count = Math.max(1, Math.round(span / (phrase * bar)));
     plan.push({ t0: +seg.t0.toFixed(1), label: seg.label, lang: kind.lang, way, P: +P.toFixed(2), phrases: count });
+    spans.push({ t0: time(seg.t0), lang: kind.lang, way });
     let t = seg.t0;
     for (let i = 0; i < count; i++) {
       const raw = seg.t0 + span * (i + 1) / count, t1 = i === count - 1 && si < segs.length - 1 ? segs[si + 1].t0 : toHit(raw);
@@ -269,7 +280,8 @@ function buildHands(film, A, M, H, seed) {
     T.speed[i] = T.speed[i] * lerp(0.65, 1.25, e) * kEnd * kStart;
     T.spin[i] += SIZE.windTurn * side * w;
   }
-  return { T, n, knots: [...new Set(knots)].sort((a, b) => a - b), plan, dur: time(dur), moments };
+  const at = t => { let k = 0; for (let i = 0; i < spans.length; i++) if (spans[i].t0 <= t) k = i; return spans[k]; };
+  return { T, n, knots: [...new Set(knots)].sort((a, b) => a - b), plan, dur: time(dur), moments, langAt: t => at(t).lang, wayAt: t => at(t).way };
 }
 
 // The tables are read smoothly: Catmull-Rom, so a table's steps aren't a jolt at 60 frames a second.
@@ -286,35 +298,37 @@ const between = (x, lo, hi, w = 0.22) => { if (hi < lo) { const m = (lo + hi) / 
 
 function buildRoute(cam, G, prev) {
   const { T, n } = cam, B = G.camBear ??= bearingOf(G);
-  const t0 = G.t0, tEnd = Math.min(G.t1, cam.dur + 6), N = Math.max(2, Math.ceil((tEnd - t0 + BEFORE + AFTER) * HZ)), from = t0 - BEFORE;
-  const x = new Float32Array(N), y = new Float32Array(N), z = new Float32Array(N), slot = new Float32Array(SLOT_FLOATS);
+  const t0 = G.t0, tEnd = Math.min(G.t1, cam.dur + 6), N = Math.max(2, Math.ceil((tEnd - t0 + BEFORE + AFTER) * HZ)), from = t0 - BEFORE, ix0 = Math.round(BEFORE * HZ);
+  const x = new Float32Array(N), y = new Float32Array(N), z = new Float32Array(N), spin = new Float32Array(N), slot = new Float32Array(SLOT_FLOATS);
   // The pattern's own view over its time, a few times a second
-  const STEP = 6, M_ = Math.ceil(N / STEP) + 2, baseS = new Float32Array(M_), baseR = new Float32Array(M_), baseK = new Float32Array(M_);
-  const self = B.self, marks = B.marks;
-  const seenLines = new Array(M_);
+  const STEP = 6, M_ = Math.ceil(N / STEP) + 2, baseS = new Float32Array(M_), baseR = new Float32Array(M_), baseK = new Float32Array(M_), baseX = new Float32Array(M_), baseY = new Float32Array(M_);
+  const marks = B.marks, seenLines = new Array(M_);
   for (let j = 0; j < M_; j++) {
-    const tt = from + j * STEP / HZ;
-    fillSlot(slot, G, tt, G.pattern, { phi: 0, noCam: true });
-    baseS[j] = slot[OFF.scale]; baseR[j] = slot[OFF.rot]; baseK[j] = fineness(slot);
+    fillSlot(slot, G, from + j * STEP / HZ, G.pattern, { phi: 0, noCam: true });
+    baseS[j] = slot[OFF.scale]; baseR[j] = slot[OFF.rot]; baseK[j] = fineness(slot); baseX[j] = slot[OFF.tx]; baseY[j] = slot[OFF.ty];
     seenLines[j] = marks.length ? slot.slice() : null;
   }
   const base = (a, i) => { const f = i / STEP, k = Math.floor(f); return lerp(a[Math.min(k, M_ - 1)], a[Math.min(k + 1, M_ - 1)], f - k); };
-  const tipAt = i => rd(T.tip, n, (from + i / HZ) * HZ) * B.tip, dirAt = i => rd(T.dir, n, (from + i / HZ) * HZ), lensAt = i => rd(T.lens, n, (from + i / HZ) * HZ);
-  const altAt = i => rd(T.alt, n, (from + i / HZ) * HZ) * B.zoom;
+  const q = (a, i) => rd(a, n, from * HZ + i);
+  for (let i = 0; i < N; i++) spin[i] = q(T.spin, i) * B.spin;
+
+  // How much this stretch of the song flies: a chorus's languages. A sheet about a point takes it as a circuit or as riding an arm.
+  const flying = new Float32Array(N);
+  for (let i = 0; i < N; i++) { const L = cam.langAt(from + i / HZ); flying[i] = L === 'sweep' || L === 'swoop' ? 1 : 0; }
+  const fly = smooth3(flying, HZ * 0.55);
+  for (let i = 0; i < N; i++) fly[i] *= smoother((i - ix0) / (2.5 * HZ));
 
   // Where it looks. A plain sheet goes wherever the tracks say, and picks up from where the last one was.
-  let px = 0, py = 0;
   const free = B.free && B.pan > 0;
-  if (free && prev?.route && prev.route.free && prev.camBear.pan > 0) { const r = prev.route, stop = Math.min((prev.morph || 0) * 0.4, 3.5); px = r.at(r.x, prev.t1 - (prev.morph || 0) + stop / 2); py = r.at(r.y, prev.t1 - (prev.morph || 0) + stop / 2); }
-  const ix0 = Math.round(BEFORE * HZ);
   if (free) {
-    let lastKick = rd(T.kick, n, t0 * HZ);
+    let px = 0, py = 0;
+    if (prev?.route?.free) { const r = prev.route, stop = Math.min((prev.morph || 0) * 0.4, 3.5), tt = prev.t1 - (prev.morph || 0) + stop / 2; px = r.at(r.x, tt); py = r.at(r.y, tt); }
+    let lastKick = q(T.kick, ix0);
     for (let i = 0; i < N; i++) {
       if (i >= ix0) {
-        const tt = from + i / HZ, up = smoother((tt - t0) / 2);
-        const sp = rd(T.speed, n, tt * HZ) * B.pan * up, kick = rd(T.kick, n, tt * HZ), head = rd(T.head, n, tt * HZ) * 1;
-        const d = sp / HZ + (kick - lastKick) * B.pan * up; lastKick = kick;
-        const rot = base(baseR, i) + rd(T.spin, n, tt * HZ) * B.spin, sc = base(baseS, i) * Math.exp(altAt(i));
+        const up = smoother((i - ix0) / (2 * HZ)), kick = q(T.kick, i), d = q(T.speed, i) * B.pan * up / HZ + (kick - lastKick) * B.pan * up, head = q(T.head, i);
+        lastKick = kick;
+        const rot = base(baseR, i) + spin[i], sc = base(baseS, i) * Math.exp(q(T.alt, i) * B.zoom);
         // u = R(-head)(0,1), on the screen. Into the pattern: R(-rot) u / scale.
         const ux = Math.sin(head), uy = Math.cos(head), c = Math.cos(rot), s = Math.sin(rot);
         px += (c * ux + s * uy) * d / sc; py += (-s * ux + c * uy) * d / sc;
@@ -323,67 +337,112 @@ function buildRoute(cam, G, prev) {
     }
   } else if (B.pan > 0 && marks.length) {
     // A tour of its landmarks, arriving on the knots. Out from one by as far as the song's going, round it, and home to the next. It starts from where the pattern is.
-    const sc0 = base(baseS, ix0), own = [slot[OFF.tx], slot[OFF.ty]];
-    fillSlot(slot, G, t0, G.pattern, { phi: 0, noCam: true }); const start = [slot[OFF.tx], slot[OFF.ty]];
+    const start = [base(baseX, ix0), base(baseY, ix0)], iOf = t => clamp(Math.round((t - from) * HZ), 0, N - 1);
     const ks = cam.knots.filter(t => t > t0 + 1.5 && t < tEnd - 0.5);
     if (!ks.length || tEnd - ks.at(-1) > 9) ks.push(Math.max(t0 + 1.5, tEnd - 0.5));
     const wx = [0], wy = [0], wt = [t0];
     let ang = G.t0 * 1.7, m = 0;
     ks.forEach((t, j) => {
-      const sp = rd(T.speed, n, t * HZ), reach = clamp(0.5 + 2.2 * sp, 0.3, SIZE.leash) * B.pan / (base(baseS, Math.min(N - 1, Math.round((t - from) * HZ))) * Math.exp(altAt(Math.min(N - 1, Math.round((t - from) * HZ)))));
+      const i = iOf(t), reach = clamp(0.5 + 2.2 * q(T.speed, i), 0.3, SIZE.leash) * B.pan / (base(baseS, i) * Math.exp(q(T.alt, i) * B.zoom));
       const home = j % 3 === 2;      // every third knot it arrives on the landmark itself
-      ang += 2.05 * (rd(T.spin, n, t * HZ) >= 0 ? 1 : -1);
+      ang += 2.05 * (q(T.spin, i) >= 0 ? 1 : -1);
       if (home) m = (m + 1) % marks.length;
-      const mk = marks[m], tx = home ? mk[0] : mk[0] + reach * Math.cos(ang), ty = home ? mk[1] : mk[1] + reach * Math.sin(ang);
-      wx.push(tx - start[0]); wy.push(ty - start[1]); wt.push(t);
+      const mk = marks[m];
+      wx.push((home ? mk[0] : mk[0] + reach * Math.cos(ang)) - start[0]); wy.push((home ? mk[1] : mk[1] + reach * Math.sin(ang)) - start[1]); wt.push(t);
     });
     const velo = (w, j) => (j > 0 && j < wt.length - 1 ? (w[j + 1] - w[j - 1]) / (wt[j + 1] - wt[j - 1]) : 0);
     const kx = wt.map((t, j) => ({ t, x: wx[j], v: velo(wx, j) })), ky = wt.map((t, j) => ({ t, x: wy[j], v: velo(wy, j) }));
     for (let i = 0; i < N; i++) { const tt = from + i / HZ; x[i] = evalTrack(kx, tt); y[i] = evalTrack(ky, tt); }
   }
-  // How close: as near as the tracks say, held between sizes the lines can be, at the place it's looking.
-  let fallen = 0, spd = 0;
-  for (let i = 0; i < N; i++) {
-    const tt = from + i / HZ, alt = altAt(i), sc = base(baseS, i);
-    const tip = tipAt(i), far = Math.abs(tip) > 0.01 ? farOf(tip, dirAt(i), lensAt(i)) : 1;
-    if (self) {
-      // The same at every size, so it can go on falling for as long as it's on, at the speed the song's going. It goes in on a plain track and comes to rest with it.
-      if (i >= ix0) { spd += ((0.35 + 1.4 * rd(T.speed, n, tt * HZ)) * SIZE.selfFall * B.zoom - spd) * 0.012; fallen += spd / HZ; }
-      z[i] = alt + fallen;
-      continue;
+
+  // Round and round it, on a ring road: what's going by runs up the screen, and the rings curve away with the road. Rings are the same all the way round, so it can go for as long as it's on.
+  if (B.rings && B.pan >= 0.5 && marks.length && !B.floor && !B.room && !B.lensy) {
+    const mk = marks[0], start = [base(baseX, ix0), base(baseY, ix0)], way = cam.wayAt(t0 + 1);
+    let a = G.t0 * 0.9, lastKick = q(T.kick, ix0);
+    for (let i = 0; i < N; i++) {
+      const w = fly[i];
+      const sc = base(baseS, i) * Math.exp(q(T.alt, i) * B.zoom), R = 1.9 / sc, kick = q(T.kick, i);
+      if (i >= ix0) a += way * (q(T.speed, i) / HZ + (kick - lastKick)) / 1.9;
+      lastKick = kick;
+      if (w <= 0) continue;
+      const cx = mk[0] + R * Math.cos(a) - start[0], cy = mk[1] + R * Math.sin(a) - start[1];
+      x[i] = lerp(x[i], cx, w); y[i] = lerp(y[i], cy, w);
+      // Screen up is along the road: R(-rot)(0,1) is the way round
+      const along = way > 0 ? a + Math.PI / 2 : a - Math.PI / 2;
+      spin[i] = lerp(spin[i], Math.PI / 2 - along - base(baseR, i), w);
     }
+  }
+
+  // How close: as near as the tracks say, held between sizes the lines can be, at the place it's looking.
+  let wobs = null;
+  for (let i = 0; i < N; i++) {
+    const alt = q(T.alt, i) * B.zoom, sc = base(baseS, i), tip = q(T.tip, i) * B.tip, far = Math.abs(tip) > 0.01 ? farOf(tip, q(T.dir, i), q(T.lens, i)) : 1;
     let k = base(baseK, i);
-    if (marks.length) {
+    if (marks.length && !B.self) {
       // Read at the frame: at four places round the middle, and go by the second biggest, since one of them can be right on a pole.
       const S = seenLines[Math.min(Math.floor(i / STEP), M_ - 1)], cx = S[OFF.tx] + x[i], cy = S[OFF.ty] + y[i], r = 0.75 / (sc * Math.exp(alt));
-      const v = [linesAt(S, cx + r, cy), linesAt(S, cx - r, cy), linesAt(S, cx, cy + r), linesAt(S, cx, cy - r)].sort((a, b) => b - a);
-      k = v[1] / sc;
+      const v = [linesAt(S, cx + r, cy), linesAt(S, cx - r, cy), linesAt(S, cx, cy + r), linesAt(S, cx, cy - r)].sort((c, d) => c - d);
+      k = v[2] / sc;
     }
-    const lo = Math.log(Math.max(k, 1e-3) / SIZE.bold), hi = Math.log(Math.max(k, 1e-3) / SIZE.big), loFar = Math.log(Math.max(k * far, 1e-3) / SIZE.boldFar);
-    // Lines finer than it likes to begin with stay as they were rather than be blown up: it's what that pattern is.
-    z[i] = between(alt, Math.max(lo, loFar), Math.max(hi, Math.max(lo, loFar) + 0.3));
+    const lo = Math.log(Math.max(k, 1e-3) / SIZE.bold), hi = Math.log(Math.max(k, 1e-3) / SIZE.big), loFar = Math.log(Math.max(k * far, 1e-3) / SIZE.boldFar), floor = Math.max(lo, loFar);
+    // Lines finer than it likes to begin with get a little larger, and stay about what they were rather than be blown up: it's what that pattern is.
+    z[i] = B.self ? alt : between(alt, floor, Math.max(hi, floor + 0.3));
   }
-  const smoothZ = smooth3(z, HZ * 0.18);
+  const held = smooth3(z, HZ * 0.18);
+  z.set(B.self ? z : held);
+
+  // A dial that's the same at every size. Quietly it falls into its own eye, turning as it goes. Flying, it rides an arm: the arm you're on holds still on the screen and everything else comes along it.
+  if (B.self) {
+    const mk = marks[0], start = [base(baseX, ix0), base(baseY, ix0)], way = cam.wayAt(t0 + 1);
+    const arm = B.arm ?? { l: 1, t: 0 }, m = Math.hypot(arm.l, arm.t / TAU) || 1;
+    let du = -arm.t / TAU / m, dth = arm.l / m;
+    if (du < 0) { du = -du; dth = -dth; }      // outwards: there's more room that way
+    const K = clamp(m / 3.2, 0.9, 2.4);          // frame units a unit of log radius takes: how big the cells look. And how far from the eye you ride
+    const big = Math.log(K / base(baseS, ix0));
+    let fallen = 0, spd = 0, u = 0, th = G.t0 * 1.1, lastKick = q(T.kick, ix0);
+    const lean = Math.atan2(dth, du);       // how far the arm is from running straight out
+    for (let i = 0; i < N; i++) {
+      if (i >= ix0) {
+        spd += ((0.35 + 1.4 * q(T.speed, i)) * SIZE.selfFall * B.zoom - spd) * 0.012; fallen = Math.min(fallen + spd / HZ, 7.5);
+        const kick = q(T.kick, i), ds = Math.min(0.22, 0.7 * q(T.speed, i) / K) / HZ + (kick - lastKick) * 0.35 / K;
+        lastKick = kick; u += du * ds; th += way * dth * ds;
+      }
+      const w = fly[i];
+      const R = Math.exp(u) * 1.3 / base(baseS, i), zr = -u + Math.log(K / 1.3);
+      const fallZ = z[i] + fallen;
+      x[i] = lerp(mk[0] - start[0] > 0 ? (mk[0] - start[0]) * smoother((i - ix0) / (3 * HZ)) : (mk[0] - start[0]) * smoother((i - ix0) / (3 * HZ)), mk[0] + R * Math.cos(th) - start[0], w);
+      y[i] = lerp((mk[1] - start[1]) * smoother((i - ix0) / (3 * HZ)), mk[1] + R * Math.sin(th) - start[1], w);
+      z[i] = lerp(fallZ, zr + z[i] * 0.5, w);
+      const heading = th + way * lean;       // the way along the arm, on the sheet
+      spin[i] = lerp(spin[i] + way * 0.5 * fallen, Math.PI / 2 - heading - base(baseR, i), w);
+    }
+    wobs = true;
+  }
   const at = (a, t) => rd(a, N, (t - from) * HZ);
-  return { x, y, z: self ? z : smoothZ, N, from, t0: G.t0, t1: G.t1, free, at };
+  return { x, y, z, spin, N, from, t0: G.t0, t1: G.t1, free, at, wobz: !!wobs };
 }
 
 // ---------------------------------------------------------------- reading it, a frame at a time
-const noRoute = { };
+const LAYER = [0, 0.32, -0.32, 0.16];      // a sheet of three or more lots of lines has them at different heights, and what you see of each moves with how near it is
 function makeWrite(cam) {
   const T = cam.T, n = cam.n;
   // Told to stay, a gesture stays where its camera had got to, and it runs out over the moment the long move does.
   const clockOf = (G, t) => { const e = G.freezeEase; if (G.freezeU == null || !e) return t; const q = Math.min(t - e.t0, e.tau); return e.t0 + q - q * q / (2 * e.tau); };
-  const scratch = {};
   return function camWrite(out, tIn, G) {
     const r = cam.routeFor(G);
     if (!r) return;
     const B = G.camBear, t = clockOf(G, tIn), locks = G.camLocks ??= locksOf(G);
-    const p = t * HZ, z = r.at(r.z, t), spin = rd(T.spin, n, p), tip = rd(T.tip, n, p) * B.tip * (G.camCalm ?? 1), dir = rd(T.dir, n, p), lens = rd(T.lens, n, p);
+    const p = t * HZ, z = r.at(r.z, t), spin = r.at(r.spin, t), tip = rd(T.tip, n, p) * B.tip * (G.camCalm ?? 1), dir = rd(T.dir, n, p), lens = rd(T.lens, n, p), mx = r.at(r.x, t), my = r.at(r.y, t);
     if (!locks.scale) out[OFF.scale] *= Math.exp(z);
-    if (!locks.tx) { out[OFF.tx] += r.at(r.x, t); out[OFF.ty] += r.at(r.y, t); }
-    if (B.room) { if (!locks.roll) out[OFF['cam.roll']] += spin * B.spin; }
-    else if (!locks.rot) out[OFF.rot] += spin * B.spin;
+    if (!locks.tx) { out[OFF.tx] += mx; out[OFF.ty] += my; }
+    if (B.room) { if (!locks.roll) out[OFF['cam.roll']] += spin; }
+    else if (!locks.rot) out[OFF.rot] += spin;
+    // A wobble stays in proportion on a sheet that's the same at every size
+    if (r.wobz && out[OFF.wob] !== 0) out[OFF.wobF] *= Math.exp(z);
+    if (B.layers && !locks.tx) {
+      const fq = out[OFF.freq];
+      for (let i = 1; i < FAMILIES; i++) if (out[OFF[`f${i}.on`]] > 0.5) out[OFF[`f${i}.ph`]] += LAYER[i] * fq * (out[OFF[`f${i}.x`]] * mx + out[OFF[`f${i}.y`]] * my);
+    }
     if (locks.tip || !B.tip) return;
     if (B.floor || B.room || B.lensy) {
       // It has a tip of its own. This leans it about that, as far as there's room, and goes round with dir.
@@ -410,10 +469,10 @@ function locksOf(G) {
 }
 
 // compose() calls this once a film is made. A world can refuse with world.camera === false.
-export function wearCamera(film, A, M, seed = 7) {
+export function wearCamera(film, A, M, seed = 7, { lang = null } = {}) {
   const H = film.hear;
   if (!H || !A?.duration) return null;
-  const hands = buildHands(film, A, M, H, seed);
+  const hands = buildHands(film, A, M, H, seed, lang);
   const cam = { ...hands, routes: new Map(), film };
   cam.write = makeWrite(cam);
   cam.routeFor = G => {
