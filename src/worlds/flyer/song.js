@@ -67,13 +67,13 @@ export function hearSong(score, A, M, whoaAt = null) {
   // The sheets. One for each kind of section, and another for it when it's been round again.
   const segs = (A.segments ?? []).filter(s => s.t1 - s.t0 > 2);
   const eOf = s => { let e = 0, n = 0; for (let q = s.t0; q < s.t1; q += 0.5) { e += frame(loud, A.fps, q) ?? 0; n++; } return e / Math.max(n, 1); };
-  const mean = segs.length ? segs.reduce((x, s) => x + eOf(s), 0) / segs.length : 0.5, wear = new Map();
+  const mean = segs.length ? segs.reduce((x, s) => x + eOf(s), 0) / segs.length : 0.5, worn = new Map();
   let lo = 0, qu = 0;
   const plan = [{ t: 0, e: 0, D: 0 }];
   let last = 0;
   for (const s of segs) {
-    const big = eOf(s) >= mean, had = wear.get(s.label) ?? { list: [], seen: 0 };
-    if (!had.list.length) { for (let k = 0; k < 2; k++) had.list.push(big ? LOUD[lo++ % LOUD.length] : QUIET[qu++ % QUIET.length]); wear.set(s.label, had); }
+    const big = eOf(s) >= mean, had = worn.get(s.label) ?? { list: [], seen: 0 };
+    if (!had.list.length) { for (let k = 0; k < 2; k++) had.list.push(big ? LOUD[lo++ % LOUD.length] : QUIET[qu++ % QUIET.length]); worn.set(s.label, had); }
     const e = had.list[had.seen++ % 2], at = time(s.t0);
     if (at - last < 10 || e === plan.at(-1).e) continue;
     plan.push({ t: at - 2 * bar, e, D: Math.max(3 * bar, 3) }); last = at;

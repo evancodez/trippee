@@ -16,7 +16,7 @@ function poster({ id, name, group = 'target', k = 2.5, n = 6, a = 0.2, kappa = 0
   const P = [...poles, ...Array(5).fill([0, 0, 0, 0])].slice(0, 5), kinds = Array.isArray(motif) ? motif : P.map(() => motif);
   const g = {
     fams: [{ y: lines, ph: ph ?? (field && kind === 0 ? atCentre(k, swell, e) : PH) }, ...fams],
-    field: { kind: 4, a: n, b: kinds.reduce((sum, m, i) => sum + (m || 0) * 16 ** i, 0), ph: a }, 'field.spin': 0, 'field.scale': kappa, 'field._1': beta, 'field._2': swell, 'field.k0': field ? k : 0,
+    field: { kind: 4, a: n, b: kinds.reduce((sum, m, i) => sum + (m || 0) * 16 ** i, 0), ph: a }, 'field.spin': kinds.some(Boolean) ? 1 : 0, 'field.scale': kappa, 'field._1': beta, 'field._2': swell, 'field.k0': field ? k : 0,
     'star._1': kind, 'star._2': extra, 'star._3': k,
     'spare.a': plates, 'spare.b': e, 'spare.c': screen, 'spare.d': stencil ? 1 : 0,
     'blobs.on': 0, 'blobs.beta': tile,

@@ -70,9 +70,12 @@ export default async ({ page, log, save, sleep }) => {
         for (const u of [-0.05, 0.14, 0.3, 0.5, 0.7, 0.86, 1.03]) { const t = t0 + u * G.morph; T.seek(t); await new Promise(r => setTimeout(r, 12)); T.seek(t); out.push({ url: grab(300, 169), label: u === 0.14 ? `${G.pattern.id.slice(6)}>${g[i + 1].pattern.id.slice(6)}` : u === 0.5 ? `${app.lastFrame?.kind ?? ''} ${t.toFixed(1)} D${G.morph.toFixed(1)}` : '' }); }
       }
       for (const G of g) { const k = G.plan?.kind ?? G.xform?.id ?? '-'; kinds[k] = (kinds[k] ?? 0) + 1; }
-      return { out, kinds, n: g.length, ids: g.map(G => G.pattern.id.slice(6)).join(' '), moves: g.map(G => (G.moves ?? []).map(m => m.id).join('+')).join(' ') };
+      const F = S.flyer, A = app.song.analysis;
+      const heard = F ? { wave: A.x?.wave?.share, hits: F.hits.length, every: F.every, snares: F.snares.length, fills: F.fills.length, whoa: F.whoa && +F.whoa.t.toFixed(1), plan: F.plan.map(p => `${p.t.toFixed(0)}:${p.e}`).join(' '), driveAvg: +(Array.from({ length: 60 }, (_, i) => F.driveAt(A.duration * i / 60)).reduce((x, y) => x + y, 0) / 60).toFixed(2) } : null;
+      return { heard, out, kinds, n: g.length, ids: g.map(G => G.pattern.id.slice(6)).join(' '), moves: g.map(G => (G.moves ?? []).map(m => m.id).join('+')).join(' ') };
     }, { grabS: grab.toString(), want: +(process.env.N ?? 14) });
     log('kinds', JSON.stringify(r.kinds), 'gestures', r.n);
+    log('heard', JSON.stringify(r.heard));
     log(r.ids); log(r.moves);
     for (let i = 0; i < r.out.length; i += 7 * 12) save(`lands${i / (7 * 12)}.jpg`, await page.eval(sheetInPage, { items: r.out.slice(i, i + 7 * 12), cols: 7, tw: 300, th: 169 }));
     log(errs().slice(0, 6));

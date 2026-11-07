@@ -120,7 +120,7 @@ export function moves(score, A, M) {
       if (id === 'windmill') m.way = i % 2 ? 1 : -1;
       // The film's own, cued as a hand cut cues them.
       const mv = MOVES[id];
-      if (mv.cue && !['wring', 'ratchet', 'bellows'].includes(id)) { m.lead = Math.min(m.lead, 1); if (id === 'scissor') { m.lead = 0.5; m.coast = 1; m.every = 4; } const ok = mv.cue(m, { score, A, M, G, at: x => x, bar, beat: M?.beat ?? 0.5, meter: M?.meter ?? 4, tau: score.tau }); if (!ok) continue; }
+      if (mv.cue && !['wring', 'ratchet', 'bellows'].includes(id)) { m.lead = Math.min(m.lead, 1); m.open = Math.min(2, body / (3 * bar)); m.close = Math.min(1.5, body / (3 * bar)); if (id === 'scissor') { m.lead = 0.5; m.coast = 1; m.every = 4; } const ok = mv.cue(m, { score, A, M, G, at: x => x, bar, beat: M?.beat ?? 0.5, meter: M?.meter ?? 4, tau: score.tau }); if (!ok) continue; }
       (G.moves ??= []).push(m);
     }
   }

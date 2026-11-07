@@ -83,6 +83,7 @@ export default {
   uniforms(U, ctx) {
     const { A, B, kind, from, to, t, score, plan, x } = ctx, song = score?.flyer ?? null, a = U.a, b = U.b;
     const here = from ?? ctx.G, phi = score?.phi;
+    if (from && to && slotPage(from) === slotPage(to)) to.page = 1 - slotPage(from);      // a pick has no page of its own
     // In a world's landing the rings run on the one clock, right through it.
     if (from && to && phi) {
       const now = ratchet(FLOW * phi(t, to));

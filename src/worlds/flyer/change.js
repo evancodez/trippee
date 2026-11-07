@@ -122,6 +122,7 @@ export default {
     STEPPED.forEach((n, i) => { A[n] = kept[i]; });
     A[DEPTH] = depth;
     // A motif closes as the rings go round too: at the middle everything's a plain target.
+    A[OFF['field.spin']] = x < 0.5 ? 1 * (1 - smoother(x / 0.5)) * from[OFF['field.spin']] : smoother((x - 0.5) / 0.5) * from[OFF['field.spin']];
     A[OFF['spare.b']] = lerp(A[OFF['spare.b']], B[OFF['spare.b']], X);
     if (ta !== tb) A[OFF['blobs.beta']] = Math.exp(lerp(Math.log(Math.max(ta, 0.08)), Math.log(Math.max(tb, 0.08)), X));
     st.two = false;

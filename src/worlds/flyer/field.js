@@ -39,6 +39,7 @@ float wFlyRings(int b,vec2 X,vec4 f,vec4 f2,float e){
   float a=f.w,n=f.y,kap=f2.y,be=f2.z,lg=f2.w,sum=0.;
 #ifdef WORLD_FULL
   int kinds=int(f.z);
+  float ms=f2.x;
 #endif
   for(int i=0;i<5;i++){
     vec4 P=wFlyPole(b,i);
@@ -48,7 +49,7 @@ float wFlyRings(int b,vec2 X,vec4 f,vec4 f2,float e){
     float q=dot(d,d),er=e*r,D=q+er*er,rho=sqrt(D)/r,u=q/D,th=atan(d.y,d.x)+P.w;
 #ifdef WORLD_FULL
     int m=(kinds>>(4*i))&15;
-    if(m>0){ float l0=sqrt(q)+1e-5; vec2 v=rot(P.w)*d/l0; rho/=max(1.+u*u*(wFlyMotif(m,v,atan(v.y,v.x),n)-1.),.25); }
+    if(m>0&&ms>0.){ float l0=sqrt(q)+1e-5; vec2 v=rot(P.w)*d/l0; rho/=max(1.+ms*u*u*(wFlyMotif(m,v,atan(v.y,v.x),n)-1.),.25); }
 #endif
     if(a!=0.) rho/=max(1.+a*u*wFlyWave(n*th/TAU+kap*.5*log(q+1e-5)),.2);
     float l=mix(rho,log(rho+.12),lg)+.13*mod(float(i)*2.,5.);
@@ -165,12 +166,12 @@ vec3 worldColor(int k0,int k1,float c){
   vec4 bm=uW[13];
   if(bm.z>0.){
     vec2 d=p-vec2(0.,bm.w);
-    float y=-d.y,l=length(d),aw=1./(res.y*.5*max(y,.3)),b1=sin(bm.x)*y-cos(bm.x)*d.x,b2=sin(bm.y)*y-cos(bm.y)*d.x;
-    float w=bm.z*y,s=clamp(.5+(w-abs(b1))/(res.y>0.?2./res.y:1.),0.,1.);
-    s=max(s,clamp(.5+(w-abs(b2))/(2./res.y),0.,1.));
-    cA=mix(cA,1.-cA,s*(y>0.?1.:0.));
+    float y=-d.y,b1=sin(bm.x)*y-cos(bm.x)*d.x,b2=sin(bm.y)*y-cos(bm.y)*d.x,w=bm.z*y;
+    float on=max(clamp(.5+(w-abs(b1))*res.y*.5,0.,1.),clamp(.5+(w-abs(b2))*res.y*.5,0.,1.));
+    cA=mix(cA,1.-cA,on);
   }
-  float s=0.,ld=0.,F0=max(gFlyT>=0.?mix(uG[I_spare].z,uG[SLOT+I_spare].z,gFlyT):uG[bs+I_spare].z,1.),gut=1.;
+  float s=0.,ld=0.,F0=gFlyT>=0.?mix(uG[I_spare].z,uG[SLOT+I_spare].z,gFlyT):uG[bs+I_spare].z,gut=1.;
+  if(F0<1.) F0=6.;      // the film's own have no screen of their own
   int blk=15,blkWas=15;
   float hopV=1.;
 #ifdef WORLD_FULL
