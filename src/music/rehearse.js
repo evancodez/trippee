@@ -49,7 +49,7 @@ const FLASH_SWING = 22, FLASH_SWING_WHOLE = 19, FLASH_WHOLE = 0, FLASH_TILE = 2,
 const JUDGE_SWING = 25.5, JUDGE_WITHIN = 1.15;
 // A film's looks. The whole film small and quick, at 30 a second, for anywhere that might be flashing; then whatever that finds is looked at again at twice the size again, the way the judge counts, and only a flash that's still there gets anything done about it.
 // Reads are batched (Eyes), which is why this can look so much more often than a read a look could and take less time: GPU_BATCH looks to one wait for the GPU.
-const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, FILM_SWING_WHOLE = 19, REAL_SWING_WHOLE = 21.5, GUARD_LOOKS = 30, GUARD_MOST = 7000, SCAN_LOOK = 0.4, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 8;     // GUARD_LOOKS: close looks, per second of film, for it to spend, so a film with twice the changes takes no longer. A coarse look costs SCAN_LOOK of one.
+const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, FILM_SWING_WHOLE = 19, REAL_SWING_WHOLE = 21.5, GUARD_LOOKS = 30, GUARD_MOST = 7000, GUARD_LOOKS_ALL = 80, SCAN_LOOK = 0.4, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 8;     // GUARD_LOOKS: close looks, per second of film, for it to spend, so a film with twice the changes takes no longer. A coarse look costs SCAN_LOOK of one.
 // What it may do. A loud stretch never drops below half its flow, however stubborn the flash; a quiet one, a quarter. Both only for the seconds it flashes, easing there and back.
 const SLOW_LOUD = 2, SLOW_QUIET = 4, SLOW_RAMP = 1.2, SLOW_AROUND = 0.6, LONGER_MOST = 1.35;
 // How long a song's film takes to fly in, as song.js has it unless the flight needs longer: a first gesture's morph can't start before that, or stage._clearRunway cuts it short after it's been looked at.
@@ -441,7 +441,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
   const gestures = score.gestures, rides = [], ways = [];
   if (!opening && score.woah) await buildFor(R, score, until, breathe);
   // A jump in brightness makes a whole new film, so it's looked for first, before anything's spent on this one. And one inside a trick is the trick's: it's the trick that goes.
-  if (!opening && !lastTry && !score.world && !score.cut && flag('flashGuard') && until <= FLASH_LONGEST) {
+  if (score.woah && !opening && !lastTry && !score.world && !score.cut && flag('flashGuard') && until <= FLASH_LONGEST) {
     const early = await jumpsFirst(R, score, until, { aspect, breathe, task, batch: live() || gentle ? GPU_BATCH_GENTLE : GPU_BATCH });
     if (early.filter(j => j.id !== keep).length) { ch.port1.close(); return { jumps: early, bad: [...new Set(early.map(j => j.id))], rides: [], ways: [], sitOut: [], rangeSeconds: 0, seconds: (performance.now() - t0) / 1000, early: true }; }
   }
@@ -626,7 +626,7 @@ const forget = G => { if (G) G.plan = G.planFor = G.planning = null; };
 // ---------------------------------------------------------------- the layer that follows the song
 // Everything above looks at the film with this layer off. So here it's on: the film as it's seen, and for the second or so around whatever's still flashing, the layer itself gives way (score.hear.ease), a little more each time it doesn't clear, and nowhere else. It takes nothing from the rest of the song. What flashes with it all the way down is the film's own.
 const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 2, HEAR_LOOKS = 8, HEAR_MOST = 2000;      // HEAR_LOOKS: close looks it has to spend, per second of film
-const CAM_TRIES = 3, CAM_RATE = 0.3;
+const CAM_TRIES = 5, CAM_RATE = 0.3;
 async function guardHeard(R, score, until, colour, ctx) {
   const H = score.hear, g = score.gestures, edits = { hear: 1 }, fps = (colour ? HEAR_SUB_WORLD : FILM_SUB) / STEP, HH = colour ? FLASH_H : FLASH_H_FILM, W = Math.max(8, Math.round(HH * ctx.aspect)), n = Math.ceil(until * fps);
   const seen = new FlashSeen(n + 1, W, HH, fps, colour, !colour);
@@ -643,7 +643,7 @@ async function guardHeard(R, score, until, colour, ctx) {
   await look(0, n + 1);
   // What it's got to look with. Past that, whatever's left is said by the judge and not by this, and a film's load time doesn't depend on how much it has going on.
   let spent = 0;
-  const allowed = Math.min(HEAR_LOOKS * until, HEAR_MOST), count = k => { spent += k; }, close = (a, b, strict = false) => (spent > allowed ? { at: [], whole: 0 } : lookClose(R, score, a, b, ctx, count, edits, strict));
+  const allowed = score.woah ? Math.min(HEAR_LOOKS * until, HEAR_MOST) : Infinity, count = k => { spent += k; }, close = (a, b, strict = false) => (spent > allowed ? { at: [], whole: 0 } : lookClose(R, score, a, b, ctx, count, edits, strict));
   const dips = H.dips = [];
   const dip = (a, b, to) => { for (let i = Math.max(0, Math.floor((a - HEAR_EDGE) * H.hz)), e = Math.min(H.n - 1, Math.ceil((b + HEAR_EDGE) * H.hz)); i <= e; i++) { const t = i / H.hz, k = smoother((t - (a - HEAR_EDGE)) / HEAR_EDGE) * smoother((b + HEAR_EDGE - t) / HEAR_EDGE); H.ease[i] = Math.min(H.ease[i], 1 - (1 - to) * k); } };
   const fine = new Set();
@@ -678,7 +678,7 @@ async function guardHeard(R, score, until, colour, ctx) {
     let tried = 0;
     H.camSlowed = [];
     for (const w of stretches(seen.over(0, seen.n, false), fps)) {
-      if (tried >= CAM_TRIES || fine.has(w.b.toFixed(1))) continue;
+      if (tried >= (score.woah ? 3 : CAM_TRIES) || fine.has(w.b.toFixed(1))) continue;
       const was = await close(w.a, w.b);
       if (!was.at.length) continue;
       tried++;
@@ -900,7 +900,7 @@ const smootherArea = u => u * u * u * u * (u * (u - 3) + 2.5);
 
 async function guardFilm(R, score, seen, ctx) {
   const { breathe, mayChangeFor, opening = 0 } = ctx, g = score.gestures, t0 = performance.now(), fixes = [], refused = score.refused ??= [], tau = score.tau ?? (t => t), isLoud = loudness(score), fps = seen.fps;
-  const allowed = Math.min(Math.round(GUARD_LOOKS * seen.n / fps), GUARD_MOST);
+  const allowed = score.woah ? Math.min(Math.round(GUARD_LOOKS * seen.n / fps), GUARD_MOST) : Math.round(GUARD_LOOKS_ALL * seen.n / fps);      // ?woah=0 is the film as it was, with what it had to look with
   let looks = allowed, falseAlarms = 0, unlooked = false;
   const spent = n => { looks -= n; }, tried = [];
   const lands = opening || FLASH_ARRIVAL;

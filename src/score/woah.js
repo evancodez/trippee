@@ -12,7 +12,7 @@ import { directing } from './flags.js';
 import { MOVES } from './moves/index.js';
 import { rewindClock } from './moves/time.js';
 import { canShock } from './xform/shock.js';
-import { base } from './slot.js';
+import { base, fineness } from './slot.js';
 import { momentsOf } from './hear.js';
 import { OFF, FAMILIES } from '../pattern/layout.js';
 
@@ -37,25 +37,25 @@ const MOVE_OF = { hallway: 'hall' };      // the stretch of a hall, whose name a
 const CHANGES = ['flood', 'drop', 'tube', 'pleat', 'hall', 'span'];
 const STRETCHES = ['forever', 'limit', 'screen', 'pearls', 'fan', 'crumple', 'roll', 'slit', 'ghost', 'fringe', 'snakes', 'ouchi', 'echo', 'slice', 'swell', 'terraces', 'pleats', 'ride', 'hallway', 'rewind'];
 const LINES_ONLY = new Set(['crumple', 'limit']), MARCH = new Set(['ratchet', 'wring', 'scissor', 'bellows']);
-const OVER_RELAY = new Set(['forever', 'limit', 'screen', 'pearls', 'fan', 'roll', 'crumple', 'swell', 'terraces', 'ride', 'hallway', 'pleats']);      // it doesn't care what's on the sheet, and a Relay's steps can go on under it
+const OVER_RELAY = new Set(['forever', 'limit', 'screen', 'pearls', 'fan', 'roll', 'swell', 'terraces', 'pleats']);      // it doesn't care what's on the sheet, and a Relay's steps can go on under it
 
 // How well each suits a place. All 0 to about 1. These started from what the lanes guessed, and were gone over on sheets of real frames.
 const near = (x, c, w) => clamp(1 - Math.abs(x - c) / w);
 const SUIT = {
   forever: f => 0.15 + 0.95 * f.loud * f.loud + 0.15 * f.climb,
-  limit: f => 0.1 + 0.8 * f.loud,
+  limit: f => 0.2 + 0.9 * f.loud,
   echo: f => 0.1 + 0.55 * f.loud + 0.2 * f.voiced,
   screen: f => 0.15 + 0.9 * f.bridge + 0.35 * near(f.lv, 2, 2),
   pearls: f => 0.1 + 0.7 * near(f.lv, 1.5, 1.5) + 0.25 * f.voiced + 0.2 * f.climb,
   fan: f => 0.1 + 0.5 * near(f.lv, 1.5, 2) + 0.55 * f.climb,
-  crumple: f => 0.05 + 0.95 * f.build + 0.35 * f.climb,
+  crumple: f => 0.2 + 0.95 * f.build + 0.35 * f.climb,
   roll: f => 1.05 * f.big,
   slit: f => 0.05 + 0.95 * f.build + 0.25 * f.loud + 0.3 * f.climax,
   ghost: f => 0.1 + 0.5 * f.groove + 0.25 * near(f.lv, 2, 2),
   fringe: f => 0.05 + 0.75 * f.intro + 0.4 * (1 - f.loud) + 0.2 * f.voiced,
   snakes: f => 0.05 + 0.65 * (1 - f.loud) + 0.2 * f.voiced,
-  ouchi: f => 0.9 * f.breakdown + 0.25 * (1 - f.loud),
-  slice: f => 0.05 + 1.0 * f.chord + 0.15 * (1 - f.voiced),
+  ouchi: f => 0.1 + 0.9 * f.breakdown + 0.3 * (1 - f.loud),
+  slice: f => 0.2 + 1.0 * f.chord + 0.2 * (1 - f.voiced),
   swell: f => 0.1 + 0.35 * (1 - f.voiced) + 0.4 * near(f.lv, 2, 1.5) + 0.2 * f.groove,
   terraces: f => 0.1 + 0.35 * (1 - f.voiced) + 0.3 * f.loud + 0.2 * f.groove,
   pleats: f => 0.1 + 0.35 * (1 - f.voiced) + 0.45 * near(f.lv, 1.5, 1.5),
@@ -70,7 +70,7 @@ const SUIT = {
   span: f => 0.1 + 0.3 * f.turn + 0.45 * (1 - f.loud),
 };
 const LEAST = { forever: 8, limit: 8, echo: 9, screen: 9, pearls: 9, fan: 9, crumple: 9, roll: 8, slit: 7, ghost: 9, fringe: 11, snakes: 10, ouchi: 10, slice: 11, swell: 11, terraces: 11, pleats: 10, ride: 13, hallway: 14, rewind: 0 };
-const WANT = { forever: 18, limit: 18, echo: 14, screen: 18, pearls: 16, fan: 18, crumple: 14, roll: 9, slit: 12, ghost: 16, fringe: 18, snakes: 16, ouchi: 14, slice: 18, swell: 18, terraces: 16, pleats: 15, ride: 20, hallway: 20, rewind: 0 };
+const WANT = { forever: 18, limit: 18, echo: 14, screen: 18, pearls: 16, fan: 18, crumple: 14, roll: 9, slit: 12, ghost: 12, fringe: 16, snakes: 14, ouchi: 12, slice: 18, swell: 18, terraces: 16, pleats: 15, ride: 20, hallway: 20, rewind: 0 };
 const MOST = 26;
 
 const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
@@ -283,7 +283,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   // The pattern a trick wants a sheet to be, if it isn't.
   const OWN = { slice: 'space.crystal', fringe: 'time.fringe', ouchi: 'time.ouchi' };
   // ...and those that can have one, if what's there can't take them. A Relay can't: a time trick reads the sheet's phases, and it's changing all of them.
-  const OWN_IF = { ghost: ['time.ghostcheck', 'time.ghost'], snakes: ['time.snakes'], echo: ['time.echo'], slit: ['time.shutter', 'time.target', 'time.rings', 'time.venetian', 'time.wave', 'time.spiral', 'time.cells'], swell: ['space.swell'], terraces: ['space.terraces'], pleats: ['space.pleats'], ride: ['space.ride'], hallway: ['space.hall'] };
+  const OWN_IF = { ghost: ['time.ghostcheck', 'time.ghost'], snakes: ['time.snakes'], echo: ['time.echo'], slit: ['time.shutter', 'time.target', 'time.rings', 'time.venetian', 'time.wave', 'time.spiral', 'time.cells'], swell: ['space.swell'], terraces: ['space.terraces'], pleats: ['space.pleats'], ride: ['space.ride'], hallway: ['space.hall'], crumple: ['folds.crumple', 'folds.crumplerings'], limit: ['folds.limit', 'folds.limitcheck'] };
   const ownFor = (id, G) => {
     if (world) return null;
     if (OWN[id]) return lib(OWN[id]);
@@ -296,9 +296,11 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     const s = base(G.pattern), mv = MOVES[MOVE_OF[id] ?? id];
     if (!mv) return false;
     if (OWN[id] && !world) return false;
-    if (LINES_ONLY.has(id) && crossed(G)) return false;
+    if (LINES_ONLY.has(id) && (crossed(G) || relayOf(G))) return false;      // on a check they're only a busier check, and a Relay is a check as often as not
     if ((relayOf(G) || marches(G) || G.pattern.drive) && !OVER_RELAY.has(id)) return false;
     if ((id === 'slit' || id === 'echo') && !flatSheet(s)) return false;
+    // A tube or a hall goes off to a point, and whatever's fine to start with is grey by there
+    if ((id === 'ride' || id === 'hallway') && (relayOf(G) || fineness(s) > 4.5)) return false;
     // A sheet in space on a floor that's already gone off to its own horizon is hairlines to the horizon
     if (SET[id] === 'space' && id !== 'slice' && !flatSheet(s)) return false;
     if (mv.needs && !mv.needs(s, G)) return false;
