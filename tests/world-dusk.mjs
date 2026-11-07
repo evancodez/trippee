@@ -141,6 +141,16 @@ async function stages({ page, log, save, sleep }) {
     }
     log(`clicks: ${good}/${ids.length} landed`);
   }
+  if (want.includes('big')) {
+    // A few patterns big enough to look at: IDS=wires,blinds T=80,170
+    const r = await page.eval(async (ids, ts) => {
+      const W = await F_.enter(), by = id => W._pool.find(p => p.id === 'dusk.' + id), w = 960, h = 540, cv = document.createElement('canvas'); cv.width = w * Math.min(2, ids.length * ts.length); cv.height = h * Math.ceil(ids.length * ts.length / 2);
+      const g = cv.getContext('2d'); let i = 0;
+      for (const id of ids) for (const t of ts) { F_.show(by(id), t); g.drawImage(trippee.canvas, (i % 2) * w, Math.floor(i / 2) * h, w, h); i++; }
+      return cv.toDataURL('image/jpeg', 0.9);
+    }, (process.env.IDS || 'ridge').split(','), (process.env.T || '80').split(',').map(Number));
+    save(process.env.NAME || 'big.jpg', r);
+  }
   if (want.includes('trem')) {
     // No test song has a tremolo the extras can hear, so its ribs get proved by telling the world there is one: the same frames with and without, side by side.
     const r = await page.eval(async ids => {
@@ -154,6 +164,30 @@ async function stages({ page, log, save, sleep }) {
       return cv.toDataURL('image/jpeg', 0.9);
     }, (process.env.IDS || 'ridge,strings,road').split(','));
     save(process.env.NAME || 'trem.jpg', r);
+  }
+  if (want.includes('pure')) {
+    // Which numbers in the block depend on what was drawn before: the same moment by two roads.
+    const songPath = process.env.SONG || 'media/mgmt.mp3';
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+    await sleep(400);
+    await dropSong(page, songPath, { resolvePath: resolve, sleep });
+    await enterWorld(page, 'dusk', log);
+    const r = await page.eval(async () => {
+      const { OFF, FRAME, SLOT_FLOATS } = await import(new URL('src/pattern/layout.js', location.href).href);
+      const names = Object.entries(OFF).reduce((o, [k, v]) => { o[v] = k; return o; }, {});
+      const T = trippee, R = app.R, out = [];
+      app.manual = true;
+      for (const t of [0.81, 30.2, 61.7, 100.3]) {
+        T.seek(t + 5); T.seek(t); const a = Float32Array.from(R.block), wa = Float32Array.from(R.wp?.block ?? []);
+        T.seek(t + 37); T.seek(t); const b = Float32Array.from(R.block), wb = Float32Array.from(R.wp?.block ?? []);
+        const diff = []; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff.push(i);
+        const wd = []; for (let i = 0; i < wa.length; i++) if (wa[i] !== wb[i]) wd.push(i);
+        const nm = i => (i < SLOT_FLOATS ? 'A.' + names[i] : i < 2 * SLOT_FLOATS ? 'B.' + names[i - SLOT_FLOATS] : 'F' + (i - 2 * SLOT_FLOATS));
+        out.push({ t, block: diff.length, which: diff.slice(0, 16).map(i => `${nm(i)} ${a[i]} ${b[i]}`), world: wd.length, w: wd.slice(0, 10).map(i => `${i} ${wa[i]} ${wb[i]}`) });
+      }
+      return out;
+    });
+    log(JSON.stringify(r, null, 0));
   }
   if (want.includes('frames')) {
     // Frames of the film at given moments, big enough to look at: SONG=... AT=t,t,t COLS=4

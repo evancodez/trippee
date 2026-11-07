@@ -4,7 +4,7 @@ import { OFF, FRAME, RIPPLES } from '../pattern/layout.js';
 import { pool } from './dusk/patterns.js';
 import { FIELD } from './dusk/field.js';
 import { DEFS, WARP, COLOR } from './dusk/light.js';
-import { writeStock, lampsAt, gammaAt, chips } from './dusk/stocks.js';
+import { writeStock, lampsAt, gammaAt, sunAt, chips } from './dusk/stocks.js';
 import { hearDusk, whoaOf, read, holdAt, eclipseAt } from './dusk/song.js';
 import { KINDS } from './dusk/across.js';
 import { cast, landings, moves, endings, PICK } from './dusk/direct.js';
@@ -21,9 +21,9 @@ const NOLAKE = -3;
 const discOf = p => (p?.sun || p?.group === 'land' ? 1 : 0);      // the sun's a disc where there's a sky for it to be in. In a room or on a string it's only the light
 
 // Where a pattern has its sun, in the frame, as its view has it now.
-function sunIn(p, S, t, melSlow) {
+function sunIn(p, S, t, melSlow, path) {
   const s = p?.sun;
-  if (!s) return [FREE_SUN[0] + 0.5 * Math.sin(t * 0.021), FREE_SUN[1] + melSlow, FREE_SUN[2]];
+  if (!s) return [FREE_SUN[0] + 0.5 * Math.sin(t * 0.021), path[0] + melSlow, path[2]];
   const sc = S[OFF.scale], c = Math.cos(S[OFF.rot]), n = Math.sin(S[OFF.rot]), x = (s[0] - S[OFF.tx]) * sc, y = (s[1] - S[OFF.ty]) * sc;
   return [c * x - n * y, n * x + c * y, s[2] * sc];
 }
@@ -61,11 +61,13 @@ export default {
     for (let i = 4; i < RIPPLES; i++) ctx.F[(FRAME.ripple + i) * 4 + 3] *= 1 - geo;
     const melSlow = s ? Math.max(-0.5, Math.min(0.5, s.melSlow * 0.045)) : 0.1 * Math.sin(t * 0.17);
     // The sun.
-    const a = sunIn(G?.pattern, A, t, melSlow), b = N ? sunIn(N.pattern, B, t, melSlow) : a;
+    const day = (song ? read(song, song.day, t) + read(song, song.mood, t) : t * 0.03) % 8, path = sunAt(day), a = sunIn(G?.pattern, A, t, melSlow, path), b = N ? sunIn(N.pattern, B, t, melSlow, path) : a;
     const v = song ? read(song, song.voice, t) : 0.6 + 0.4 * Math.sin(t * 0.11), tune = s?.gains?.tune ?? 1;
     E[0] = a[0] + (b[0] - a[0]) * Tx; E[1] = a[1] + (b[1] - a[1]) * Tx;
     E[2] = (a[2] + (b[2] - a[2]) * Tx) * (0.92 + 0.14 * v);
-    E[3] = 0.5 + 0.5 * v * Math.min(1, tune + 0.3);
+    // How much sun: the voice's, and the evening's. A pattern that's built round the sun keeps it, as the moon if that's what's up.
+    const keeps = p => (p?.sun ? 1 : 0), ka = keeps(G?.pattern), kk = ka + ((N ? keeps(N.pattern) : ka) - ka) * Tx;
+    E[3] = (0.5 + 0.5 * v * Math.min(1, tune + 0.3)) * (path[1] + (Math.max(path[1], 0.7) - path[1]) * kk);
     // The tails, the film's halation, the strip chart, and the frame's light.
     const energy = song ? read(song, song.energy, t) : 0.4 + 0.2 * Math.sin(t * 0.07), lung = s ? Math.min(s.lung, 1.2) : 0.5, pulse = s ? Math.min(s.pulse, 1.2) : 0, air = song?.air ?? 2.6, hold = song ? holdAt(song, t) : 0;
     const held = song ? read(song, song.held, t) : 0.5, L = (0.34 + 0.1 * (air - 2.6) + 0.28 * held + 0.1 * lung + 0.08 * pulse) * (1 - 0.92 * hold);
@@ -99,13 +101,25 @@ export default {
     E[21] = da + (db - da) * Tx;
     E[22] = 0.32;
     // The evening.
-    const day = (song ? read(song, song.day, t) + read(song, song.mood, t) : t * 0.03) % 8;
     writeStock(E, 24, day);
     // Lamps and windows, as the evening reaches them. They're on the land and the road and in the houses, and not in a pattern that isn't anywhere.
     const lampShare = p => (p ? (p.lamps ?? 0) * (p.group === 'land' || p.group === 'road' ? 1 : 0) : 0), litShare = p => (p?.lit ? 1 : 0), L0 = lampsAt(day);
     E[23] = L0 * (lampShare(G?.pattern) + ((N ? lampShare(N.pattern) : lampShare(G?.pattern)) - lampShare(G?.pattern)) * Tx);
     const Ub = U.b, lit = litShare(G?.pattern) + ((N ? litShare(N.pattern) : litShare(G?.pattern)) - litShare(G?.pattern)) * Tx;
     Ub[0] = lit * (0.22 + 0.7 * L0 + 0.08 * Math.sin(t * 0.3));
+    // A patch of late sun on the wall: it climbs as the sun gets low, and it goes when the sun has.
+    const wa2 = G?.pattern?.wall, wb2 = N ? N.pattern?.wall : wa2, wa1 = wa2 ? 1 : 0, wb1 = wb2 ? 1 : 0, wh = wa1 + (wb1 - wa1) * Tx, W0 = wa2 ?? wb2;
+    Ub[4] = 0;
+    if (W0) {
+      const low = 1 - clamp01((path[0] + 0.2) / 0.85), sc = (G?.pattern?.wall ? A : B)[OFF.scale];
+      Ub[4] = wh * Math.max(0.25, path[1]);
+      Ub[5] = W0[0] + 0.55 * Math.sin(t * 0.017) + (low - 0.5) * 0.6; Ub[6] = W0[1] + (low - 0.5) * 0.42;
+      Ub[7] = W0[2] + 0.8 * low;
+      Ub[8] = W0[3] * sc * (1 + 0.3 * low); Ub[9] = W0[4] * sc * (1 - 0.3 * low); Ub[10] = W0[5];
+    }
+    // The birds on the wires: when the song falls away they've gone, and they come back one at a time.
+    const ba = G?.pattern?.birds ?? 0, bb = N ? N.pattern?.birds ?? 0 : ba;
+    Ub[11] = (ba + (bb - ba) * Tx) * (1 - hold);
     // The eclipse: everything looks at it. It's the one time the sun's somewhere it didn't choose.
     const ec = song ? eclipseAt(song, t) : null;
     Ub[1] = 0; Ub[2] = 0; Ub[3] = gammaAt(day);

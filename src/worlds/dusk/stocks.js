@@ -24,4 +24,12 @@ export function writeStock(E, at, day, ahead = 0.3) {
 export const lampsAt = day => { const [a, b, k] = place(day); return a.lamps + (b.lamps - a.lamps) * k; };
 // How much light it takes: at night the mist goes back to being dark, and only what's near an edge is lit.
 export const gammaAt = day => { const [a, b, k] = place(day), g = x => x.gam ?? 1; return g(a) + (g(b) - g(a)) * k; };
+// Where the sun's got to. y in the frame, how much of it, how big. It sets behind whatever's there, and it's the moon by the time it's night. The two jumps are where there's none of either.
+const SUN = [[0, 0.62, 0.9, 0.26], [1, 0.44, 1, 0.3], [2, 0.26, 1, 0.33], [3, 0.06, 0.95, 0.36], [4, -0.35, 0.35, 0.36], [4.5, -0.6, 0, 0.36], [4.5, 0.76, 0, 0.14], [5, 0.62, 0.85, 0.15], [6, 0.54, 0.7, 0.15], [6.5, 0.5, 0, 0.15], [6.5, -0.2, 0, 0.3], [7, 0.04, 0.75, 0.34], [8, 0.62, 0.9, 0.26]];
+export const sunAt = day => {
+  const d = ((day % N) + N) % N;
+  let i = 0; while (i + 2 < SUN.length && SUN[i + 1][0] <= d) i++;
+  const a = SUN[i], b = SUN[i + 1], k = b[0] > a[0] ? (d - a[0]) / (b[0] - a[0]) : 0;
+  return [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k];
+};
 export const chips = [[240, 150, 80], [192, 104, 100], [124, 50, 106], [58, 66, 118]];

@@ -22,6 +22,7 @@ float wLand(int b,vec2 X,vec4 f,vec4 f2,vec4 sp){
     y0-=D; D*=q; s*=q; I+=1.;
   }
   wSky[b==0?0:1]=best<0.?1.:.25*exp(-.6*best);
+  wHaze[b==0?0:1]=best<0.?1.:1.-.74*exp(-.62*best);
   if(best<0.) return (X.y-R0)/(1.4*f2.z);
   return -best-.97*(1.-exp(-2.6*bd));
 }
@@ -59,7 +60,9 @@ float worldField(int b,vec2 X,vec4 f){
   else if(kind==8){ float y=asin(sin(X.y*f2.z))/f2.z; S=f2.w*y/(1.+f.w*sin(sp.z*X.x-sp.y)); }                       // tremolo: bands that swell and thin along their length, and the swell goes by
   else if(kind==9){ float a=sp.z*X.x+sp.x*X.y+sp.y; S=f2.w*X.x+f.w*(sin(a)+.5*sin(1.71*a-.6*sp.x*X.y+1.)); }        // a curtain, folding
   else if(kind==10) S=f2.w*(X.y+f.w*abs(X.x-sp.z)+sp.x*X.x);                                                         // blinds: slats of light, turning a corner of the wall
-  else if(kind==11){ float u=f2.x-X.y; S=f2.w*(X.x-sp.z)/sqrt(u*u+f2.z*f2.z); wSky[0]=wSky[1]=1.; }                  // furrows: rows running to a point on the horizon
+  else if(kind==11){ float u=f2.x-X.y; if(u>0.){ S=f2.w*(X.x-sp.z)/sqrt(u*u+f2.z*f2.z); wSky[b==0?0:1]=.2; } else { S=.25-u*f.w; wSky[b==0?0:1]=1.; } }      // furrows: rows running to a point on the horizon, under a sky of broad bands (field.ph)
+  else if(kind==13) S=f2.w*(X.y+f.w*pow(abs(sin(sp.z*X.x+sp.y)),.5));                                                 // a viaduct: arches, every line of it
+  else if(kind==14){ float h=X.y+1.3,ph=sp.y; S=f2.w*(X.x-sp.z+f.w*h*(sin(sp.x*X.y-ph)+.5*sin(2.3*sp.x*X.y-1.7*ph+1.))); }     // smoke: upright lines that wander more the higher they've got, and the wander goes up
 #ifdef WORLD_FULL
   else if(kind==12) S=wDapple(b,X,f,f2,sp);
 #endif

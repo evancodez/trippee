@@ -12,8 +12,11 @@
 //   uW[10..17] the stock
 //   uW[18..25] the strip chart: the last few seconds of the song, a cycle's worth, newest first
 //   uW[34]     how many windows are lit, the eclipse, where the moon is against the sun, how much light the stock takes
+//   uW[35]     a patch of late sun on a wall: how much, its middle's x, y, and how far its sides lean
+//   uW[36]     the patch's half width, half height, how dark the wall outside it goes, how many birds are on the wires
 //   And uW[9].w: how many lamps are on. At night there are lights on the hills, along the lines, and they come on one at a time.
 export const DEFS = `float wSky[2]=float[2](1.,1.);
+float wHaze[2]=float[2](1.,1.);       // how much of its own contrast a far hill keeps: the air's in the way
 float wAlong[2]=float[2](0.,0.);     // how far along its line this pixel is. A hill says, as each goes by at its own speed. Anything else goes by the sheet
 bool wHasAlong[2]=bool[2](false,false);
 `;
@@ -71,6 +74,8 @@ vec3 worldColor(int k0,int k1,float c){
   float X=pow(E,1.3*uW[34].w)*(1.-K)+K*clamp(c,0.,1.);
   // A lit window: every cell of two families is its own room, and they come on one at a time.
   if(uW[34].x>0.&&n==2){ float h=wNoise(floor(y0)*7.31+floor(y1)*13.17+3.); X=mix(X,.62+.38*X,smoothstep(h,h+.03,uW[34].x)); }
+  // The air between here and a far hill. What it shows is mostly the mist's own light.
+  { int kh=(uF[0].y>.5&&uF[0].x>.5)?1:0; float hz=wHaze[kh]; if(hz<1.) X=mix(.58,X,hz); }
   X=X+(1.-X)*Tl.w;
   // The sun, seen where it is or in the lake.
   vec4 S=uW[4],Ag=uW[6];
@@ -96,6 +101,14 @@ vec3 worldColor(int k0,int k1,float c){
   // The strong beat: a ring of light goes out from the sun.
   vec4 Rg=uW[7];
   X+=(Rg.y*exp(-(dd-Rg.x)*(dd-Rg.x)/.09)+Rg.w*exp(-(dd-Rg.z)*(dd-Rg.z)/.09))*(.3+.7*X);
+  // A patch of sun on the wall, come through the window, moving as the evening does. Everything outside it's in shade. Hard edges, a little softened by how far the window is.
+  if(uW[35].x>0.){
+    vec4 Wp=uW[35],Wq=uW[36];
+    vec2 pd=q-Wp.yz; pd.x-=Wp.w*pd.y;
+    float px=2./uF[8].y*3.,inp=smoothstep(Wq.x+px,Wq.x-px,abs(pd.x))*smoothstep(Wq.y+px,Wq.y-px,abs(pd.y));
+    X=mix(X,X*Wq.z+.05,Wp.x*(1.-inp));
+    X+=Wp.x*inp*.18*(1.-X);
+  }
   // Under the sun, on water: its path.
   if(uW[8].y>0.&&q.y<S.y){ float w=uW[9].z*(.2+.75*(S.y-q.y)),pa=q.x-S.x; X+=uW[8].y*exp(-pa*pa/(w*w))*(.25+.75*X); }
   // The dusk line: where a change is passing there's a band of red light from the film's own edge.
@@ -116,10 +129,24 @@ vec3 worldColor(int k0,int k1,float c){
     float a2=al/per+wNoise(rw*5.7+2.)*7.,cl=floor(a2),h1=wNoise(rw*17.3+cl*3.1),h2=wNoise(rw*9.1+cl*7.7);
     if(h1<uW[9].w&&g0<.02){
       float fp=.56+.34*h2,dx=(fract(a2)-.3-.4*h2)*per/da,dy=(f0-fp)/max(g0,1e-5),rr=clamp(.05*per/da,uF[8].y*.0035,uF[8].y*.014),dl=sqrt(dx*dx+dy*dy);
-      float on=smoothstep(h1,h1+.015,uW[9].w);
-      col+=on*(smoothstep(rr,rr*.72,dl)*vec3(1.,.74,.42)*.9+exp(-dl/(rr*2.4))*vec3(.5,.26,.1)*.5);
+      float on=smoothstep(h1,h1+.015,uW[9].w),sk=step(.99,wSky[kl]);
+      rr*=1.-.45*sk;
+      col+=on*(smoothstep(rr,rr*.72,dl)*mix(vec3(1.,.74,.42),vec3(.86,.9,1.),sk)*.9+exp(-dl/(rr*2.4))*mix(vec3(.5,.26,.1),vec3(.14,.16,.24),sk)*.5);
     }
   }
+  // Birds on the wires: they sit just above a line, facing whichever way, and go when the song says.
+  if(uW[36].w>0.&&n>0&&g0<.02){
+    float al=gX[0].x,per=.27,a2=al/per+wNoise(floor(y0)*3.3+1.)*5.,cl=floor(a2),h1=wNoise(floor(y0)*11.3+cl*5.1),h2=wNoise(floor(y0)*2.3+cl*9.7);
+    if(h1<uW[36].w){
+      float da=max(length(vec2(dFdx(al),dFdy(al))),1e-5),r0=uF[8].y*.013*(.8+.5*h2),dx=(fract(a2)-.5)*per/da,dy=(f0>.5?f0-1.:f0)/max(g0,1e-5)-r0*.9;
+      float bd=length(vec2(dx/(r0*1.05),dy/(r0*.8)));
+      vec2 hd=vec2(dx-(h2>.5?1.:-1.)*r0*.85,dy-r0*.55);
+      float bird=max(smoothstep(1.,.86,bd),smoothstep(r0*.52,r0*.4,length(hd)));
+      col=mix(col,col*.28+vec3(.018,.02,.04),bird*smoothstep(h1,h1+.012,uW[36].w));
+    }
+  }
+  // A very little darker at the corners, as any lens is.
+  col*=1.-.1*dot(q*vec2(.5625,1.),q*vec2(.5625,1.));
   // The water is a little darker and cooler than what it's showing.
   if(under>0.){ col*=mix(vec3(1.),vec3(.8,.74,.78),under); }
   // Eastmancolor fading: cyan and yellow go first, and magenta's what's left.

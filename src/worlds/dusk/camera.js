@@ -54,6 +54,12 @@ export function wearDuskCamera(film, A, M, seed = 7) {
       out[OFF.scale] *= Math.exp(push * 0.5);
       return;
     }
+    // A wall stays a wall: the light moves on it, and you only breathe.
+    if (camKind === 'wall') {
+      out[OFF.scale] *= Math.exp(push * 0.4);
+      out[OFF.ty] += crane * 0.2;
+      return;
+    }
     if (camKind === 'anchor') {
       out[OFF.scale] *= Math.exp(push);
       out[OFF.tx] += 0.1 * Math.sin(rd(dist, t) * 0.5);
