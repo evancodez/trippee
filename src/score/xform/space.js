@@ -41,7 +41,7 @@ function pleat(st, F, o) {
   put(F, 0, 4, (o.h ?? 1.15) * up * (1 + 0.14 * kick), n, walk);
   put(F, 1, (o.pitch ?? 0.72) * up, (o.yaw ?? 0.3) * up * Math.sin(Math.PI * x) + 0.03 * tune * up, 0.1 * Math.sin(Math.PI * x) * up, lerp(2.4, 1.55, up));
   put(F, 2, 0, 0, 0, width);
-  put(F, 3, 0, 0, 0, o.dir ?? 0.3);
+  put(F, 3, 0, 0, (o.zig ?? 0.45) * up, o.dir ?? 0.3);
   put(F, 4, 0, 0, 0, 0);
 }
 
@@ -49,7 +49,7 @@ function tube(st, F, o) {
   const { x } = st, kick = kickAt(st.t), d = o.dist ?? 1.5, tune = tuneAt(st.c);
   const roll = k(x, 0, 0.3) * (1 - k(x, 0.7, 1));
   const look = k(x, 0.1, 0.44) * (1 - k(x, 0.58, 0.9));
-  const Yend = o.fly ?? 16, y = Yend * lerp(x, smoother(x), 0.5), neck = (o.neck ?? 0.55) * look * (1 + 0.16 * kick);
+  const Yend = o.fly ?? 11, y = Yend * lerp(x, smoother(x), 0.5), neck = (o.neck ?? 0.55) * look * (1 + 0.16 * kick);
   put(F, 0, 5, roll / d * 0.98, o.bw ?? 0.42, 2.2 * x + 0.3 * tune * look);
   put(F, 1, look * Math.PI / 2, 0, 0.35 * look * Math.sin(Math.PI * x), d);
   put(F, 2, 0, y, 0, (o.bend ?? 1.0) * look);
@@ -57,7 +57,32 @@ function tube(st, F, o) {
   put(F, 4, 0, 0, Yend, Yend * 0.56);
 }
 
-const kinds = { flood, drop, pleat, tube };
+// The floor rolls up round you into a paper cone, turning, with a hole at its point. You go down it and through.
+function funnel(st, F, o) {
+  const { x } = st, kick = kickAt(st.t), tune = tuneAt(st.c), up = k(x, 0.02, 0.42), L = -(o.far ?? 2.8);
+  const sin = lerp(1, o.sin ?? 0.3, up) * (1 - 0.05 * kick * up), dist = lerp(2.4, o.dist ?? 1.25, k(x, 0, 0.42)), tilt = k(x, 0.1, 0.34) * (1 - k(x, 0.42, 0.66));
+  put(F, 0, 6, sin, (o.hole ?? 1.1) * k(x, 0.32, 0.66), (o.spin ?? 2.4) * x * x);
+  put(F, 1, (o.pitch ?? 0.5) * tilt, (o.yaw ?? 1.3) * tilt + 0.05 * tune * up, 0, dist);
+  put(F, 2, 0, 0, lerp(0, L, k(x, 0.36, 1)), o.seam ?? -1.7);
+  put(F, 3, 0, 0, 0, (o.pour ?? 0.7) * up * k(x, 0, 0.7));
+  put(F, 4, L, 0, 0, 0);
+}
+
+// The floor's only one side of a square hall going off ahead, and the walls are the next pattern. The camera looks up along it, the hall turns over about you, floor to wall to ceiling to wall, and you look back down at what was a wall.
+function hall(st, F, o) {
+  const { x } = st, kick = kickAt(st.t), tune = tuneAt(st.c), H = o.half ?? 2.3, look = k(x, 0.04, 0.34) * (1 - k(x, 0.66, 0.96));
+  const turn = (Math.PI / 2 + 2 * Math.PI * (o.turns ?? 1)) * k(x, 0.18, 0.84), Yend = o.fly ?? 9;
+  put(F, 0, 7, H, 0, turn + 0.03 * kick * look + 0.02 * tune * look);
+  put(F, 1, look * Math.PI / 2, 0, 0, lerp(H, o.lens ?? 1.05, look));
+  put(F, 2, 0, 0, 0, 0);
+  // Along it the sheet's coordinate is what the lens makes it, so the camera's place along it goes in here. Both ends: 1, and exactly the frame.
+  put(F, 3, lerp(1, o.bold ?? 0.45, look), 0, 0, 0);
+  put(F, 4, 0, 0, 0, 0);
+  F[(FRAME.space + 2) * 4 + 1] = Yend * lerp(x, smoother(x), 0.5);
+  F[(FRAME.space + 4) * 4 + 2] = Yend;
+}
+
+const kinds = { flood, drop, pleat, tube, funnel, hall };
 
 function make(id) {
   return {

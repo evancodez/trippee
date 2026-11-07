@@ -4,7 +4,7 @@
 // One sheet (a move, a stretch of a song): uG[b+I_spaceK..E], read at the top of prepare().
 // Two sheets (a transformation, dive mode 6): uF[F_SPACE..+4], read in main(). Each pixel lands on A or B; irisB says how much of it is B.
 //
-//   k  kind, amp, f, ph     kind: 1 swell, 3 drop, 4 pleat, 5 tube
+//   k  kind, amp, f, ph     kind: 1 swell, 3 drop, 4 pleat, 5 tube, 6 cone, 7 hall
 //   c  pitch, yaw, roll, dist     the camera, about the point it's looking at. With everything else 0 a sheet lying at z = 0 is exactly the frame, whatever dist is.
 //   o  x, y, z, a           the point it's looking at. a: each kind's own
 //   e  bowl, q, pix, w      bowl: the world curves up away from the camera, so the far ground fills the top of the frame and there's never a horizon. q: heights in steps of this. pix: in square columns this wide. w: each kind's own
@@ -73,11 +73,12 @@ vec3 spRelief(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,float L,out float side,out bool
   return X;
 }
 // Pleats: a sheet in sawtooth folds, its folds running along e.w. Each cell has a face of share a rising to its ridge and a face falling back. These are planes, so it's all exact.
+//   e.z  how far the folds zigzag.
 //   amp  ridge height, in cell widths.   f  cells a unit.   ph, o.a  where the walk has got to, and how wide it is: the share of the first face in each cell comes from these. e.y, e.x: a wave of share going across, its size and phase
 vec3 spPleat(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out float side,out float fS,out bool edge){
   vec3 rd,ro=spRay(p,c,o,rd);
   float an=e.w,n=max(k.z,1e-3); vec2 U=vec2(cos(an),sin(an)),V=vec2(-U.y,U.x);
-  float rz=min(rd.z,-.02),t0=ro.z/-rz,s0=dot(ro.xy,U)+t0*dot(rd.xy,U),m=dot(rd.xy,U)/-rz;
+  float rz=min(rd.z,-.02),t0=ro.z/-rz,w0=dot(ro.xy,V)+t0*dot(rd.xy,V),zig=e.z*(abs(fract(n*.62*w0)-.5)*4.-1.)/n,s0=dot(ro.xy,U)+t0*dot(rd.xy,U)+zig,m=dot(rd.xy,U)/-rz;      // zig: the folds in zigzags, which is a Miura fold, and the sheet is otherwise just the same
   float Hm=k.y/n;
   float a0=n*(s0-m*Hm),a1=n*s0;
   int i0=int(floor(a0)),i1=int(floor(a1)),dir=i1>=i0?1:-1;
@@ -106,7 +107,7 @@ vec3 spPleat(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out float side,out float fS,out 
   edge=fwidth(side)>0.||fwidth(hI)>0.;
   vec3 X=ro+rd*((ro.z-hz)/-rz);
   float w=dot(X.xy,V);
-  vec3 r=vec3(U*si+V*w,hz);
+  vec3 r=vec3(U*(si-zig)+V*w,hz);
   r.xy+=U*fS/n;
   return r;
 }
@@ -140,11 +141,42 @@ vec3 spTube(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,float Yn,out bool edge){
   edge=abs(dFdx(th))>2.||abs(dFdy(th))>2.;
   return vec3((k.y>1e-4?th/k.y:q.x)+e.w*X.y,X.y,0.);
 }
+// A cone: a flat sheet is rolled into one with no stretch at all, as a paper one is, by taking a wedge out of it. Its point's under the middle of the frame and its rim rises past the camera, so there's nothing but the inside of it to see. amp: sin of its half angle, 1 is flat, and the wedge comes out from nothing.
+// f: a hole at the point, how far from it along the sheet; through it, B is flat at level L. ph: how far the sheet has turned. o.a: where the join is. e.w: the sheet has poured in by this, in natural logs.
+vec3 spCone(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,float L,out vec3 XB,out float side,out bool edge){
+  vec3 rd=normalize(vec3(p,-max(c.w,.05))),ro=vec3(0.,0.,c.w)+o.xyz;      // it turns on the spot, or it'd end up outside it
+  rd.xy=rot(c.z)*rd.xy; rd.yz=rot(c.x)*rd.yz; rd.xy=rot(c.y)*rd.xy;
+  float s=clamp(k.y,.02,1.),s2=s*s,c2=1.-s2;
+  float A=c2*dot(rd.xy,rd.xy)-s2*rd.z*rd.z,B=c2*dot(ro.xy,rd.xy)-s2*ro.z*rd.z,C=c2*dot(ro.xy,ro.xy)-s2*ro.z*ro.z;
+  float q=-(B+(B<0.?-1.:1.)*sqrt(max(B*B-A*C,0.)));
+  float t1=abs(A)>1e-7?q/A:1e9,t2=abs(q)>1e-7?C/q:1e9,tn=min(t1,t2),tf=max(t1,t2);
+  float t=1e9;
+  if(tn>1e-3&&ro.z+tn*rd.z>=-1e-4) t=tn; else if(tf>1e-3&&tf<1e8&&ro.z+tf*rd.z>=-1e-4) t=tf;
+  vec3 X=ro+rd*min(t,50.);
+  float th=atan(X.y,X.x),u=th-o.w,wr=mod(u+PI,TAU)-PI,rho=length(X.xy)/s,ph=o.w+wr*s+k.w;
+  edge=abs(dFdx(th))>2.||abs(dFdy(th))>2.;
+  XB=rd.z<0.?ro+rd*((ro.z-L)/-rd.z):ro+rd;
+  side=L>SP_GONE?(t>=1e8?1.:aaOf(k.z-rho)):0.;
+  return vec3(rho*exp(e.w)*vec2(cos(ph),sin(ph)),0.);
+}
+// A square hall going off along y, its axis where the camera is, floor and ceiling one sheet and walls the other. Half its width is what the lens is at both ends, so it starts exactly at the floor and ends exactly at a wall, its corners off the frame. amp: half its width. ph: how far the hall has turned about its axis.
+vec3 spHall(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out vec3 XB,out float side){
+  vec3 rd=normalize(vec3(p,-max(c.w,.05)));
+  rd.xy=rot(c.z)*rd.xy; rd.yz=rot(c.x)*rd.yz; rd.xz=rot(k.w)*rd.xz;
+  float H=k.y,tz=H/max(abs(rd.z),1e-4),tx=H/max(abs(rd.x),1e-4);
+  side=aaOf(tz-tx);
+  float y0=o.y;
+  XB=vec3(sign(rd.x+1e-6)*rd.z*tx*e.x,y0+rd.y*tx*e.x,0.);       // the wall it's facing, read so that it comes out the right way round. e.x: how much bigger the sheet's lines have got, as the lens gets wider, to stay bold
+  return vec3(rd.x*tz*sign(-rd.z-1e-6)*e.x,y0+rd.y*tz*e.x,0.);
+}
 // One sheet: a stretch of a song.
 vec2 spaceOf(vec4 k,vec4 c,vec4 o,vec4 e,vec2 p,out bool edge){
   if(k.x<3.5){ float s; return spRelief(p,k,c,o,e,SP_GONE,s,edge).xy; }
   if(k.x<4.5){ float s,f; vec3 r=spPleat(p,k,c,o,e,s,f,edge); return r.xy+vec2(cos(e.w),sin(e.w))*((s>.5?.5+.5*f:.5*f)-f)/k.z; }      // each face is half a cell of it, and at a share of half with no height it's exactly flat
-  return spTube(p,k,c,o,e,0.,edge).xy;
+  if(k.x<5.5) return spTube(p,k,c,o,e,0.,edge).xy;
+  vec3 XB; float s;
+  if(k.x<6.5) return spCone(p,k,c,o,e,SP_GONE,XB,s,edge).xy;
+  vec3 X=spHall(p,k,c,o,e,XB,s); edge=fwidth(s)>0.; return s>.5?XB.xy:X.xy;
 }
 #ifdef FLIGHT
 // Inside prepare(): each pattern of a flight on its own sheet
@@ -169,7 +201,9 @@ void spaceTwo(vec2 p,out vec2 pA,out vec2 pB,out float side,out bool edge){
   vec4 k=uF[F_SPACE],c=uF[F_SPACE+1],o=uF[F_SPACE+2],e=uF[F_SPACE+3],B=uF[F_SPACE+4];
   if(k.x<3.5){ vec3 X=spRelief(p,k,c,o,e,B.x,side,edge); pA=X.xy; pB=X.xy-B.yz; }
   else if(k.x<4.5){ float f; vec3 r=spPleat(p,k,c,o,e,side,f,edge); pA=r.xy; pB=r.xy; }
-  else { vec3 X=spTube(p,k,c,o,e,B.w,edge); pA=X.xy; pB=X.xy-B.yz; side=aaOf(X.y-B.w); }
+  else if(k.x<5.5){ vec3 X=spTube(p,k,c,o,e,B.w,edge); pA=X.xy; pB=X.xy-B.yz; side=aaOf(X.y-B.w); }
+  else if(k.x<6.5){ vec3 XB,X=spCone(p,k,c,o,e,B.x,XB,side,edge); pA=X.xy; pB=XB.xy-B.yz; edge=edge||fwidth(side)>.5; }
+  else { vec3 XB,X=spHall(p,k,c,o,e,XB,side); pA=X.xy; pB=XB.xy-B.yz; edge=false; }
 }
 #endif
 `;
