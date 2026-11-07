@@ -85,7 +85,7 @@ export default {
     const s = ctx.at(ctx.c);
     if (s) {
       // Lung and the strong beats: petal depth. A flower opens on the beat, and with the phrase.
-      const k = 1 + 0.3 * Math.min(s.lung, 1.2) + 0.28 * Math.min(s.pulse, 1.2);
+      const k = 1 + 0.3 * Math.min(s.lung, 1.2) + 0.18 * Math.min(s.pulse, 1.2);
       A[OFF['field.ph']] *= k; B[OFF['field.ph']] *= k;
       // What has no petals takes the beat in whatever shape it has: a check's bulge, a chevron's teeth, a wave's bend.
       const p = 1 + Math.min(s.pulse, 1.2);

@@ -13,7 +13,7 @@ export const base = (k, e = eps, swell = 0) => -k * (Math.log(e) + swell * e);  
 // Where the two with no flower to centre on sit: about where those with one do (base() comes to 2.6 to 3.3), or a Bud into one of them sends several extra rings past on top of the flow, over the whole frame.
 const PH = 3;
 
-export const HEART = 1, STAR = 2, BUTTERFLY = 3, SUN = 4, CLOUD = 5, MUSHROOM = 6, EYE = 7, PEACE = 8, SMILE = 9;
+export const HEART = 1, STAR = 2, BUTTERFLY = 3, SUN = 4, CLOUD = 5, MUSHROOM = 6, EYE = 7, PEACE = 8, SMILE = 9, ZIG = 10, ROOM = 11;
 const NAMES = [['blobs.x1', 'blobs.y1', 'blobs.a1'], ['blobs.x2', 'blobs.y2', 'blobs.a2'], ['blobs.x3', 'blobs.y3', 'blobs.a3'], ['p1.x', 'p1.y', 'p1.ay'], ['p2.x', 'p2.y', 'p2.ay']];
 function flower({ id, name, group = 'flower', k = 2.6, n = 6, a = 0.5, kappa = 0, beta = 1.8, fat = 0.55, e = eps, poles = [], orbit = 0.26, arcs = [], over = {}, whip = 0, flame = 0, lobes = 0, ph = null, swell = 0.7, fade = 0.13, curl = 0, flow = null, motif = 0, spin = 0.6, sway = 0, field = true, fams = [], lines = LINES, tile = 0, turnOver = 0, every = 0, beads = 0, can = [], run = null }) {
   const P = [...poles, ...Array(5).fill([0, 0, 0, 0])].slice(0, 5);
@@ -207,9 +207,16 @@ export const pool = [
     arcs: [{ path: 'cam.yaw', from: -0.25, to: 0.25 }, { path: 'cam.pitch', from: 0.68, to: 0.85 }],
   }),
   own('rooms.tunnel', 'tunnel', 'Square Tunnel'),
-  own('rooms.nested', 'nested', 'Nested'),
-  own('riley.blaze', 'blaze', 'Blaze'),
-  own('riley.zinnia', 'zinnia', 'Zinnia', { group: 'flower' }),
+  flower({
+    id: 'flower.nested', name: 'Nested Rooms', group: 'op', motif: ROOM, a: 1, k: 3, beta: 3, e: 0.1, swell: 0.2, fade: 0.01, orbit: 0.05, sway: 0.25,
+    poles: [[0, 0, 1.1, 0]],
+    arcs: [{ path: 'scale', from: 0.95, to: 1.25, log: true }, { path: 'rot', from: -0.1, to: 0.1 }, { path: 'tx', from: 0.2, to: -0.2 }],
+  }),
+  flower({
+    id: 'flower.zinnia', name: 'Zinnia', motif: [0, 0, 0, ZIG, 0], n: 12, a: 1, k: 2.5, beta: 3, e: 0.16, swell: 0.25, spin: 0, orbit: 0, fams: [{ t1: 12, ph: 0.25 }], flow: { 'f1.ph': 0.4 },
+    poles: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 1]],
+    arcs: [{ path: 'field.scale', from: 0, to: 1.8 }, { path: 'scale', from: 0.9, to: 1.3, log: true }, { path: 'p1.x', from: -0.3, to: 0.3 }],
+  }),
   own('riley.rose', 'rose', 'Rose Window', { group: 'flower' }),
   // ---------------------------------------------------------------- pattern inside pattern
   flower({

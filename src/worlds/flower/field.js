@@ -17,6 +17,7 @@ float wFlowerMotif(int m,vec2 v,float th){
   if(m==5){ float R=(.8+.3*sqrt(abs(sin(4.*th))))/sqrt(w.x*w.x/1.9+w.y*w.y/.66); return 1.8*(w.y<0.?min(R,.42/-w.y):R); }        // a cloud: scallops over a flat bottom
   if(m==6){ float cap=1./sqrt(w.x*w.x/1.5+w.y*w.y/.95),stem=1./sqrt(w.x*w.x/.2+w.y*w.y/1.8); return w.y<0.?max(min(cap,.3/-w.y),stem):cap; }       // a mushroom: a dome, its underside, a stem
   if(m==7){ float y=abs(v.y); return (-1.006*y+sqrt(1.012*y*y+2.25))/.8; }      // an eye: two arcs meeting at the corners
+  if(m==11) return 1./max(w.x,abs(w.y)*1.62);       // a room: a rectangle, so its echoes nest
   return 1.;
 }
 // Strokes, not an outline, so distance is what the rings go by: they run out from the lines of a peace sign, or a smile, and meet in the middle of whatever the lines have fenced off.
@@ -47,7 +48,8 @@ float wFlowerBlooms(int b,vec2 X,vec4 f,vec4 f2,float e){
       float qr=q/(r*r),u=q/D;
 #ifdef WORLD_FULL
       int m=(kinds>>(4*i))&15;
-      if(m>=8){ float dd=wFlowerStroke(m,rot(P.w)*d/r); l=mix(l,log(1.+dd/.35)-1.35,min(a,1.)); }
+      if(m==10) l+=.15*a*u*tri(n*(atan(d.y,d.x)+P.w)/TAU+kap*.5*log(q+1e-5));       // zigzag rings, as Riley's Blaze, with a cap at the middle where hers run to hairlines
+      else if(m==8||m==9){ float dd=wFlowerStroke(m,rot(P.w)*d/r); l=mix(l,log(1.+dd/.35)-1.35,min(a,1.)); }
       else if(m>0){ float rho=sqrt(q)+1e-5; vec2 v=rot(P.w)*d/rho; float s=m==7?a*smoothstep(.5,1.4,rho/r):a*u*u/(1.+qr*fade); l-=log(max(1.+s*(wFlowerMotif(m,v,atan(v.y,v.x))-1.),.25)); }
       else
 #endif

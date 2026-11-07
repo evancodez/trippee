@@ -11,6 +11,9 @@ const DEPTH = OFF['field.ph'], SHARE = OFF['field.k0'], TILE = OFF['blobs.beta']
 // Everything only the field reads. Once the field's gone these can be anything at all.
 const FIELDS = [...STEPPED, DEPTH, SHARE, TILE, OFF['field.spin'], OFF['field._1'], OFF['star._1'], OFF['star._2'], OFF['star._3'], OFF['spare.a'], OFF['spare.b'], OFF['spare.c'], OFF['spare.d'],
   ...['x1', 'y1', 'r1', 'a1', 'x2', 'y2', 'r2', 'a2', 'x3', 'y3', 'r3', 'a3'].map(n => OFF[`blobs.${n}`]), ...['x', 'y', 'q', 'ay'].flatMap(n => [OFF[`p1.${n}`], OFF[`p2.${n}`]])];
+const POLE1 = ['x', 'y', 'q', 'ay'].map(n => OFF[`p1.${n}`]);
+const FIELDS_LESS = FIELDS.filter(n => !POLE1.includes(n));
+const measures = s => { for (let i = 0; i < FAMILIES; i++) if (s[OFF[`f${i}.on`]] >= 0.5 && ['r1', 'l1', 't1'].some(n => s[OFF[`f${i}.${n}`]] !== 0)) return true; return false; };
 const flat = s => s[OFF['field.kind']] === 4 && s[OFF['surf.kind']] < 0.5 && s[OFF['droste.lnS']] === 0;
 export const hasField = s => s[SHARE] !== 0;
 // How far ahead of the clock the rings are, in lines per unit of budRest, over a Bud. Starts and ends at rest and at 0. Slowest at the middle, at 2 pi lines of budRest per Bud.
@@ -48,18 +51,19 @@ export const melt = {
   id: 'melt', levers: LEVERS, enter: glideEnter,
   plan(a, b, ctx) {
     if (!flat(a) || !flat(b) || a[OFF['fold.n']] !== b[OFF['fold.n']] || ctx.D < 3) return null;
-    return { kind: 'melt', onClock: true, ...partners(a, b) };
+    // A family that goes by the first pole can't have it jump in the middle, field or no field.
+    return { kind: 'melt', onClock: true, ...partners(a, b), fields: measures(a) || measures(b) ? FIELDS_LESS : FIELDS };
   },
   write(st, A, B) {
-    const x = st.x, side = x < 0.5 ? A : B, kept = FIELDS.map(n => side[n]);
+    const x = st.x, side = x < 0.5 ? A : B, F = st.plan.fields, kept = F.map(n => side[n]);
     // On x, not T: it's all the time there is, and on T all of it would go in the steepest third.
     const s = x < 0.5 ? 1 - smoother(x / 0.5) : smoother((x - 0.5) / 0.5);
     A[OFF.theta] = st.theta; B[OFF.theta] = st.theta;
     const inA = insideOf(A), inB = insideOf(B);
     applySlide(A, B, st.plan, st.x * st.x * (3 - 2 * st.x));
     holdInside(A, B, st.plan, inA, inB);
-    FIELDS.forEach((n, i) => { A[n] = kept[i]; });
-    A[SHARE] = kept[FIELDS.indexOf(SHARE)] * s;
+    F.forEach((n, i) => { A[n] = kept[i]; });
+    A[SHARE] = kept[F.indexOf(SHARE)] * s;
     st.two = false;
   },
 };

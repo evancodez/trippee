@@ -11,6 +11,7 @@ const ampAt = (m, t) => { const n = m.hits.length, a = m.hits[0] - (m.lead || 1)
 const swing = s => { const k = Math.floor(s); return (((k % 2) + 2) % 2 ? -1 : 1) * Math.sin(Math.PI * (s - k)); };
 const POLES = [['blobs.x1', 'blobs.y1', 'blobs.r1'], ['blobs.x2', 'blobs.y2', 'blobs.r2'], ['blobs.x3', 'blobs.y3', 'blobs.r3'], ['p1.x', 'p1.y', 'p1.q'], ['p2.x', 'p2.y', 'p2.q']].map(p => p.map(n => OFF[n]));
 
+const COEFS = ['x', 'y', 'r1', 'l1', 't1'], VOICES = [{ x: 1.55, y: 1.55 }, { x: 1.55, y: -1.55 }, { t1: 10 }, { x: 2.2 }, { l1: 1.6, t1: 8 }];
 const own = {
   // The film's star sphere, on anything in this world. It marks a slot's field.b for its own reasons, and here that number says what the flowers are.
   ball: { write(out, ctx) { const kinds = out[OFF['field.b']]; MOVES.star.write(out, ctx); out[OFF['field.b']] = kinds; } },
@@ -30,6 +31,15 @@ const own = {
   } },
   // Turnover: on wallpaper, every other tile slides half a ring on the hit, so what was on one side of each line is on the other, and back. It's Op, and there's no flash in it: half the tiles go one way at a time, and the frame stays half and half.
   turnover: { write(out, { t, m }) { const s = surged(evalTrack(clockOf(m), t)), a = ampAt(m, t); out[OFF['blobs.t']] = out[OFF['blobs.t']] * (1 - a) + a * (s - 2 * Math.floor(s / 2) < 1 ? s - Math.floor(s) : 1 - (s - Math.floor(s))); } },
+  // Voices: a relay, in this world's way. The rings stay, because they carry the inks. A third family is rewritten while it's shut, and opens through them as one thing after another: a diagonal, the other diagonal, spokes, upright. Each one is a different picture that nobody drew, and it costs nothing, because shut it's nothing at all to the XOR.
+  voices: { write(out, { t, m }) {
+    const a = ampAt(m, t);
+    if (a <= 0) return;
+    const s = evalTrack(clockOf(m), t) / (m.each ?? 2), k = Math.floor(s), u = s - k, freeP1 = out[OFF['p1.q']] <= 0, V = (freeP1 ? VOICES : VOICES.filter(v => !v.t1)), v = V[((k % V.length) + V.length) % V.length];
+    for (const n of COEFS) out[OFF[`f2.${n}`]] = v[n] ?? 0;
+    out[OFF['f2.on']] = 1; out[OFF['f2.d']] = -1 + a * Math.sin(Math.PI * u) ** 2; out[OFF['f2.ph']] = 0.3 * surged(s * (m.each ?? 2));
+    if (v.t1) out[OFF['p1.ay']] = 1;
+  } },
   // Beads: bead strings come through every other band, on the petals and in between, run round the flowers and go again. On the strong beats. Anything with flowers can wear it.
   beads: { write(out, { t, m }) {
     const a = ampAt(m, t);

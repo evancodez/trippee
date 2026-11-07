@@ -55,6 +55,11 @@ export const SETS = [
   // Lagoon: the far side of the wheel, for a change of air.
   { name: 'lagoon', ...made([[150, 255, 210], [255, 225, 190], [255, 135, 115], [255, 175, 150], [175, 175, 255], [0, 225, 215], [90, 200, 255], [235, 245, 120]], [[0, 70, 145], [120, 35, 130], [0, 110, 135], [40, 40, 165], [0, 120, 100], [70, 30, 150]], 0.6) },
 ];
+// A bloom and a ground of nearly one colour, at either end of what this set does, would lose a whole line's edge: a ray would go missing. So each pair that would is given the nearest ground that doesn't.
+const gam = c => c.map(v => Math.pow(v, 0.4545));
+const apart = (x, y, buzz) => { const at = (i, k) => i.a.map((v, n) => v + (i.b[n] - v) * k), D = (p, q) => gam(p).reduce((sum, v, n) => sum + Math.abs(v - gam(q)[n]), 0); return Math.min(D(x.a, y.a), D(at(x, buzz), at(y, buzz))); };
+const CLOSE = 0.5;
+for (const S of SETS) S.alt = S.blooms.map(W => S.grounds.map((G, g) => { const buzz = S.buzz ?? 1; if (apart(W, G, buzz) >= CLOSE) return g; let best = g, top = -1; S.grounds.forEach((O, o) => { const d = apart(W, O, buzz); if (d > top) { top = d; best = o; } }); return best; }));
 export const blooms = SETS[0].blooms;
 export const grounds = SETS[0].grounds;
 // Runs: a line wears its place in a cycle, and not the note it was born on. Two to a line, so the bands go through the whole of it.
@@ -83,7 +88,7 @@ export function paint(tex, nLow, tensionOf, inkAt) {
     if (!fresh && was.n[r] === n && was.k[r] === k && was.run[r] === run) continue;
     was.n[r] = n; was.k[r] = k; was.run[r] = run; changed = true;
     const L = run ? RUNS[run] : null, place = L ? ((at % L.length) + L.length) % L.length : 0, K = L ? k * 0.3 : k * (SETS[s].buzz ?? 1);
-    const W = L ? L[place] : SETS[s].blooms[w], G = L ? L[(place + 1) % L.length] : SETS[s].grounds[g];
+    const W = L ? L[place] : SETS[s].blooms[w], G = L ? L[(place + 1) % L.length] : SETS[s].grounds[SETS[s].alt[w][g]];
     tex.set(r, 0, W.a[0] + (W.b[0] - W.a[0]) * K, W.a[1] + (W.b[1] - W.a[1]) * K, W.a[2] + (W.b[2] - W.a[2]) * K);
     tex.set(r, 1, G.a[0] + (G.b[0] - G.a[0]) * K, G.a[1] + (G.b[1] - G.a[1]) * K, G.a[2] + (G.b[2] - G.a[2]) * K);
   }
