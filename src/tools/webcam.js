@@ -95,18 +95,21 @@ const api = {
   stop,
 };
 
-// The time programs, built before anything can slide: one arriving in the middle of a slide would pop the figure in. Asked for once for the film's renderer and once for each world's.
-const asked = new WeakSet();
+// The time programs, built before anything can slide: one arriving in the middle of a slide would pop the figure in. Plain and flight up front, and whatever this frame is drawn with
+// (colour's plates, the hand, a fold) as soon as it's seen. Each asked for once.
+const asked = new WeakMap();
 function wantPrograms(R) {
-  const who = R.wp ?? R;
-  if (asked.has(who)) return;
-  asked.add(who);
-  if (R.wp) R.wp.whenBuilt([TIME, FLIGHT | TIME]);
-  else R.whenBuilt?.([TIME, FLIGHT | TIME]);
+  const who = R.wp ?? R, list = [TIME, FLIGHT | TIME, (R.wp ? R.wp.variantOf(R.frame) : R._variantOf(R.frame)) | TIME];
+  let seen = asked.get(who); if (!seen) asked.set(who, seen = new Set());
+  const more = list.filter(v => !seen.has(v));
+  if (!more.length) return;
+  for (const v of more) seen.add(v);
+  if (R.wp) R.wp.whenBuilt(more);
+  else R.whenBuilt?.(more);
 }
 function programsReady(R) {
-  const P = R.wp ? R.wp.progs : R.progs;
-  return !!(P[TIME] && P[FLIGHT | TIME]);
+  const P = R.wp ? R.wp.progs : R.progs, v = (R.wp ? R.wp.variantOf(R.frame) : R._variantOf(R.frame)) | TIME;
+  return !!(P[TIME] && P[FLIGHT | TIME] && P[v]);
 }
 
 function fresh(app, fake) {
@@ -155,8 +158,9 @@ function tick(s) {
   slide(s, dt);
   const o = s.out;
   // Armed only once the time programs are there, and only between slides: a figure can't start halfway through one.
-  if (!o.armed && programsReady(app.R) && Math.abs(o.would) < 1e-3) o.armed = true;
-  if (!programsReady(app.R)) { o.armed = false; wantPrograms(app.R); }
+  const ready = programsReady(app.R);
+  if (!ready) { o.armed = false; wantPrograms(app.R); }
+  else if (!o.armed && Math.abs(o.would) < 1e-3) o.armed = true;
   o.slide = s.D; o.shown = s.shown;
   app.edits.camo = o;
   app.R.setCamo?.(s.pack, W, H);
@@ -198,7 +202,7 @@ function see(s, dtc) {
   const hx = s.hx; hx.fill(0);
   for (let i = 0; i < N; i++) hx[Math.min(255, (Math.abs(g[i] - prev[i]) * 2560) | 0)]++;
   let acc = 0, med = 0; for (; med < 256; med++) { acc += hx[med]; if (acc >= N / 2) break; }
-  const moveT = clamp(7 * (med + 0.5) / 2560, 0.016, 0.08);      // about 4.5 of the noise's own deviations: the noise alone hardly ever gets there
+  const moveT = clamp(7 * (med + 0.5) / 2560, s.mode === 'diff' ? 0.007 : 0.016, 0.08);      // about 4.5 of the noise's own deviations: the noise alone hardly ever gets there. A dark room's differences are small, and so's its noise
   // The screen lights the room, and a camera sets its own exposure: what isn't you gets brighter or darker all over by one factor.
   let sb = 0, sg = 0, nb = 0, big = 0;
   for (let i = 0; i < N; i++) { if (!s.on[i]) { sb += bg[i]; sg += g[i]; nb++; } if (Math.abs(g[i] - prev[i]) > moveT) big++; }
@@ -220,7 +224,7 @@ function see(s, dtc) {
     const v = g[i] * gain, d = Math.abs(v - bg[i]), mo = Math.abs(g[i] - prev[i]), still = mo < moveT * 0.6;
     if (!flood) {
       if (s.mode === 'room') s.on[i] = s.on[i] ? (d > LO ? 1 : 0) : (d > HI ? 1 : 0);
-      else { s.hist[i] = mo > moveT ? 1 : Math.max(0, s.hist[i] - dtc / HOLD); s.on[i] = s.hist[i] > 0 ? 1 : 0; }
+      else { s.hist[i] = mv[i] ? 1 : Math.max(0, s.hist[i] - dtc / HOLD); s.on[i] = s.hist[i] > 0 ? 1 : 0; }      // what's moving, filled in, and held a moment
       if (still) bg[i] += (v - bg[i]) * Math.min(1, dtc / (s.on[i] ? STILL_YOU : STILL_ROOM));
     }
     if (s.on[i]) { cover++; if (mv[i]) moved++; }

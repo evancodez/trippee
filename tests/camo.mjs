@@ -5,7 +5,7 @@
 //   STAGE=off       no camera is ever asked for, and nothing of it is loaded, until it's turned on. The button's there
 //   STAGE=gone      no song: standing still, you're gone within about half a second, with no seam (the frame matches the plain one to 1/255). PATTERNS=a,b to choose
 //   STAGE=flash     the judge's counts with the pretend camera running the whole script: no song, a song (SONG=media/mgmt.mp3, AT=40), and in a mode (WORLD=dusk). 12 and 60 fps. FAKE=wave.
-//                   ONLY=held stops after the held patterns; DIAG=1 saves each run's per-frame numbers
+//                   ONLY=held or ONLY=song stops after that part, SKIP=held leaves the held patterns out; DIAG=1 saves each run's per-frame numbers
 //   STAGE=sheet     a frame sheet of 20 frames across the script, with a song, and stills at the strongest moments. SONG, AT, PATTERN, FAKE
 //   STAGE=cost      what the camera's work costs a frame on the processor, and the GPU's frame with it on and off, at DSF=2 (W,H default 1512,982)
 import { resolve } from 'node:path';
@@ -89,7 +89,7 @@ export default async ({ page, log, save }) => {
     await sleep(300);
     const fake = process.env.FAKE || 'wave', pats = (process.env.PATTERNS || 'lines.river,checks.vega').split(',');
     // No song: a pattern held, the script run through, with it and without it
-    for (const id of pats) for (const fps of [12, 60]) {
+    for (const id of process.env.SKIP === 'held' ? [] : pats) for (const fps of [12, 60]) {
       const set = `app.governor.enabled=false;app.R.drawScale=1;trippee.load(${JSON.stringify(id)});app.manual=true;app.t=6`;
       await page.eval(set); await page.eval(startFake(fake));
       const w = await watch(page, process.env.DIAG ? save : () => {}, { name: `camo-${id}-${fps}`, seconds: 15.5, fps, cols: 8, rows: 4 });
@@ -105,13 +105,14 @@ export default async ({ page, log, save }) => {
     await dropSong(page, songPath, { resolvePath: resolve, sleep });
     for (const fps of [12, 60]) {
       await page.eval(`app.t=${at};trippee.seek(${at})`); await page.eval(startFake(fake));
-      const w = await watch(page, () => {}, { name: 'camo-song', seconds: 15.5, fps, cols: 4, rows: 1 });
+      const w = await watch(page, process.env.DIAG ? save : () => {}, { name: `camo-song-${fps}`, seconds: 15.5, fps, cols: 8, rows: 4 });
       await page.eval('app.camo?.stop()');
       await page.eval(`app.t=${at};trippee.seek(${at})`);
-      const p = await watch(page, () => {}, { name: 'plain-song', seconds: 15.5, fps, cols: 4, rows: 1 });
+      const p = await watch(page, process.env.DIAG ? save : () => {}, { name: `plain-song-${fps}`, seconds: 15.5, fps, cols: 8, rows: 4 });
       const A = analyse(w), B = analyse(p);
       say(A.flashesPerSecondWholeFrame === 0 && A.flashesPerSecondAnyTile <= Math.max(1, B.flashesPerSecondAnyTile), `the film of ${songPath} from ${at} s, ${fake}, ${fps} fps: whole ${A.flashesPerSecondWholeFrame}, tile ${A.flashesPerSecondAnyTile} (the film without it ${B.flashesPerSecondWholeFrame}, ${B.flashesPerSecondAnyTile})`);
     }
+    if (process.env.ONLY === 'song') { log(failed ? `${failed} FAILED` : 'all as they should be'); return; }
     // A mode
     const world = process.env.WORLD || 'dusk';
     await enterWorld(page, world, log);
