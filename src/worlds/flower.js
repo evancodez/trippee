@@ -64,7 +64,12 @@ export default {
       if (!(G.t1 - (G.morph || 0) < w.t + 1 && G.t1 > w.t - QUIET)) continue;
       const bars = M?.bars ?? [], at = w.t - QUIET, bar = [...bars].reverse().find(b => b <= at) ?? at;
       if (bar - G.t0 - (G.morph || 0) >= 8) { G.t1 = bar; G.arcEnd = bar; N.t0 = bar; }
-      else { G.t1 = N.t1; G.arcEnd = N.t1; G.morph = N.morph; g.splice(i + 1, 1); i--; }
+      else {
+        // No room before it: it lands just after, if that leaves the next one a stay of its own. Carrying on through the two of them would be half a minute on one picture.
+        const after = w.t + 1 + (G.morph || 0);
+        if (N.t1 - after >= (N.morph || 0) + 4) { G.t1 = after; G.arcEnd = after; N.t0 = after; }
+        else { G.t1 = N.t1; G.arcEnd = N.t1; G.morph = N.morph; g.splice(i + 1, 1); i--; }
+      }
     }
     // Who's on, how they get to the next, and what they do. A rehearsal can't take a landing away (motion.keep): what it has instead is what the landing offers, then taking longer. A flash in one has to be fixed in that one. tests/flashworld.mjs holds it to the limit.
     landings(score);

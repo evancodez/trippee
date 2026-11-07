@@ -574,15 +574,15 @@ export class FlashSeen {
     }
     for (let s = 0; s < sw.length; s++) { let e = s; while (e < sw.length && sw[e] - sw[s] < this.fps * within) e++; if (Math.floor((e - s) / 2) > limit) out.push(sw[e - 1]); }
   }
-  over(a = 0, b = this.n) {
+  over(a = 0, b = this.n, wholeOnly = false) {
     const out = [];
     if (this.world) {
       this.overIn(i => this.mean[i], FLASH_WHOLE, WORLD_SWING_WHOLE.luma, out, a, b);
-      for (let k = 0; k < 16; k++) this.overIn(i => this.tiles[i * 16 + k], WORLD_TILE, WORLD_SWING.luma, out, a, b);
+      if (!wholeOnly) for (let k = 0; k < 16; k++) this.overIn(i => this.tiles[i * 16 + k], WORLD_TILE, WORLD_SWING.luma, out, a, b);
       for (const c of ['red', 'rc']) {
         const v = this[c];
         this.overIn(i => v[i * 17 + 16], FLASH_WHOLE, WORLD_SWING_WHOLE[c], out, a, b);
-        for (let k = 0; k < 16; k++) this.overIn(i => v[i * 17 + k], WORLD_TILE, WORLD_SWING[c], out, a, b);
+        if (!wholeOnly) for (let k = 0; k < 16; k++) this.overIn(i => v[i * 17 + k], WORLD_TILE, WORLD_SWING[c], out, a, b);
       }
       return out;
     }
@@ -629,7 +629,8 @@ async function guardHeard(R, score, until, colour, ctx) {
   let left = 0;
   for (const to of HEAR_ROUNDS) {
     left = 0;
-    for (const w of stretches(seen.over(), fps)) {
+    // In a world only the whole frame, at the small size it's looked at here: read this coarsely a tile's mostly false alarms, and giving way for those would be most of the film.
+    for (const w of stretches(seen.over(0, seen.n, colour), fps)) {
       const key = w.b.toFixed(1);
       if (fine.has(key)) continue;
       const at = colour ? [w.b - 0.5] : (await lookClose(R, score, w.a, w.b, ctx, () => {}, edits)).at;

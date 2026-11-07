@@ -225,3 +225,5 @@ export const pool = [
     arcs: [{ path: 'rot', from: -0.18, to: 0.18 }, { path: 'scale', from: 1.15, to: 1.3, log: true }],
   }),
 ];
+// These two have no way across but a flight, and here a flight looks laid over what it's leaving. They stay in the library, out of the film's rotation.
+for (const p of pool) if (p.id === 'flower.floor' || p.id === 'flower.tunnel') p.pool = false;

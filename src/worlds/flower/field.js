@@ -12,7 +12,7 @@ float wFlowerMotif(int m,vec2 v,float th){
   vec2 w=vec2(abs(v.x),v.y);
   if(m==1){ if(w.y<-.125*w.x) return .834/dot(w,vec2(.759,-.651)); float B=dot(w,vec2(.52,.28)); return B+sqrt(max(B*B+.0356,0.)); }       // a heart: two lobes, and the straight sides that touch them, going down to a point
   if(m==2){ float be=PI/5.; return 1.15*wFlowerSpike(abs(mod(th-PI/2.+be,2.*be)-be),.5,be); }         // a star, five straight points
-  if(m==3){ float ph=atan(w.y,w.x),up=1.95*pow(max(cos(ph-.72),0.),3.6),lo=1.28*pow(max(cos(ph+.86),0.),3.4),body=1./sqrt(60.*w.x*w.x+2.1*w.y*w.y); return max(max(up,lo),body); }      // a butterfly: two wings a side, and a body
+  if(m==3){ float ph=atan(w.y,w.x),up=2.35*pow(max(cos(ph-.6),0.),5.5),lo=1.15*pow(max(cos(ph+.92),0.),3.),body=1./sqrt(70.*w.x*w.x+1.7*w.y*w.y),ant=1.55*pow(max(cos(ph-1.34),0.),150.); return max(max(max(up,lo),body),ant); }      // a butterfly: a big pointed wing and a small round one a side, a body, and feelers. Four even lobes read as a clover
   if(m==4){ float be=PI/12.,i=floor((th+be)/(2.*be)),tip=mod(i,2.)<.5?1.25:.98; return tip*wFlowerSpike(abs(mod(th+be,2.*be)-be),.66/tip,be); }       // a sun: a disc and straight rays, long and short
   if(m==5){ float R=(.8+.3*sqrt(abs(sin(4.*th))))/sqrt(w.x*w.x/1.9+w.y*w.y/.66); return 1.8*(w.y<0.?min(R,.42/-w.y):R); }        // a cloud: scallops over a flat bottom
   if(m==6){ float cap=1./sqrt(w.x*w.x/1.5+w.y*w.y/.95),stem=1./sqrt(w.x*w.x/.2+w.y*w.y/1.8); return w.y<0.?max(min(cap,.3/-w.y),stem):cap; }       // a mushroom: a dome, its underside, a stem
