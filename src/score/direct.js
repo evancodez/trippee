@@ -214,7 +214,7 @@ export function direct(score, A, M) {
     const beats = Math.round((near ? l.B - near.B : build.len) / (beat * meter)) * meter, start = l.B - beats * beat;
     const j = g.findIndex(x => x.t1 >= l.B && x.t1 - (x.morph || 0) >= l.B + 2 * bar);
     if (j < 0 || j >= lastG() || start < OPENING || !free(start - 15, g[j].t1)) return null;
-    if (P && (spent() + g[j].t1 - start > budget || g[j].t1 - l.B > 10 * bar)) return null;
+    if (P && (spent() + g[j].t1 - start > budget || g[j].t1 - l.B > 8 * bar)) return null;
     const dir = rand() < 0.5 ? 1 : -1;
     // It lands broad, so past the landing it draws back as it pours: going the other way, a few big shapes are all that's left of it by the end of a long tail.
     const tail = Math.max(g[j].t1 - (g[j].morph || 0) - l.B, 1), after = -Math.min(0.045, COIN_GROWS / tail);

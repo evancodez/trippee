@@ -35,15 +35,15 @@ const IRIS_ROOM = 10.5;               // seconds the gesture before the climax's
 const CLIMAX_NEAR = 16;             // bars around the climax that may go at the peak's pace. Everything else is held to the chorus's, so there's something saved
 const OPENS = 14;                   // seconds: the arrival. The first thing that's looked at, plain
 const CAP = { relay: 16, riot: 6, still: 12, suite: 10 };       // bars a way of changing runs before the next thing in its wardrobe
-const LEAST = { relay: 4, riot: 4, still: 6 }, SUITE_LEAST = 6.8;      // ...seconds        // bars. Any shorter and it's a suite
+const LEAST = { relay: 3, riot: 3.5, still: 6 }, SUITE_LEAST = 6.8, RELAY_MOST = 0.36;      // ...seconds, and the share of the film        // bars. Any shorter and it's a suite
 const GEAR = [32, 16, 12, 8, 6];     // beats to a cycle of flow, by level
-const STEP = { chill: [8, 8, 4, 4, 2], travel: [8, 4, 4, 2, 2], riot: [4, 4, 2, 2, 1] };      // a Relay's bars between steps, at most: the song's own landings, and the breath's own bar lines where they're further apart than this, so a step falls on the phrase
+const STEP = { chill: [12, 8, 8, 4, 4], travel: [8, 4, 4, 2, 2], riot: [4, 4, 2, 2, 1] };      // a Relay's bars between steps, at most: the song's own landings, and the breath's own bar lines where they're further apart than this, so a step falls on the phrase
 const BOLD = [6, 8, 9];            // cycles per picture unit: how fine a chorus, a lift and the rest would rather not go
 
 // How each register goes about each class of the song's level: a short routine of ways of changing, the next one for each new kind of section. A section coming back runs the routine it ran.
 const MENU = {
-  riot: { loud: [['riot', 'relay'], ['relay', 'riot'], ['relay', 'suite', 'riot']], mid: [['relay', 'suite'], ['suite', 'relay'], ['riot', 'relay']], quiet: [['still', 'suite'], ['suite', 'relay']] },
-  travel: { loud: [['relay', 'riot'], ['riot', 'relay'], ['relay', 'suite', 'riot']], mid: [['relay', 'suite'], ['suite', 'relay'], ['still', 'relay'], ['suite', 'still']], quiet: [['suite', 'still'], ['still', 'suite'], ['suite']] },
+  riot: { loud: [['riot', 'relay'], ['relay', 'riot'], ['relay', 'riot', 'relay']], mid: [['relay', 'suite'], ['suite', 'relay'], ['riot', 'relay']], quiet: [['still', 'suite'], ['suite', 'relay']] },
+  travel: { loud: [['relay', 'riot'], ['riot', 'relay'], ['relay', 'riot', 'relay']], mid: [['relay', 'suite'], ['suite', 'relay'], ['still', 'relay'], ['suite', 'still']], quiet: [['suite', 'still'], ['still', 'suite'], ['suite']] },
   chill: { loud: [['relay', 'still'], ['still', 'relay']], mid: [['still', 'suite'], ['suite', 'relay'], ['relay', 'still']], quiet: [['still', 'suite'], ['suite', 'still']] },
 };
 const RELAYS = ['tour', 'star', 'whirl', 'saw', 'weave', 'floor', 'rooms'];       // not dipole: its rings go by as hairlines
@@ -68,8 +68,9 @@ function perBar(A, key) {
 
 // The ride, docs/DIRECTION.md section 5: 0 whisper .. 4 peak per bar, cut at the song's own 15, 40, 70 and 90%, and nothing shorter than 4 bars.
 export function rideOf(A) {
-  const N = A.bars.length, loud = perBar(A, 'loud'), lz = zOf(loud), bz = zOf(perBar(A, 'bright')), pz = zOf(perBar(A, 'perc'));
-  const h0 = lz.map((v, i) => v + 0.5 * bz[i] * clamp(loud[i] / 0.4) + 0.4 * pz[i]);
+  const N = A.bars.length, loud = perBar(A, 'loud'), lz = zOf(loud), bz = zOf(perBar(A, 'bright')), pz = zOf(perBar(A, 'perc')), ez = zOf(perBar(A, 'E'));
+  // The plan's formula, with the song's energy on top: it's what a change of pace has to follow
+  const h0 = lz.map((v, i) => v + 0.5 * bz[i] * clamp(loud[i] / 0.4) + 0.4 * pz[i] + 1.2 * ez[i]);
   const heat = h0.map((_, i) => meanOf(h0.slice(Math.max(0, i - 1), Math.min(N, i + 3))));
   const sorted = [...heat].sort((a, b) => a - b), qs = [0.15, 0.4, 0.7, 0.9].map(q => sorted[Math.floor((N - 1) * q)]);
   const lv = heat.map(h => qs.filter(q => h >= q).length);
@@ -155,7 +156,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
     if (labelClass.has(label)) return labelClass.get(label);
     let n = 0, s = 0;
     for (const x of A.segments) if (x.label === label) for (let i = barAt(x.t0); i < lv.length && bars[i] < x.t1; i++) { n++; s += lv[i]; }
-    const m = n ? s / n : 2, c = m >= 2.5 ? 'loud' : m >= 1.4 ? 'mid' : 'quiet';
+    const m = n ? s / n : 2, c = m >= 2 ? 'loud' : m >= 1.2 ? 'mid' : 'quiet';
     labelClass.set(label, c);
     return c;
   };
@@ -210,6 +211,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   let climaxAt = null;
   const passages = (landIn, segAt, time = (x => x)) => {
     const out = [];
+    let relayed = 0;
     // The climax gets its Iris, which rolls up a plain sheet: so there's a landing for it, on its own bar line unless there's already one that near, with a plain gesture coming to it
     let land = landIn;
     {
@@ -231,7 +233,10 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
         if ((b - last.a) / bar <= (last.saved ? 1.25 : 1) * CAP[way]) { last.hits.push(a); last.b = b; last.level = Math.max(last.level, level); continue; }
         way = w.ways[++w.at % w.ways.length];
       } else if (last?.w === w && !last.forced && !forced && last.way !== way) way = w.ways[w.at % w.ways.length];
+      // Not more than this much of the film one way, or it's the one idea that gets boring
+      if (way === 'relay' && relayed > RELAY_MOST * land.at(-1) && a !== climaxAt) way = w.ways.find(x => x !== 'relay') ?? 'suite';
       if (a === climaxAt && saved) way = 'relay';      // what opens at the climax is what's been saved for it
+      if (out.at(-1)?.way === 'relay') relayed += out.at(-1).b - out.at(-1).a;
       const n = (w.used[way] = (w.used[way] ?? -1) + 1);
       out.push({ a, b, seg, level, way, w, hits: [], n, forced, saved: a === climaxAt && saved });
     }
@@ -318,15 +323,13 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       if (part.way === 'relay') {
         const lead = (lvl >= 3 ? 1.1 : lvl === 2 ? 1.5 : 2.2) * bar, tail = (lvl >= 3 ? 0.4 : lvl === 2 ? 0.75 : 1.25) * bar;
         // Not while the Iris is still opening onto it
-        const clear = part.a === climaxAt ? 6 : 0.5 * bar, songEnd = part.b;
-        const keys = [part.a, ...part.hits, songEnd], stops = [...part.hits];
+        const clear = part.a === climaxAt ? 6 : 0.5 * bar;
+        const keys = [part.a, ...part.hits, part.b], stops = [...part.hits];
         // Bar lines between them where it's too long to wait, counted from the breath, so that a step falls on the phrase and the half phrase
         const first = M.breath?.bar0 ?? 0;
-        for (let k = 0; k + 1 < keys.length; k++) {
-          const most = STEP[name][levelAt((keys[k] + keys[k + 1]) / 2)];
-          for (let i = barAt(keys[k]) + 1; i < bars.length && bars[i] < keys[k + 1] - 0.5 * bar; i++) {
-            if (((i - first) % most + most) % most === 0 && bars[i] > keys[k] + 0.5 * bar) stops.push(bars[i]);
-          }
+        for (let i = barAt(part.a) + 1; i < bars.length && bars[i] < part.b - 0.5 * bar; i++) {
+          const most = STEP[name][levelAt(bars[i])];
+          if (((i - first) % most + most) % most === 0 && !keys.some(t => Math.abs(bars[i] - t) < 0.5 * bar)) stops.push(bars[i]);
         }
         const on = [], apart = (name === 'riot' && lvl >= 3 ? 0.8 : 1.5) * bar;
         for (const t of stops.sort((x, y) => x - y).map(time)) if (t - lead > a + clear && t + tail < end && (!on.length || t - on.at(-1) > apart)) on.push(t);
