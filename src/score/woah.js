@@ -284,7 +284,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   // The pattern a trick wants a sheet to be, if it isn't.
   const OWN = { slice: 'space.crystal', fringe: 'time.fringe', ouchi: 'time.ouchi' };
   // ...and those that can have one, if what's there can't take them. A Relay can't: a time trick reads the sheet's phases, and it's changing all of them.
-  const OWN_IF = { ghost: ['time.ghostcheck', 'time.ghost'], snakes: ['time.snakes'], echo: ['time.echo'], slit: ['time.shutter', 'time.target', 'time.rings', 'time.venetian', 'time.wave', 'time.spiral', 'time.cells'], swell: ['space.swell'], terraces: ['space.terraces'], pleats: ['space.pleats'], ride: ['space.ride'], hallway: ['space.hall'], crumple: ['folds.crumple', 'folds.crumplerings'], limit: ['folds.limit', 'folds.limitcheck'] };
+  const OWN_IF = { ghost: ['time.ghostcheck', 'time.ghost'], snakes: ['time.snakes'], echo: ['time.echo'], slit: ['time.shutter', 'time.target', 'time.rings', 'time.venetian', 'time.wave', 'time.spiral', 'time.cells'], swell: ['space.swell'], terraces: ['space.terraces'], pleats: ['space.pleats'], ride: ['space.ride'], hallway: ['space.hall'], crumple: ['folds.crumple', 'folds.crumplerings'], limit: ['folds.limit'] };
   const ownFor = (id, G) => {
     if (world) return null;
     if (OWN[id]) return lib(OWN[id]);
