@@ -429,6 +429,6 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
 
   return {
     register: name, registerScore: reg.score, least: own ? own.morph[0] + 4 : Math.max(LEAST_S, 1.8 * bar), most: Math.min(MOST_S, MOST_BARS * bar), oneMore: ONE_MORE, stiff: STIFF, bar,
-    want: t => barsWanted(t) * bar, shrinkArcs, dropWorth: (dE, i) => (Math.abs(dE) >= DROP ? DROP_WORTH : 0) + (jumpAt.get(i) ?? 0), levelAt, classAt, get climaxAt() { return climaxAt; }, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
+    want: t => barsWanted(t) * bar, isLoud: t => classAt(t) === 'loud' || classOfLabel((A.segments.find(x => t >= x.t0 && t < x.t1) ?? A.segments.at(-1)).label) === 'loud', shrinkArcs, dropWorth: (dE, i) => (Math.abs(dE) >= DROP ? DROP_WORTH : 0) + (jumpAt.get(i) ?? 0), levelAt, classAt, get climaxAt() { return climaxAt; }, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
   };
 }

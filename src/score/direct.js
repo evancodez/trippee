@@ -252,7 +252,7 @@ export function direct(score, A, M) {
       if ((!P && g[a].t1 - g[a].t0 < 6) || t0 < OPENING || t1 - (g[b].morph || 0) - t0 < STAR_BODY) continue;
       const here = ruling.filter(r => r.t0 >= t0 && r.t0 < t1), kinds = new Set(here.map(r => r.c)).size;
       if (kinds < 2 || here.length < 4) continue;
-      if (P) { let on = 0, n = 0; for (let x = t0; x < t1; x += bar) { n++; if (P.classAt(x) === 'loud') on++; } if (on > 0.2 * n) continue; }      // a chorus is a run of quick changes
+      if (P) { let on = 0, n = 0; for (let x = t0; x < t1; x += bar) { n++; if (P.isLoud(x)) on++; } if (on > 0.2 * n) continue; }      // a chorus is a run of quick changes
       // It leaves room for the Countdown to come back
       const inTheWay = comeback.some(b => t0 < b + PAST_T && t1 > b - 24);
       places.push({ t0, t1, s: Math.min(kinds, 6) / 6 + Math.min(here.length / len * 4, 1) + Math.min(len, 55) / 55 + 0.6 * rand() - (inTheWay ? 1.5 : 0) });
@@ -334,7 +334,7 @@ export function direct(score, A, M) {
   // A section that comes back wears it again, the other way round: another dial, turning and locking the other way.
   if (cd) {
     const others = DIALS.map(lib).filter(p => p && p !== dial);
-    for (const L of comeback) if (!P || (P.classAt(L) !== 'loud' && spent() + 20 < budget)) putCountdown(L, (flag('lookRuns') && others.length ? others[Math.floor(rand() * others.length) % others.length] : null) ?? dial, true);
+    for (const L of comeback) if (!P || (!P.isLoud(L) && spent() + 20 < budget)) putCountdown(L, (flag('lookRuns') && others.length ? others[Math.floor(rand() * others.length) % others.length] : null) ?? dial, true);
   }
 
   // ------------------------------------------------------------- not too long in one look
