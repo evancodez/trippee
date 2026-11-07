@@ -4,7 +4,7 @@
 // One sheet (a move, a stretch of a song): uG[b+I_spaceK..E], read at the top of prepare().
 // Two sheets (a transformation, dive mode 6): uF[F_SPACE..+4], read in main(). Each pixel lands on A or B; irisB says how much of it is B.
 //
-//   k  kind, amp, f, ph     kind: 1 swell, 2 well, 3 drop, 4 pleat, 5 tube
+//   k  kind, amp, f, ph     kind: 1 swell, 3 drop, 4 pleat, 5 tube
 //   c  pitch, yaw, roll, dist     the camera, about the point it's looking at. With everything else 0 a sheet lying at z = 0 is exactly the frame, whatever dist is.
 //   o  x, y, z, a           the point it's looking at. a: each kind's own
 //   e  bowl, q, pix, w      bowl: the world curves up away from the camera, so the far ground fills the top of the frame and there's never a horizon. q: heights in steps of this. pix: in square columns this wide. w: each kind's own
@@ -12,17 +12,12 @@
 export default `#ifdef SPACE
 float spWave(vec2 u,float ph){ return .62*sin(.8*u.x+.35*u.y+ph)+.38*sin(-.45*u.x+1.1*u.y-.7*ph+1.3)+.22*sin(1.9*u.x-1.3*u.y+.5*ph+.4); }
 float spHash(vec2 c){ return fract(sin(dot(c,vec2(12.9898,78.233)))*43758.5453); }
-const float SP_GONE=-1e4;
-// The height of sheet A here. It's solid underneath, except a well, which is a thin sheet with a hole in it: under its rim there's nothing but what's below.
+const float SP_GONE=-1e4;     // no B
+// The height of sheet A here. It's solid underneath.
 float spA(vec4 k,vec4 o,vec4 e,vec3 X){
   vec2 q=e.z>0.?(floor(X.xy/e.z)+.5)*e.z:X.xy;
   float h=0.;
   if(k.x<1.5) h=k.y*spWave(q*k.z,k.w);
-  else if(k.x<2.5){
-    float r=length(q),N=max(k.z,1e-3);
-    if(k.w>0.&&(r<N||X.z<-k.y/N)) return SP_GONE;       // ph 1: through the neck to whatever's below. ph 0: closed, a horn
-    h=-k.y/max(r,N);
-  }
   else {
     float r=length(q-o.w*vec2(1.,0.)),u=clamp((k.w-r-e.w*spHash(q))/.3,0.,1.);       // ph: how far the fall has come from the middle. Each column goes when it reaches it, and falls as a thing falls
     h=-k.y*u*u;
@@ -73,12 +68,6 @@ vec3 spRelief(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,float L,out float side,out bool
   vec3 X=ro+rd*t;
   float hA=spA(k,o,e,X);
   side=L>SP_GONE?aaOf(L-hA):0.;
-  if(k.x>1.5&&k.x<2.5&&k.w>0.&&L>SP_GONE){          // the neck has an exact rim
-    float N=max(k.z,1e-3),D=-k.y/N;
-    if(ro.z<=D) side=1.;
-    else if(rd.z<0.){ vec3 Y=ro+rd*((ro.z-D)/-rd.z); side=aaOf(N-length(Y.xy)); }
-    else side=0.;
-  }
   float w=fwidth(t)/max(t,.05);
   edge=w>.06||(e.y>0.&&abs(X.z-hA)>.01);      // a silhouette, or a stepped wall: the one pixel across isn't a real gradient, and a wall's is only what bisecting left
   return X;
@@ -150,16 +139,30 @@ vec3 spTube(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,float Yn,out bool edge){
   edge=abs(dFdx(th))>2.||abs(dFdy(th))>2.;
   return vec3((k.y>1e-4?th/k.y:q.x)+e.w*X.y,X.y,0.);
 }
-// One sheet: a stretch of a song. Runs before everything else in prepare().
+// One sheet: a stretch of a song.
+vec2 spaceOf(vec4 k,vec4 c,vec4 o,vec4 e,vec2 p,out bool edge){
+  if(k.x<3.5){ float s; return spRelief(p,k,c,o,e,SP_GONE,s,edge).xy; }
+  if(k.x<4.5){ float s,f; vec3 r=spPleat(p,k,c,o,e,s,f,edge); return r.xy+vec2(cos(e.w),sin(e.w))*((s>.5?.5+.5*f:.5*f)-f)/k.z; }      // each face is half a cell of it, and at a share of half with no height it's exactly flat
+  return spTube(p,k,c,o,e,0.,edge).xy;
+}
+#ifdef FLIGHT
+// Inside prepare(): each pattern of a flight on its own sheet
 vec2 spaceOne(int b,vec2 p,out bool edge){
   edge=false;
   vec4 k=uG[b+I_spaceK];
-  if(k.x<.5) return p;
-  vec4 c=uG[b+I_spaceC],o=uG[b+I_spaceO],e=uG[b+I_spaceE];
-  if(k.x<3.5){ float s; return spRelief(p,k,c,o,e,SP_GONE,s,edge).xy; }
-  if(k.x<4.5){ float s,f; vec3 r=spPleat(p,k,c,o,e,s,f,edge); return r.xy+vec2(cos(e.w),sin(e.w))*((s>.5?.5+.5*f:.5*f)-f)/k.z; }      // one sheet: each face is half a cell of it, and at a share of half with no height it's exactly flat
-  return spTube(p,k,c,o,e,0.,edge).xy;
+  return k.x<.5?p:spaceOf(k,uG[b+I_spaceC],uG[b+I_spaceO],uG[b+I_spaceE],p,edge);
 }
+#else
+// Once, in main(): the plain path has three calls to prepare() and a GPU pays for what each one holds, drawn from or not (30 ms against 10). So what it's on is worked out once. Two patterns gliding can only be on the same kind of sheet (plan.js), and its numbers glide with them.
+vec2 spaceMain(vec2 p,out bool edge){
+  edge=false;
+  vec4 k=uG[I_spaceK];
+  bool two=uF[0].y>.5;
+  if(k.x<.5&&!(two&&uG[SLOT+I_spaceK].x>.5)) return p;
+  float T=two?uF[0].x:0.;
+  return spaceOf(vec4(k.x,mix(k.yzw,uG[SLOT+I_spaceK].yzw,T)),mix(uG[I_spaceC],uG[SLOT+I_spaceC],T),mix(uG[I_spaceO],uG[SLOT+I_spaceO],T),mix(uG[I_spaceE],uG[SLOT+I_spaceE],T),p,edge);
+}
+#endif
 // Two sheets: a transformation. pA and pB are where it lands on each, side is how much of it is B.
 void spaceTwo(vec2 p,out vec2 pA,out vec2 pB,out float side,out bool edge){
   vec4 k=uF[F_SPACE],c=uF[F_SPACE+1],o=uF[F_SPACE+2],e=uF[F_SPACE+3],B=uF[F_SPACE+4];

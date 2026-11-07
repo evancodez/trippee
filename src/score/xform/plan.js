@@ -57,7 +57,7 @@ export function matchFamilies(a, b) {
     plain: !shaped(a) && !shaped(b) && sameBody && same('fold.n') && a[OFF['droste.lnS']] === 0 && b[OFF['droste.lnS']] === 0 && a[OFF['conf.amt']] === b[OFF['conf.amt']]
       && same('field.kind') && same('field.a') && same('field.b')
       // ...and so does how a sheet's cut into bands: gliding into a dial that's come apart would keep the old cuts to the last frame, and then the whole picture jumps.
-      && same('slip.kind') && same('slip.n'),
+      && same('slip.kind') && same('slip.n') && same('space.kind'),
   };
 }
 

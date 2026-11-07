@@ -24,6 +24,58 @@ export default async ({ page, save, log }) => {
     log('wrote', name);
   };
   const N = cols * rows;
+  // A pop is one frame much further from its neighbours than they are from theirs. Every transformation, on real pairs from the film's pool, at 60 fps across each end and 30 across the middle.
+  if (E.MODE === 'pops') {
+    const PAIRS = (E.PAIRS || 'checks.vega,lines.fall;lattice.master,body.planet;rooms.room,waves.dune;waves.silk,rooms.hall;lines.river,checks.crush;void.diamond,dots.inflate').split(';').map(p => p.split(','));
+    for (const via of (E.VIAS || 'flood,drop,tube,pleat').split(',')) for (const [a, b] of PAIRS) {
+      const r = await page.eval(async ({ a, b, via, D }) => {
+        const T = window.trippee, app = T.app; app.governor.enabled = false; app.R.drawScale = 1;
+        const c = document.createElement('canvas'); c.width = 240; c.height = 135; const g = c.getContext('2d', { willReadFrequently: true });
+        const grab = () => { g.drawImage(T.canvas, 0, 0, 240, 135); return g.getImageData(0, 0, 240, 135).data; };
+        const diff = (p, q) => { let d = 0; for (let i = 0; i < p.length; i += 4) d += Math.abs(p[i] - q[i]); return d / (p.length / 4); };
+        T.morph(a, b, D, 1);
+        const G = app.stage.score.gestures[0]; G.xform = { id: via }; delete G.plan; delete G.planFor; delete G.planning;
+        app.t = 0; T.step(0); app.t = 0.9; T.step(0);
+        const scan = (t0, t1, dt) => { const o = []; app.t = t0; T.step(0); let pv = grab(); for (let t = t0 + dt; t <= t1 + 1e-6; t += dt) { app.t = t; T.step(0); const f = grab(); o.push([+t.toFixed(3), +diff(pv, f).toFixed(2)]); pv = f; } return o; };
+        const head = scan(0.8, 1.6, 1 / 60), mid = scan(1.6, 1 + D - 0.6, 1 / 30), tail = scan(1 + D - 0.6, 1 + D + 0.4, 1 / 60);
+        const spike = list => { let best = [0, 0]; for (let i = 1; i < list.length - 1; i++) { const q = list[i][1] / Math.max(Math.max(list[i - 1][1], list[i + 1][1]), 0.5); if (q > best[1]) best = [list[i][0], +q.toFixed(2)]; } return best; };
+        return { kind: G.plan?.kind, head: spike(head), mid: spike(mid), tail: spike(tail), most: Math.max(...head.concat(mid, tail).map(x => x[1])) };
+      }, { a, b, via, D: +(E.D || 12) });
+      log(`${via} ${a}>${b}`, JSON.stringify(r));
+    }
+    log('errors', errs().length, errs().slice(0, 3).join(' | ').slice(0, 800));
+    return;
+  }
+  // What a frame costs the GPU at this size, by the timer query, against a plain frame and a dive of the same two in the one page.
+  if (E.MODE === 'cost') {
+    const r = await page.eval(async ({}) => {
+      const T = window.trippee, app = T.app, R = app.R; app.governor.enabled = false; R.drawScale = 1;
+      const gl = R.gl, X = R.timer; if (!X) return { none: 1 };
+      const measure = async setup => {
+        setup(); const ms = [];
+        for (let i = 0; i < 40; i++) {
+          app.t += 1 / 120; T.step(0);
+          gl.finish();
+          const q = gl.createQuery(); gl.beginQuery(X.TIME_ELAPSED_EXT, q); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.endQuery(X.TIME_ELAPSED_EXT);
+          await new Promise(res => { const w = () => (gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) ? res() : setTimeout(w, 2)); w(); });
+          ms.push(gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6); gl.deleteQuery(q);
+        }
+        ms.sort((p, q) => p - q);
+        return { ms: +ms[ms.length >> 1].toFixed(2), v: R.variant };
+      };
+      const morph = (via, at) => () => { T.morph('checks.vega', 'lines.fall', 14, 1); const G = app.stage.score.gestures[0]; G.xform = via ? { id: via } : undefined; delete G.plan; delete G.planFor; delete G.planning; app.t = 0; T.step(0); app.t = 1 + 14 * at; T.step(0); };
+      const load = (id, at) => () => { T.load(id); app.t = at; T.step(0); };
+      const out = {};
+      out.plain = await measure(load('lines.fall', 5));
+      out.plainAfter = await measure(load('lines.fall', 5));
+      out.dive = await measure(morph(null, 0.5));
+      for (const [via, at] of [['flood', 0.5], ['drop', 0.5], ['tube', 0.5], ['pleat', 0.5]]) out[via] = await measure(morph(via, at));
+      for (const [id, at] of [['space.swell', 20], ['space.terraces', 20], ['space.pleats', 20], ['space.ride', 20], ['space.crystal', 20]]) out[id] = await measure(load(id, at));
+      return out;
+    }, {});
+    log(JSON.stringify(r));
+    return;
+  }
   if (E.PAIR) {
     const [a, b] = E.PAIR.split(','), D = +(E.D || 14), name = E.NAME || `${E.VIA}-${a}-${b}`;
     const info = await page.eval(async ({ a, b, D, via, o }) => {

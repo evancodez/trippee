@@ -7,9 +7,9 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // One shader, built sixteen ways: with or without the hand, colour's second plate, a flight between two patterns, and the rarer moves (slip, star, coin, fields). A GPU pays for what
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
 // The first four are what a film needs to run; the rest build behind it.
-export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8, SPACE = 16;     // SPACE: the sheet in space, src/gl/chunks/space.js. It has what EXTRA has, so there's no SPACE | EXTRA
+export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8, SPACE = 16;     // SPACE: the sheet in space, src/gl/chunks/space.js
 const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT, SPACE, SPACE | FLIGHT, SPACE | PLATES, SPACE | PLATES | FLIGHT, SPACE | HAND, SPACE | HAND | FLIGHT, SPACE | HAND | PLATES, SPACE | HAND | PLATES | FLIGHT];
-export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & (EXTRA | SPACE) ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
+export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -130,8 +130,8 @@ export class Renderer {
   // The smallest program with what this frame needs. One still building, the frame goes without the hand or colour for a moment. They both come up slowly anyway.
   _variantOf(F) {
     const v = (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0);
-    if (F[FRAME.dive * 4 + 3] > 5.5 || this.slotA[OFF['space.kind']] > 0.5 || (this.slotB[OFF['space.kind']] > 0.5 && (F[FRAME.compose * 4 + 1] > 0.5 || F[FRAME.dive * 4 + 3] > 0.5))) return v | SPACE;
-    return v | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0);
+    const space = F[FRAME.dive * 4 + 3] > 5.5 || this.slotA[OFF['space.kind']] > 0.5 || (this.slotB[OFF['space.kind']] > 0.5 && (F[FRAME.compose * 4 + 1] > 0.5 || F[FRAME.dive * 4 + 3] > 0.5));
+    return v | (space ? SPACE : 0) | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0);
   }
 
   // Does this slot wear anything only the fuller programs have?
@@ -142,8 +142,9 @@ export class Renderer {
   _programFor(F) {
     if (this.wp) return this.wp.program(F);
     const v = this._variantOf(F);
-    if (!this.progs[v] && !this.parallel && !this._pending) { this._start(v); this._poll(); }
-    const got = this.progs[v] ? v : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
+    // Something the sheet in space isn't built with up front (it's on a pattern that also slips, say) is built when it's first asked for, and meanwhile it goes without.
+    if (!this.progs[v] && (!this.parallel || v & SPACE) && !this._pending) { this._start(v); this._poll(); }
+    const got = this.progs[v] ? v : v & SPACE ? [v & ~EXTRA, v & (FLIGHT | SPACE), v & (FLIGHT | EXTRA), v & FLIGHT].find(n => this.progs[n]) ?? (v & FLIGHT) : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
     this.variant = got;
     return this.progs[got];
   }

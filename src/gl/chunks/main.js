@@ -184,6 +184,9 @@ void main(){
 #endif
 #else
   if(uF[F_XF2].w!=0.) p=xfPush(p0,p);
+#ifdef SPACE
+  { bool spE; p=spaceMain(p,spE); if(spE) gBreak=true; }
+#endif
   float ma=prepare(0,0,p);
   int k1=FAM;
   if(uF[0].y>.5){

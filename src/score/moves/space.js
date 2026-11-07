@@ -1,14 +1,14 @@
 // The sheet in space, as a stretch of a song: a pattern on a sheet that has left the plane (src/gl/chunks/space.js). The numbers are the slot's own, so arcs, knobs, slides, flights, plates and the song all work on it. It's a camera and a
 // surface, in front of everything the pattern is, so it doesn't care what the pattern is. At amount 0 and pitch 0 it is exactly the flat frame.
 //
-//   G.moves = [{ id: 'swell' }]      any of swell, terraces, pins, pleats, ride, on any pattern. Every number can be a plain number or a lane [[t, x], ...] in song seconds. Say nothing, and it comes up over `lead` seconds from where the shot starts and
+//   G.moves = [{ id: 'swell' }]      any of swell, terraces, pleats, ride, on any pattern. Every number can be a plain number or a lane [[t, x], ...] in song seconds. Say nothing, and it comes up over `lead` seconds from where the shot starts and
 //                                    goes back to flat over `coast` before `to` (song seconds; default the end of the shot's body), and in between it travels.
 //     amp      how high the sheet goes
 //     f, ph    its waves: how many a unit, and where they've got to
 //     pitch, yaw, roll, dist    the camera
 //     x, y, z  where it's looking, and how far up. y runs on by itself at `fly` units a second
 //     bowl     the world curving up ahead, so there's no horizon
-//     q, pix   terraces (height in steps of this), square columns (this wide). A pins move has pix, a terraces move has q
+//     q, pix   terraces (height in steps of this), square columns (this wide)
 //     fly      how fast it goes. heave: how hard it surges into each strong beat. lift: how far each strong beat lifts the sheet
 //
 // On the strong beats (the song's own, read off the score that's up, as handClock in surge.js does) the sheet heaves and the camera surges forward, with no change of brightness. The tune swings the camera a little. Both go through reaction: nothing here replaces it.
@@ -97,8 +97,28 @@ export function rideNumbers(G, t, c, m = {}) {
   };
 }
 
+// A slice. A check is the flat cut through a solid of cubes; this one's a cut through a four-dimensional lattice, each family being one axis of it, and the cut turns. At no turn it's a plain check: two families have lines, and the other two are
+// constant. Turning, those two come up from infinitely long lines, nothing appears and nothing tears, and the tiles go through squares, diamonds, triangles and tilings that never repeat, then come back. Four numbers per family and no shader: it
+// costs nothing. Going further through the lattice, along the other two axes, opens and closes the tiles: the strong beats push it on. (The shape only makes sense on four plain families, so it has its own pattern.)
+export function writeSlice(out, a, depth, k) {
+  const u = [1, 0, 0, 0], v = [0, 1, 0, 0], n = [0, 0, 1, 0], m = [0, 0, 0, 1], turn = (w, i, j, th) => { const c = Math.cos(th), s = Math.sin(th), p = w[i], q = w[j]; w[i] = c * p - s * q; w[j] = s * p + c * q; };
+  const planes = [[0, 2], [1, 3], [0, 3], [1, 2], [0, 1], [2, 3]];
+  planes.forEach(([i, j], q) => { if (a[q]) for (const w of [u, v, n, m]) turn(w, i, j, a[q]); });
+  for (let i = 0; i < 4; i++) {
+    out[OFF[`f${i}.x`]] = k * u[i]; out[OFF[`f${i}.y`]] = k * v[i];
+    out[OFF[`f${i}.ph`]] += k * (depth[0] * n[i] + depth[1] * m[i]);
+  }
+}
+export function sliceAngles(d, kk) {
+  return [0.9 * Math.sin(d * 0.113) * kk, 0.9 * Math.sin(d * 0.079 + 1) * kk, 0.7 * Math.sin(d * 0.057 + 2) * kk, 0.7 * Math.sin(d * 0.097 + 4) * kk, 0.09 * d, 0];
+}
+export function sliceDrive(out, { t, G }, m = {}) {
+  const { k, d } = life(G, t, { lead: 8, coast: 8, ...m }), T = t;
+  writeSlice(out, sliceAngles(d * (m.speed ?? 1), k), [(m.fly ?? 0.08) * d + (m.heave ?? 0.3) * surgeAt(T) * k, 0.6 * (m.fly ?? 0.08) * d + 0.06 * tuneAt(t) * k], m.k ?? 2.1);
+}
+
 // How each of them sits on the same relief
-export const TERRACES = { Q: 0.2, A: 0.46, F: 1.7, P: 0.92, fly: 0.4 }, PINS = { PIX: 0.42, A: 0.5, F: 1.25, P: 0.8, bow: 0, fly: 0.3, D: 1.7, lift: 0.3 };
+export const TERRACES = { Q: 0.2, A: 0.46, F: 1.7, P: 0.92, fly: 0.4 };
 const move = (id, kind, numbers, more = {}) => ({
   id,
   needs() { return true; },
@@ -108,7 +128,7 @@ const move = (id, kind, numbers, more = {}) => ({
 export default {
   swell: move('swell', 1, reliefNumbers),
   terraces: move('terraces', 1, reliefNumbers, TERRACES),
-  pins: move('pins', 1, reliefNumbers, PINS),
   pleats: move('pleats', 4, pleatNumbers),
   ride: move('ride', 5, rideNumbers),
+  slice: { id: 'slice', needs(slot) { return [0, 1, 2, 3].every(i => slot[OFF[`f${i}.on`]] >= 0.5); }, write(out, c) { sliceDrive(out, c, c.m); } },
 };

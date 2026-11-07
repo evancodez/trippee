@@ -23,21 +23,6 @@ function flood(st, F, o) {
   put(F, 4, L, 0, yEnd, 0);
 }
 
-function well(st, F, o) {
-  const { x } = st, kick = kickAt(st.t), N = o.neck ?? 0.09, a = (o.a ?? 0.42) * k(x, 0, 0.42) * (1 + 0.1 * kick * (1 - k(x, 0.6, 0.8)));
-  const D = (o.a ?? 0.42) / N;     // how deep the rim ends up
-  const tip = k(x, 0.04, 0.3) * (1 - k(x, 0.36, 0.62));
-  const pitch = (o.pitch ?? 0.95) * tip, L = -D - (o.far ?? 2.2);
-  const dist = lerp(o.dist ?? 2.4, 1.15, k(x, 0, 0.5));
-  // Down: the camera's over the sheet to start with, and at the end it's a lens-length above B.
-  const z = lerp(0, L + dist, Math.pow(k(x, 0.34, 1), 1.0));
-  put(F, 0, 2, a, N, 1);
-  put(F, 1, pitch, (o.yaw ?? 1.2) * tip + 0.9 * x * x, 0, dist);
-  put(F, 2, 0, 0, z, 0);
-  put(F, 3, 0, o.q ?? 0, 0, 0);
-  put(F, 4, L, 0, 0, 0);
-}
-
 function drop(st, F, o) {
   const { x } = st, kick = kickAt(st.t), pix = o.pix ?? 0.42, up = k(x, 0.02, 0.34) * (1 - k(x, 0.7, 1));
   const front = lerp(-0.4, 3.6, k(x, 0.16, 0.74)), depth = o.depth ?? 3.2, L = -(o.far ?? 2.0);
@@ -72,7 +57,7 @@ function tube(st, F, o) {
   put(F, 4, 0, 0, Yend, Yend * 0.56);
 }
 
-const kinds = { flood, well, drop, pleat, tube };
+const kinds = { flood, drop, pleat, tube };
 
 function make(id) {
   return {

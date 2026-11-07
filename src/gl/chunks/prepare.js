@@ -12,8 +12,8 @@ const vec4 DS=vec4(1.,-.5,.75,-.25);   // each family's share of the tune's chan
 #endif
 // Everything up to the threshold: where this pixel lands, what each family's phase and gradient are. Returns coverage of the surface.
 float prepare(int K,int b,vec2 p){
-#ifdef SPACE
-  bool spEdge,spBrk=gBreak; p=spaceOne(b,p,spEdge); gBreak=gBreak||spEdge;
+#if defined(SPACE)&&defined(FLIGHT)
+  bool spEdge,spBrk=gBreak; p=spaceOne(b,p,spEdge); gBreak=gBreak||spEdge;      // a flight has one prepare, in a loop. The plain path has three, so there it's done once, in main()
 #endif
   p=moveCarry(b,p);
   float cover=1.,parity=1.,slipY=0.;
@@ -170,8 +170,10 @@ float prepare(int K,int b,vec2 p){
 #ifdef WORLD_COVER
   for(int i=K*FAM;i<(K+1)*FAM;i++){ gGn[i]*=uW[1].x; gGr[i]*=uW[1].x; }      // the sound's small coverage draw filters as if drawn full size, as the film's picture it would otherwise have read down from
 #endif
-#ifdef SPACE
+#if defined(SPACE)&&defined(FLIGHT)
   gBreak=spBrk;
+#endif
+#ifdef SPACE
   // Far off, lines too fine to draw close up to solid, or they'd be a grey smudge at the end of every tunnel.
   if(uG[b+I_spaceK].x>.5||uF[F_DIVE].w>5.5) for(int i=K*FAM;i<(K+1)*FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.16,.42,gGn[i]);
 #endif
