@@ -37,7 +37,7 @@ const MOVE_OF = { hallway: 'hall' };      // the stretch of a hall, whose name a
 const CHANGES = ['flood', 'drop', 'tube', 'pleat', 'hall', 'span'];
 // Out of the casting, still clickable and still called by name in a cut or by directing.woahOnly: span (PPP 74-110: frames to 100 ms, the governor at .6, then fine diagonals for 35 s) and limit (plain bold stripes on all three songs that got it, in place of richer rooms).
 // They're still read and scored, so the take's dice fall as they did, and only where one of them would have won does anything change.
-const OFF_CAST = new Set(['span', 'limit']);
+const OFF_CAST = new Set(['span', 'limit', 'snakes']);      // and snakes: its grey tones read as 10 s of grey noise where it took limit's place (MGMT 162-172)
 const STRETCHES = ['forever', 'limit', 'screen', 'pearls', 'fan', 'crumple', 'roll', 'slit', 'ghost', 'fringe', 'snakes', 'ouchi', 'echo', 'slice', 'swell', 'terraces', 'pleats', 'ride', 'hallway', 'rewind'];
 const LINES_ONLY = new Set(['crumple', 'limit']), MARCH = new Set(['ratchet', 'wring', 'scissor', 'bellows']);
 const OVER_RELAY = new Set(['forever', 'limit', 'screen', 'pearls', 'fan', 'roll', 'swell', 'terraces', 'pleats']);      // it doesn't care what's on the sheet, and a Relay's steps can go on under it
