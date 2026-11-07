@@ -54,7 +54,7 @@ export default {
     return score;
   },
   uniforms(U, ctx) {
-    const { A, B, t, c, T: Tm, from, to, kind, score, plan } = ctx, E = U.a, song = ctx.tables, s = ctx.at(c), G = from ?? ctx.G, N = to ?? null, Tx = N ? (Tm ?? ctx.x ?? 0) : 0;
+    const { A, B, t, c, T: Tm, from, to, kind, score, plan } = ctx, E = U.a, song = ctx.tables?.voice ? ctx.tables : null, s = ctx.at(c), G = from ?? ctx.G, N = to ?? null, Tx = N ? (Tm ?? ctx.x ?? 0) : 0;
     // The tune doesn't travel through this sheet in a line: where a broad band meets a walk of notes it comes out ragged. It's the sun, the lenses and the lift.
     const geo = ctx.geo ?? 1;     // the rule for a change of world: anything the film's own program would draw differently lets go with the geometry share, so the middle of a change can't tell
     ctx.F[FRAME.mel * 4] *= 1 - geo;
