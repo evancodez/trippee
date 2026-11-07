@@ -55,7 +55,7 @@ export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
   const G = st.from ?? st.G, xf = st.kind && XFORMS[st.kind]?.time;
   if (xf) { T.fill(0, 0, T_B * 4); xf(T, st); R.timeT = T; R.timeOn = true; }
   let m = G.pattern.time ?? null;
-  if (G.moves) for (const w of G.moves) if (MOVES[w.id]?.sheet && !(w.woah && (st.t < w.from || st.t > w.to))) { m = w; break; }
+  if (G.moves) for (const w of G.moves) if (MOVES[w.id]?.sheet) { if (w.woah) { if (st.t >= w.from) m = w; continue; } m = w; break; }      // src/score/woah.js: a gesture can wear one after another. Each runs out in its own time, and the next takes over when it starts
   if (!m || xf) return;
   const mv = MOVES[m.id];
   if (!mv?.sheet) return;
