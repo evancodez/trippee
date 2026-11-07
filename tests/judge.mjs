@@ -392,7 +392,7 @@ export default async ({ page, log, save, out, sleep }) => {
       duration: app.song.duration, family: s.family, bpm: s.song?.bpm, meter: s.song?.meter, seed: s.seed, rehearsal: app.song.rehearsal && { seconds: +app.song.rehearsal.seconds.toFixed(2), bad: app.song.rehearsal.bad },
       analyseSeconds: +app.song.analyseSeconds.toFixed(1), size: [app.canvas.width, app.canvas.height],
       gestures: s.gestures.map(G => ({ t0: +G.t0.toFixed(2), t1: +G.t1.toFixed(2), morph: +(G.morph || 0).toFixed(2), id: G.pattern.id, hero: heroOf(G) })),
-      pulses: Array.from(s.react?.pulses || []),
+      pulses: Array.from((s.heard ?? s.react)?.pulses || []),      // the strong beats the film's really walking to
       M: M && { landed: !!M.runs?.length, rests: M.rests || [], breath: M.breath ? { beats: M.breath.beats, t: Array.from(M.breath.t || []) } : null, home: M.home || null },
     };
   });

@@ -122,6 +122,8 @@ export function reckon(raw) {
   const quiet = bars2.slice(0, third), loud = bars2.slice(-third);
   const mQuiet = mean(quiet.map(x => x.m)), mLoud = mean(loud.map(x => x.m));
   const voicedShare = voicedIdx.length / N;
+  // The song's biggest rises in the order they come: does a later one get less than an earlier one? How fast the picture's going around each, and for the bars after it.
+  const grow = peaks.filter(p => p.sign > 0).slice(0, 8).sort((a, b) => a.t - b.t).map(p => `${r2(p.t)}:${r2(Math.max(...rng(p.t - 0.3, p.t + 0.3).map(d3)))}/${r2(mean(rng(p.t, p.t + 2 * bar).map(i => d[i])))}`).join(' ');
   return {
     beat: { strong: r2(bm), others: r2(om), ratio: r2(bm / Math.max(om, 1e-3)), bars: r2(bbm), n: stT.length, secs: r2(mean(stT.slice(1).map((t, i) => t - stT[i]))) },
     answers: { strong: r3(bc), others: r3(oc), bars: r3(bbc) },
@@ -129,6 +131,7 @@ export function reckon(raw) {
     tune: { up: best(iy), rate: { now: r3(rate(0)), r: r3(topRate[1]), lag: r2(topRate[0] / F) }, across: best(ix), amp: r3(tuneAmp), voiced: r2(voicedShare) },
     notes: { n: jumps.length, peak: r2(etaTop / Math.max(etaBase, 1e-3)), at: r2(etaAt), swing: r2(etaTop - Math.min(...eta)) },
     moments: { shown: r2(momentsShown), barsShown: r2(barsShown), top: top.map(p => `${r2(p.t)}${p.sign > 0 ? '+' : '-'}${r2(p.s)}:${r2(shows(p.t))}`).join(' ') },
+    grow,
     loud: { quiet: r2(mQuiet), loud: r2(mLoud), ratio: r2(mLoud / Math.max(mQuiet, 1e-3)) },
     ambientLow: r2(q.ambientLow), gestures: q.gestures, hasHear: q.hasHear, version: q.version,
   };

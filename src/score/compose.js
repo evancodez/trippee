@@ -796,7 +796,7 @@ export function compose(A, seed = 1, opts = {}) {
   film.hear = buildHear(A, heard, { hits: film.sheet?.hits ?? [] });
   // Stop ducking the song. A hero can step the song back only so far, while the layer's up: the picture keeps answering through it.
   if (film.ambient) { const raw = film.ambient; film.ambient = t => { const a = raw(t), k = walk.on ?? 0; return k > 0 ? a + (Math.max(a, HEAR_FLOOR) - a) * k : a; }; }
-  if (hearing.on) hearRates(film, film.hear);
+  if (hearing.on && !opts.cut && !W) hearRates(film, film.hear);      // a hand cut's flow is as it was cut
   if (walk && ears.morph) film.walkMorph = (x, t, D) => x + WALK_MORPH * smoother(x / 0.2) * smoother((1 - x) / 0.2) * walk(t) / D;
   film.ears = ears;
   // Hearing 2: the tune lifts and sinks the whole sheet, one way everywhere, so it goes across the lines. Out from the middle pushes opposite sides opposite ways, and that reads as a swell, not a note going up.

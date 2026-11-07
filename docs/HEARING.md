@@ -1,20 +1,45 @@
-# What to look for with ?hear=1
+# Following the song
 
-Nobody working on this can hear the songs, and no test proves a thing feels musical. These are for your eyes and ears.
+**The picture now follows the song hard, and it's on by default.** Press `h` while a song plays to compare: the song goes on, and over a second the film goes back to how it was. Press it again and it all comes back.
 
-**Compare them side by side.** `http://localhost:5300/hear.html`: pick a song, press play. Left is today's film, right is the new one, both on the same clock, and only the left makes a sound. Type another list in either box to change what that side hears. Or open the app itself with `?hear=1` and without it.
+Best places to see it:
 
-**`?hear=1` turns on changes 1 and 2.** `?hear=1,2,6` gives exactly those, `?hear=6` just that one, and `?hear=1,1` just 1 (since `?hear=1` means the set). `?hear=all` is everything. Say which you like by number.
+- **Disclosure, 1:20 to 1:30.** The wind-up, then the drop at 1:26: the sheet draws in, lets go on the hit, and every strong beat after it pumps. Press `h` during it.
+- **MGMT, from the start, then 1:17.** Watch the strong beats (1 and 3), then the big hit.
+- **PPP, 0:25 and 2:17.** The biggest entrances. Quiet stretches lean on the tune instead of the beat.
+- **Wildflower, 0:12 onward.** The chill end: a gentler stride, with the tune lifting and sinking the sheet.
 
-| Number | What it does | What to look for |
-|---|---|---|
-| 1 | The sheet walks | It falls faster and faster into each strong beat, nearly stops on it, and sets off again. You should be able to tap along from across the room. **Tell me if it's ever a jolt.** |
-| 2 | The tune now | High notes lift the sheet and low ones sink it as you hear them, and the melody never disappears. |
-| 6 | Rings fall in | One ring at a time speeds up on its way in and implodes on the hit. |
-| 5 | Bass under the sheet | A broad bump rides up and down with the bass notes, and doesn't twitch with the kick. |
-| 7 | Two voices on a check | One direction steps on the strong beats while the other pours with the tune. Only the checks half of the plan is built. |
-| 9 | Whitney bars | Rays on one bar line, a dartboard on the next, spirals scattering between. Once or twice a song. |
-| 11 | Surprise | The flow turns round for a moment on the song's rarest chord. Rare by design, and some songs have one or none. |
-| morph | Transformations walk too | Not in the plan. The flights and glides take the stride as well. Most likely of all of these to feel jolty. |
+**Tell me what you want with the song panel's sliders (`s`).** Pulse, melody and tone each go from 0 (that part's gone) to 2 (plainly a lot). They're remembered. If you find a setting you like, just tell me the three numbers.
 
-Colour, worlds and hand cuts hear the same way when these are on.
+`?hear=0` in the address starts without it. `H` (shift) hides the interface now, and so does `h` with no song on.
+
+Nobody working on this can hear the songs, so all of this has been seen in numbers and frames and never with the music. Whether it feels musical is yours to say. Tell me if anything's ever a jolt.
+
+---
+
+## What it does, for whoever works on it next
+
+All of it is `src/score/hear.js`: a layer over the film, on the song's own seconds, worked out once when the film's composed. It works on the whole sheet, as a camera and a few lenses in front of everything (`FRAME.hear`, `src/gl/chunks/main.js`), so it goes on answering through every transformation, hero and world. With `edits.hear` at 0 it writes nothing, and the film is the film it always was. A rehearsal looks at the film without it (`FILM_ONLY` in `src/music/rehearse.js`).
+
+| What | Where you see it |
+|---|---|
+| Strong beats, chosen per section (`react.js`, `ears[1]`) | The sheet falls into each and pushes toward you, blooms from the middle, and a ring runs out. The flow walks to them. Gentler on a soft song, never none |
+| The tune, as you hear it | High notes lift the sheet and low ones sink it. A note that jumps starts a bulge at its pitch, walking along a stave. In quiet stretches the tune leads |
+| Tone | A brighter sound leans the sheet, tightens the bloom and fines the lines. A dark one spreads them |
+| Moments (`momentsOf`): jumps, section edges, arrivals, stops, landings, big chords, fills | Each gets an answer whether or not the pattern changes. A build winds up (the camera draws back, the middle pinches, the flow slows) and the arrival lets go. A fall recedes. A rest holds completely still and lands as you hear it |
+| The song's shape | Sections go by their rank and how many times they've come, so a chorus coming back is bigger |
+| Loudness | Bigger answers, a sway that picks up speed, and a faster flow. `G.hearRate` is set when a film's composed, so `h` leaves it alone: flipping it would sweep a gesture's whole phase |
+| Heroes | They can step the song down only to `HEAR_FLOOR` (.9) while this is up |
+
+To measure it: `tests/answer.mjs` (how much answers, in real pixels, on any build) and `tests/hearkey.mjs` (the key, real time, recording, sliders, cuts, colour, a world).
+
+The numbered changes in docs/MODES.md section 6 that aren't part of this stay behind their own flags, and they do change how a film's composed: `?hear=5`, `?hear=6,9`, `?hear=all`.
+
+| Number | What it does |
+|---|---|
+| 5 | A broad bump under the sheet moves with the bass notes |
+| 6 | Rings speed up on their way in and implode on the hit. (The layer has this on anyway.) |
+| 7 | On a check, one direction steps on the strong beats while the other pours with the tune. Only the checks half is built |
+| 9 | Whitney bars: rays on one bar line, a dartboard on the next. Once or twice a song |
+| 11 | The flow turns round for a moment on the song's rarest chord |
+| morph | Transformations walk too |

@@ -232,7 +232,7 @@ export default async ({ page, log, save, sleep }) => {
   await dropSong(page, songPath, { resolvePath: resolve, sleep });
   if (process.env.CUT) await page.eval(async () => { for (let i = 0; i < 600 && !app.song.compare?.score?.('cut'); i++) await new Promise(r => setTimeout(r, 200)); const c = app.song.compare; if (!c) throw new Error('no hand cut for this song'); await c.flip(); for (let i = 0; i < 100 && c.film !== 'cut'; i++) await new Promise(r => setTimeout(r, 100)); });
   const info = await page.eval(() => {
-    const s = app.song.score, R = s.react, M = R.M;
+    const s = app.song.score, R = s.heard ?? s.react, M = R.M;
     const hands = s.gestures.slice(0, -1).map(G => ({ t0: G.t0, t1: G.t1, morph: G.morph || 0, hero: (G.moves || []).filter(m => m.id !== 'cue').map(m => m.id).join(',') }));
     // on the collapsed axis, as the tables are
     const at = (arr, t) => { const x = Math.max(0, Math.min(R.n - 1.001, R.C(t) * R.hz)), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };

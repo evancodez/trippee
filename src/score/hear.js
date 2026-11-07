@@ -131,6 +131,7 @@ export function buildHear(A, R, { hits = [] } = {}) {
     const p = P[k], L = k ? p.t - P[k - 1].t : 2, atk = clamp(0.4 * L, 0.22, 0.6);
     K.push([p.t - atk, 0, false]); K.push([p.t, p.a, true]);
   }
+  if (P.length) K.push([P.at(-1).t + 2.4, 0, false]);
   for (let k = 1, i = 0; k < K.length; k++) {
     const [ta, va] = K[k - 1], [tb, vb, up] = K[k];
     if (tb <= ta) continue;
@@ -165,7 +166,7 @@ export function buildHear(A, R, { hits = [] } = {}) {
   rings.sort((a, b) => a.t - b.t);
 
   // A build. From the last low in the song's size, or a few bars, up to the arrival: it winds up, hangs in the last beat, and lets go on the hit.
-  const eSmooth = smooth(raw, HZ * 0.7), eTop = Math.max(...eSmooth.filter((_, i) => i % 30 === 0), 1e-3);
+  const eSmooth = smooth(raw, HZ * 0.7);
   for (const m of moments) {
     if (m.sign < 0 || m.s < 0.42 || m.kind === 'section' || m.kind === 'chord' || m.kind === 'fill') continue;
     const iHit = Math.round(m.t * HZ);

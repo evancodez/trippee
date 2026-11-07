@@ -99,6 +99,42 @@ export default async ({ page, sleep, log }) => {
   say(log, 'across a recording: h twice, it finishes and has a file', !rec.on && rec.size > 1000, JSON.stringify(rec));
   await page.eval(`app.ui.recorder.last=null;0`);
 
+  // ---- a hand cut: d, and it follows the song just the same. h while it's showing.
+  if (process.env.CUT !== '0') {
+    for (let i = 0; i < 900 && !(await page.eval('!!app.song.compare')); i++) await sleep(200);
+    if (await page.eval('!!app.song.compare')) {
+      await press(page, 'd'); await sleep(9000);
+      const inCut = await sample(page, 3000);
+      say(log, 'a hand cut follows the song', (await page.eval('app.song.compare.film')) === 'cut' && Math.max(...inCut.map(r => r.zoom)) > 0.03, `film ${await page.eval('app.song.compare.film')}, zoom to ${Math.max(...inCut.map(r => r.zoom))}, ${(await page.eval('app.song.score.sheet?.hits?.length ?? 0'))} hits, ${(await page.eval('app.song.score.hear.moments.length'))} moments`);
+      await flip(0); await flip(1);
+      await press(page, 'd'); await sleep(9000);
+    } else log('no hand cut came up for this song');
+  }
+
+  // ---- colour and a world take it too
+  await press(page, 'b'); await sleep(3000);
+  const col = await sample(page, 3000);
+  say(log, 'colour follows the song', Math.max(...col.map(r => r.zoom)) > 0.03 && !!(await page.eval('app.edits.beyond')), `zoom to ${Math.max(...col.map(r => r.zoom))}, ${(1000 / med(col.slice(1).map((r, i) => r.at - col[i].at))).toFixed(1)} fps`);
+  await flip(0); await flip(1);
+  await press(page, 'b'); await sleep(2000);
+  await page.eval(`app.stage.setWorld('flower');0`);
+  for (let i = 0; i < 300 && !(await page.eval('!!app.stage.score.world && !!app.stage.score.hear')); i++) await sleep(200);
+  await sleep(16000);
+  const world = await sample(page, 4000);
+  say(log, 'Flower Power follows the song', Math.max(...world.map(r => r.zoom)) > 0.03, `zoom to ${Math.max(...world.map(r => r.zoom))}, ${(1000 / med(world.slice(1).map((r, i) => r.at - world[i].at))).toFixed(1)} fps`);
+  await flip(0); await flip(1);
+  await page.eval(`app.stage.setWorld(null);0`); await sleep(3000);
+
+  // ---- the song ending: the film gives way to what comes after it, and the camera lets go without a pop
+  const dur = await page.eval('app.song.duration');
+  await page.eval(`app.song.seek(${dur - 5});0`); await sleep(1500);
+  const ending = await sample(page, 8000);
+  { let worst = 0, usual = 0.5; for (let i = 1; i < ending.length - 1; i++) { const near = ending.slice(Math.max(1, i - 6), i + 7).map(r => r.diff), m = Math.max(med(near), 0.5); if (ending[i].diff / m > worst / usual) { worst = ending[i].diff; usual = m; } }
+    say(log, 'the song ends: no pop', worst <= usual * 4, `its most out-of-line frame changes ${worst} against ${usual} around it; zoom at the end ${ending.at(-1).zoom}`); }
+  await sleep(3000);
+  await load(page, sleep, song);
+  await page.eval(`app.song.seek(${ats[0]});app.song.play();0`); await sleep(1000);
+
   // ---- shift h hides the interface whatever's on
   const h0 = await page.eval('app.edits.hear');
   await press(page, 'h', true);
