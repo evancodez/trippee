@@ -69,9 +69,9 @@ export default {
     // The strong beats open it: on each one, for a moment, more of the frame is sharp. And a big arrival is a pull (song.js).
     const pull = song ? voiceAt(song.pull, t) : 0, melt = Math.max(pull, 0), snap = Math.max(-pull, 0);
     // Bolder than it was (the palest, softest look in the app): a wider band in focus even when it's quiet, and less melt per unit away from it, so more of the frame has an edge.
-    const fw = 0.24 + 0.6 * e * e + 0.05 * lung + 0.13 * pulse + 1.9 * snap;
+    const fw = 0.4 + 0.7 * e * e + 0.05 * lung + 0.13 * pulse + 1.9 * snap;
     set(24, 0.3 * Math.sin(t * 0.09), fy + 0.12 * mel, Math.cos(ang), Math.sin(ang));
-    set(25, fw, (0.4 - 0.22 * e) * (1 + 1.1 * melt) * (1 - 0.8 * snap), (0.008 + 0.05 * v * (1 - e)) * (1 - snap) + 0.1 * melt, 40 + 130 * (song ? Math.min(1, voiceAt(song.width, t) * 2) : 0.2));
+    set(25, fw, (0.24 - 0.13 * e) * (1 + 1.1 * melt) * (1 - 0.8 * snap), (0.008 + 0.05 * v * (1 - e)) * (1 - snap) + 0.1 * melt, 40 + 130 * (song ? Math.min(1, voiceAt(song.width, t) * 2) : 0.2));
     // The film: down tilts with the harmony's pull, and the pool goes by on the music's own time.
     const lean = 0.8 * tens + 0.5 * Math.sin(t * 0.05), dr = song ? voiceAt(song.drain, t) : t * 40;
     set(26, Math.sin(lean), -Math.cos(lean), dr * 0.0042, t * (0.5 + e));
@@ -85,7 +85,7 @@ export default {
     set(29, -2.2 + sh.x * (4.4 + width), width, dx, dy);
     set(30, 0.11 + 0.1 * lung, 0.66 + 0.1 * (1 - e), 0.018 + 0.012 * lung, 0);
     // z: how much deeper the dark side of every line is than its sheen says. A little when it's quiet, so it stays pearly, and a lot on a loud passage, where the edges want to be bold.
-    set(31, kind === 'breath' ? 0.16 : 0.2, 80 + 190 * e, 0.14 + 0.4 * e * e + 0.1 * pulse, 0);
+    set(31, kind === 'breath' ? 0.16 : 0.2, 80 + 190 * e, 0.22 + 0.45 * e * e + 0.1 * pulse, 0);
     // The pearls: the voice, and its echoes along the same path, each a beat or two behind.
     for (let i = 0; i < ORBS; i++) {
       voiceSpot(song, t - i * ORB_LAG, spot);
