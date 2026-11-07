@@ -34,7 +34,7 @@ const smooth = (a, r) => {
 };
 const meanOf = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const sdOf = a => { const m = meanOf(a); return Math.sqrt(meanOf(a.map(v => (v - m) ** 2))) || 1; };
-const skew = u => smoother(Math.pow(clamp(u), 1.7));      // sets off gently and is going fastest late, so the fastest frame's near the beat. It still stops on it
+const skew = u => smoother(Math.pow(clamp(u), 1.4));      // sets off gently and is going fastest late, so the fastest frame's near the beat. It still stops on it
 
 // ---------------------------------------------------------------- the song's moments
 // tests/shotlist.mjs's jumps: how much each bar line changes the two bars after it against the two before, in each of five things, by the song's own spread. Then section edges, arrivals, stops and landings, and the big chords.
@@ -106,7 +106,7 @@ export function buildHear(A, R, { hits = [] } = {}) {
   for (const s of segs) { let q = 0, c = 0; for (let t = s.t0; t < s.t1; t += 0.5) { q += at(A.E || A.loud, t); c++; } const L = labels.get(s.label) ?? { e: 0, c: 0 }; L.e += q; L.c += c; labels.set(s.label, L); }
   const order = [...labels.keys()].sort((a, b) => labels.get(a).e / Math.max(labels.get(a).c, 1) - labels.get(b).e / Math.max(labels.get(b).c, 1));
   const rank = l => (order.length > 1 ? order.indexOf(l) / (order.length - 1) : 0.5);
-  const rungs = segs.map((s, k) => { const v = seen.get(s.label) ?? 0; seen.set(s.label, v + 1); return { t0: s.t0, label: s.label, visit: v, size: Math.min(1.7, lerp(0.72, 1.18, rank(s.label)) * (1 + 0.16 * v) * (k === 0 ? 0.85 : 1)) }; });
+  const rungs = segs.map((s, k) => { const v = seen.get(s.label) ?? 0; seen.set(s.label, v + 1); return { t0: s.t0, label: s.label, visit: v, size: Math.min(1.7, lerp(0.85, 1.2, rank(s.label)) * (1 + 0.16 * v)) }; });
   const climb = new Float32Array(n);
   for (let i = 0, k = 0; i < n; i++) {
     const t = i / HZ;
@@ -114,7 +114,7 @@ export function buildHear(A, R, { hits = [] } = {}) {
     const b = rungs[k], a = rungs[Math.max(0, k - 1)], x = smoother((t - (b.t0 - bar)) / bar);
     climb[i] = lerp(a.size, b.size, x);
   }
-  const big = i => lerp(0.42, 1.28, Math.pow(clamp(e[clamp(i, 0, n - 1)]), 1.3)) * climb[clamp(i, 0, n - 1)];
+  const big = i => lerp(0.62, 1.28, Math.pow(clamp(e[clamp(i, 0, n - 1)]), 1.3)) * climb[clamp(i, 0, n - 1)];
 
   // ---- the strong beats: the sheet falls into each, is at the top of its push on it, and eases away until the next one sets off
   const P = [];
@@ -128,7 +128,7 @@ export function buildHear(A, R, { hits = [] } = {}) {
   const pump = new Float32Array(n);
   const K = [];       // knots of a smooth curve: [t, value, skewed]
   for (let k = 0; k < P.length; k++) {
-    const p = P[k], L = k ? p.t - P[k - 1].t : 2, atk = clamp(0.36 * L, 0.2, 0.55);
+    const p = P[k], L = k ? p.t - P[k - 1].t : 2, atk = clamp(0.4 * L, 0.22, 0.6);
     K.push([p.t - atk, 0, false]); K.push([p.t, p.a, true]);
   }
   for (let k = 1, i = 0; k < K.length; k++) {
@@ -260,6 +260,29 @@ export function hearRates(film, H) {
 const soft = (x, top) => top * (1 - Math.exp(-Math.max(x, 0) / top));
 const Hm = FRAME.hear * 4;
 export function hearSheet(st, score, edits, tReal, hx = 1) {
+  writeHear(st, score, edits, tReal, hx);
+  if (edits) carry(st.F, score, edits);
+}
+// One film giving way to another, or to no film at all, has its own camera, and it can't be somewhere else from one frame to the next: where the last one left it eases out over a moment. Only the picture: a test's shot and a rehearsal go straight to the numbers.
+const CARRY = 1.6;
+function carry(F, score, edits) {
+  const c = (edits.hearCarry ??= { score, last: new Float32Array(5), by: null, t0: 0 });
+  if (c.score !== score) {
+    c.by = c.last.slice(); c.t0 = performance.now(); c.score = score;
+    if (!c.by.some(v => v !== 0)) c.by = null;
+  }
+  if (c.by) {
+    const k = 1 - smoother((performance.now() - c.t0) / (CARRY * 1000));
+    if (k <= 0) c.by = null;
+    else {
+      for (let i = 0; i < 4; i++) F[Hm + i] += c.by[i] * k;
+      if (c.by[4]) { F[Hm + 6] += c.by[4] * k; if (!F[Hm + 7]) F[Hm + 7] = SIZE.bloomR; }
+    }
+  }
+  for (let i = 0; i < 4; i++) c.last[i] = F[Hm + i];
+  c.last[4] = F[Hm + 6];
+}
+function writeHear(st, score, edits, tReal, hx) {
   const H = score.hear, h = score.hearNow;
   if (!H || !(h > 0)) return;
   const F = st.F, t = tReal, G = st.G;
@@ -302,13 +325,14 @@ export function hearSheet(st, score, edits, tReal, hx = 1) {
   }
   // The rings. The hand's ripples fill from the front of the same block, and the song's from the back.
   const Rg = H.rings, Rp = FRAME.ripple * 4;
-  if (Rg.length && mP + mH > 0 && !edits?.ripples) {
+  if (Rg.length && mP + mH > 0) {
     let lo = 0, hi = Rg.length - 1;
     while (lo < hi) { const q = (lo + hi + 1) >> 1; if (Rg[q].t <= t) lo = q; else hi = q - 1; }
     for (let k = Math.max(0, lo - 3); k <= lo; k++) {
       const q = Rg[k], x = t - q.t;
       if (x < 0 || x > SIZE.ringLife) continue;
       const off = Rp + (7 - (k % 4)) * 4, v = x / SIZE.ringLife;
+      if (F[off + 3] !== 0) continue;      // the hand's ring, if it's got this far along
       F[off] = fx; F[off + 1] = fy; F[off + 2] = 0.08 + SIZE.ringSpeed * x; F[off + 3] = q.a * smoother(x / 0.12) * (1 - smoother(v)) * Math.max(mP, mH) * still;
     }
   }
