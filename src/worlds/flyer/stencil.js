@@ -38,13 +38,13 @@ const drawn = {
     g.fillStyle = '#000';
     // sockets, angry, a nose, and the teeth
     for (const s of [-1, 1]) {
-      g.beginPath(); g.moveTo(s * 0.08, 0.2); g.bezierCurveTo(s * 0.12, 0.02, s * 0.5, -0.06, s * 0.54, 0.16); g.bezierCurveTo(s * 0.56, 0.36, s * 0.3, 0.42, s * 0.08, 0.2); g.fill();
+      g.beginPath(); g.moveTo(s * 0.08, 0.2); g.bezierCurveTo(s * 0.1, -0.06, s * 0.56, -0.14, s * 0.6, 0.14); g.bezierCurveTo(s * 0.62, 0.44, s * 0.28, 0.5, s * 0.06, 0.2); g.fill();
     }
     g.beginPath(); g.moveTo(0, -0.04); g.lineTo(0.11, -0.28); g.lineTo(-0.11, -0.28); g.closePath(); g.fill();
     for (const x of [-0.2, -0.067, 0.067, 0.2]) { g.beginPath(); g.rect(x - 0.022, -0.86, 0.044, 0.31); g.fill(); }
     g.globalCompositeOperation = 'source-over';
   },
-  bolt(g) { g.beginPath(); [[0.34, 1], [-0.42, -0.08], [-0.04, -0.08], [-0.34, -1], [0.46, 0.2], [0.06, 0.2], [0.42, 1]].forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fillStyle = '#fff'; g.fill(); },
+  bolt(g) { g.beginPath(); [[0.46, 1], [-0.62, -0.14], [-0.1, -0.14], [-0.5, -1], [0.68, 0.24], [0.14, 0.24], [0.62, 1]].forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fillStyle = '#fff'; g.fill(); },
   star(g) { g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 0.42 : 1.02, a = Math.PI / 2 + (i * Math.PI) / 5; g[i ? 'lineTo' : 'moveTo'](r * Math.cos(a), r * Math.sin(a) - 0.06); } g.closePath(); g.fillStyle = '#fff'; g.fill(); },
   spade(g) {
     g.beginPath(); g.moveTo(0, 0.98);
@@ -54,11 +54,11 @@ const drawn = {
   },
   // A flying V: a body in a wedge, its neck going up and away.
   vee(g) {
-    g.save(); g.rotate(-0.42);
+    g.save(); g.rotate(-0.38); g.scale(1.25, 1.0); g.translate(0, 0.02);
     g.beginPath();
-    g.moveTo(-0.075, -0.2);
-    g.lineTo(-0.56, -0.98); g.lineTo(-0.26, -0.98); g.lineTo(-0.03, -0.56); g.lineTo(0.03, -0.56); g.lineTo(0.26, -0.98); g.lineTo(0.56, -0.98);
-    g.lineTo(0.075, -0.2); g.lineTo(0.055, 0.68); g.lineTo(0.14, 0.82); g.lineTo(0.11, 1.06); g.lineTo(-0.11, 1.06); g.lineTo(-0.14, 0.82); g.lineTo(-0.055, 0.68);
+    g.moveTo(-0.13, -0.08);
+    g.lineTo(-0.7, -1.0); g.lineTo(-0.34, -1.0); g.lineTo(0, -0.5); g.lineTo(0.34, -1.0); g.lineTo(0.7, -1.0);
+    g.lineTo(0.13, -0.08); g.lineTo(0.075, 0.66); g.lineTo(0.18, 0.8); g.lineTo(0.15, 1.1); g.lineTo(-0.15, 1.1); g.lineTo(-0.18, 0.8); g.lineTo(-0.075, 0.66);
     g.closePath(); g.fillStyle = '#fff'; g.fill(); g.restore();
   },
   // A raised fist of a shape anyone would know: four knuckles, a thumb across them, a wrist.
@@ -112,7 +112,7 @@ export function pageOf(key) {
     out = new Float32Array(PAGE_W * PAGE_H);
     for (let y = 0; y < PAGE_H; y++) for (let x = 0; x < PAGE_W; x++) {
       const i = y * OVER * W + x * OVER;
-      out[y * PAGE_W + x] = (Math.sqrt(a[i]) - Math.sqrt(b[i])) / OVER;
+      out[(PAGE_H - 1 - y) * PAGE_W + x] = (Math.sqrt(a[i]) - Math.sqrt(b[i])) / OVER;      // the canvas goes down the page and the table goes up it
     }
   } catch (e) { console.warn('flyer: no stencil', key, e); out = new Float32Array(PAGE_W * PAGE_H).fill(20); }
   made.set(key, out);

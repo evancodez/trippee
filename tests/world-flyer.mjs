@@ -23,7 +23,10 @@ export default async ({ page, log, save, sleep }) => {
   const size = (process.env.SIZE || '1280,720').split(',').map(Number);
   await page.send('Emulation.setDeviceMetricsOverride', { width: size[0], height: size[1], deviceScaleFactor: 1, mobile: false });
   if (song) await dropSong(page, song, { resolvePath: resolve, sleep });
-  await enterWorld(page, 'flyer', log);
+  // FAST: not waiting for the rehearsal, for a look at what's composed.
+  if (process.env.FAST && song) {
+    await page.eval(async () => { const T = window.trippee, stage = app.stage; let began = null; stage.setWorld('flyer', { dur: 1 }).then(v => { began = v; }); for (let i = 0; i < 4000 && began === null; i++) { T.step(1 / 60); await new Promise(r => setTimeout(r, 5)); } const wp = app.R.worldPrograms.get(stage.world); await wp.whenAll; stage.score.handover = null; app.manual = true; app.governor.enabled = false; app.R.drawScale = 1; app.song.pause?.(); T.seek(0); });
+  } else await enterWorld(page, 'flyer', log);
   const errs = () => page.logs.filter(l => /\[error\]|\[exception\]/.test(l));
 
   if (stages.includes('sheet')) {
@@ -36,7 +39,7 @@ export default async ({ page, log, save, sleep }) => {
         const g = stage.score.gestures;
         g.length = 0; g.push({ t0: 0, t1: 3600, arcEnd: 44, period: 44, pattern: p, morph: 0, page: 0 });
         stage.score.handover = null;
-        for (const t of [26, 60]) { T.seek(t); await new Promise(r => setTimeout(r, 20)); T.seek(t); out.push({ url: grab(426, 240), label: `${p.id} ${t}` }); }
+        for (const t of (only ? [26, 60] : [9, 63])) { T.seek(t); await new Promise(r => setTimeout(r, 20)); T.seek(t); out.push({ url: grab(426, 240), label: `${p.id} ${t}` }); }
       }
       return out;
     }, { only, grabS: grab.toString() }).catch(async e => { log('sheet failed', e.message); return []; });
@@ -60,6 +63,7 @@ export default async ({ page, log, save, sleep }) => {
   if (stages.includes('lands')) {
     const r = await page.eval(async ({ grabS, want }) => {
       const T = window.trippee, grab = (0, eval)(`(${grabS})`), S = app.stage.score, g = S.gestures, out = [], kinds = {};
+      for (const G of g) G.plan = G.planFor = G.planning = null;
       for (let i = 0; i + 1 < g.length && out.length < want * 7; i++) {
         const G = g[i], t0 = G.t1 - (G.morph || 0);
         if (!G.morph) continue;

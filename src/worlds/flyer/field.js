@@ -78,14 +78,16 @@ float worldField(int b,vec2 X,vec4 f){
 `;
 
 // The Fill: a change of pattern runs through the frame one strip to the next, each on a drum hit. It's the transformation's own T, in strips. Hard between them: that's a cut with a knife, and it's gone when they're all across.
-export const T_HOOK = `float worldT(vec2 p0,float T){
+export const T_HOOK = `float gFlyT=-1.;      // how far this pixel's change has got, for the screens: dots ride both sheets at once, and land on the next one
+float worldT(vec2 p0,float T){
   vec4 m=uW[25];
-  if(m.x<.5||WGEO<.999) return T;
+  if(m.x<.5||WGEO<.999){ gFlyT=T; return T; }
   gDT=vec2(0.);
   float u=clamp(.5+.5*dot(p0,vec2(cos(m.y),sin(m.y)))/m.z,0.,.9999);
   int i=int(u*m.x);
   float s=uW[26+i/4][i%4];
-  return s*s*s*(s*(s*6.-15.)+10.);
+  gFlyT=s*s*s*(s*(s*6.-15.)+10.);
+  return gFlyT;
 }
 `;
 
@@ -150,7 +152,7 @@ vec3 wFlyPrint(int o,ivec2 n,float cK,float cA,float cB,vec2 X,vec2 p,float F,fl
 }
 vec3 worldColor(int k0,int k1,float c){
   int K=k0/FAM,bs=K==1?SLOT:0;
-  vec2 res=uF[8].xy,fc=gl_FragCoord.xy,p=(fc-.5*res)/res.y*2.,X=gX[K];
+  vec2 res=uF[8].xy,fc=gl_FragCoord.xy,p=(fc-.5*res)/res.y*2.,X=gFlyT>=0.?mix(gX[0],gX[1],gFlyT):gX[K];
   float rs=res.y/720.,px=max(length(dFdx(X)),length(dFdy(X)));
   ivec2 n=lineRows(k0,k1);
   bool soft=gRnd[K]>0.||gSum[K]>0.;
@@ -168,23 +170,40 @@ vec3 worldColor(int k0,int k1,float c){
     s=max(s,clamp(.5+(w-abs(b2))/(2./res.y),0.,1.));
     cA=mix(cA,1.-cA,s*(y>0.?1.:0.));
   }
-  float s=0.,ld=0.,F0=max(uG[bs+I_spare].z,1.);
+  float s=0.,ld=0.,F0=max(gFlyT>=0.?mix(uG[I_spare].z,uG[SLOT+I_spare].z,gFlyT):uG[bs+I_spare].z,1.),gut=1.;
+  int blk=15,blkWas=15;
+  float hopV=1.;
 #ifdef WORLD_FULL
   // The stencil: a shape cut out of rubylith. A sheet with one on it is a ladder of three values, paper, ink, toner: outside the shape it's the top two and inside it the bottom two, whichever line it's on. So it has a hard outline all the way round on anything, and what it shows is whatever's going by.
   vec4 sa=uW[28+30*K],sb=uW[29+30*K];
   if(sb.x>0.){
-    vec2 q=rot(sa.w)*(p-sa.xy)/sa.z;
+    // In and out through dots: how much of the sheet's been printed this way.
+    ld=sb.x>=1.?1.:clamp(.5+(sb.x-(.5+.25*(cos(TAU*F0*p.x)+cos(TAU*F0*p.y))))*res.y*.04,0.,1.);
+    // A Warhol: the frame's panels, the shape in each, each panel in inks of its own. One panel takes new inks on each strong beat, through its dots, and they chase round.
+    vec2 cc=vec2(0.);
+    vec4 gd=uW[30+30*K];
+    if(gd.x>0.){
+      float asp=res.x/res.y,N=gd.x*gd.y;
+      vec2 cell=vec2(2.*asp/gd.x,2./gd.y),u=(p+vec2(asp,1.))/cell,i=floor(u),f=u-i;
+      cc=(i+.5)*cell-vec2(asp,1.);
+      gut=min(min(f.x,1.-f.x)*cell.x,min(f.y,1.-f.y)*cell.y);
+      if(ld>.5){
+        float k=mod(i.x+i.y*gd.x,N),hops=floor((gd.z+N-1.-k)/N);
+        blk=34+5*int(mod(k+hops,4.));
+        if(gd.w<1.&&mod(gd.z-1.,N)==k&&hops>0.){ blkWas=34+5*int(mod(k+hops-1.,4.)); hopV=gd.w; }
+        else blkWas=blk;
+      }
+    }
+    vec2 q=rot(sa.w)*(p-cc-sa.xy)/sa.z;
     vec2 uv=(vec2(q.x/sb.w,q.y)*.5+.5)*vec2(255.,125.);
-    float d=1.;
+    float d=20.;
     if(uv.x>0.&&uv.x<255.&&uv.y>0.&&uv.y<125.){
       ivec2 i=ivec2(uv); vec2 u=uv-vec2(i); int r0=int(sb.y);
       float a0=texelFetch(uWT,ivec2(i.x,r0+i.y),0).r,a1=texelFetch(uWT,ivec2(i.x+1,r0+i.y),0).r,a2=texelFetch(uWT,ivec2(i.x,r0+i.y+1),0).r,a3=texelFetch(uWT,ivec2(i.x+1,r0+i.y+1),0).r;
       d=mix(mix(a0,a1,u.x),mix(a2,a3,u.x),u.y);
-    } else d=20.;
+    }
     float pxT=sa.z*res.y/125.;      // screen pixels in a texel of the page
     s=clamp(.5-d*pxT,0.,1.);
-    // In and out through dots: how much of the sheet's been printed this way.
-    ld=sb.x>=1.?1.:clamp(.5+(sb.x-(.5+.25*(cos(TAU*F0*p.x)+cos(TAU*F0*p.y))))*res.y*.04,0.,1.);
   }
 #endif
   // Toner piles up at the edges of a solid, where the charge is steepest. The middle goes hollow, and the sheet's own dirt shows there, fixed in the frame.
@@ -193,20 +212,25 @@ vec3 worldColor(int k0,int k1,float c){
   if(hollow>0.){
     vec2 g=floor(fc/(1.5*rs));
     float ee=e/rs,dirt=wFlyHash(g),blot=.5+.5*sin(fc.x*.011/rs+2.*sin(fc.y*.017/rs))*sin(fc.y*.023/rs+1.7*sin(fc.x*.009/rs));
-    hol=1.-hollow*smoothstep(10.,38.,ee)*step(dirt,.1+.75*blot*blot);
+    hol=1.-hollow*smoothstep(10.,38.,ee)*step(dirt,.05+.5*blot*blot);
   }
   float G0=c<=0.||c>=1.?c:pow(c,.4545),G1=cA<=0.||cA>=1.?cA:pow(cA,.4545),G2=cB<=0.||cB>=1.?cB:pow(cB,.4545);
   // Which drums: by line, or a family to each. Going from one to the other goes by the dots.
-  float over=uG[bs+I_spare].x,F=F0,o=0.,fA=1.,fB=1.,fK=1.;
+  float over=gFlyT>=0.?mix(uG[I_spare].x,uG[SLOT+I_spare].x,gFlyT):uG[bs+I_spare].x,F=F0,o=0.,fA=1.,fB=1.,fK=1.;
   if(over>0.){
     float h=.5+.25*(cos(TAU*F*X.x)+cos(TAU*F*X.y));
     o=over>=1.?1.:clamp(.5+(over-h)/max(px*F*2.2,1e-4),0.,1.);
     if(o>0.){ fK=wFlyDrum(k0,vec2(0.)); fA=wFlyDrum(k0+1,oA); fB=wFlyDrum(k0+2,oB); }
   }
-  vec3 here=o<1.?wFlyPrint(15,n,G0,G1,G2,X,p,F,px,hol,0.,1.,1.,1.,s,ld):vec3(0.);
-  if(o>0.) here=mix(here,wFlyPrint(15,n,G0,G1,G2,X,p,F,px,hol,1.,fA,fB,fK,s,ld),o);
+  vec3 here=o<1.?wFlyPrint(blk,n,G0,G1,G2,X,p,F,px,hol,0.,1.,1.,1.,s,ld):vec3(0.);
+  if(o>0.) here=mix(here,wFlyPrint(blk,n,G0,G1,G2,X,p,F,px,hol,1.,fA,fB,fK,s,ld),o);
+  if(hopV<1.&&blkWas!=blk){
+    vec2 q=vec2(.8192*p.x-.5736*p.y,.5736*p.x+.8192*p.y)*F*.8;
+    float h=.5+.25*(cos(TAU*q.x)+cos(TAU*q.y));
+    here=mix(wFlyPrint(blkWas,n,G0,G1,G2,X,p,F,px,hol,0.,1.,1.,1.,s,ld),here,clamp(.5+(mix(-.02,1.02,hopV)-h)*res.y*.03,0.,1.));
+  }
   // A new edition: it comes in through its own dots, the old one's paper and all, across the frame.
-  float wp=uW[14].y;
+  float wp=blk==15?uW[14].y:0.;
   if(wp>0.){
     float W=uW[14].w,u=dot(p,vec2(cos(uW[14].z),sin(uW[14].z)))/2.2+.5,v=clamp((wp*(1.+W)-u)/W,0.,1.);
     if(v>0.){
@@ -220,6 +244,7 @@ vec3 worldColor(int k0,int k1,float c){
       }
     }
   }
+  if(gut<.016) here=mix(uW[blk].rgb,here,clamp((gut-.012)*res.y*.5+.5,0.,1.));      // a panel's edge is bare paper
   return here;
 }
 `;

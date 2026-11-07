@@ -14,8 +14,16 @@ const FIELDS = [...STEPPED, DEPTH, SHARE, OFF['field.spin'], OFF['field._1'], OF
 const POLE1 = ['x', 'y', 'q', 'ay'].map(n => OFF[`p1.${n}`]);
 const FIELDS_LESS = FIELDS.filter(n => !POLE1.includes(n));
 const measures = s => { for (let i = 0; i < FAMILIES; i++) if (s[OFF[`f${i}.on`]] >= 0.5 && ['r1', 'l1', 't1'].some(n => s[OFF[`f${i}.${n}`]] !== 0)) return true; return false; };
-const tipped = s => s[OFF['surf.kind']] > 0.5;
-const flat = s => s[OFF['field.kind']] === 4 && !tipped(s) && s[OFF['droste.lnS']] === 0;
+// A sheet the camera's tipped is a plane through the origin, which draws just what a flat sheet draws until it tips (src/score/camera.js). Anything else on a surface can't be glided.
+const planar = s => s[OFF['surf.kind']] < 0.5 || (s[OFF['surf.kind']] < 1.5 && s[OFF['surf.map']] < 0.5 && Math.abs(s[OFF['q.xx']]) + Math.abs(s[OFF['q.yy']]) + Math.abs(s[OFF['q.xy']]) < 1e-4);
+const flat = s => s[OFF['field.kind']] === 4 && planar(s) && s[OFF['droste.lnS']] === 0;
+// Both on the plane, if either is, so nothing snaps half way.
+const SURF = OFF['surf.kind'], MAP = OFF['surf.map'], ZW = OFF['q.zw'], PITCH = OFF['cam.pitch'], DIST = OFF['cam.dist'];
+const samePlane = (A, B) => {
+  if (A[SURF] < 0.5 === B[SURF] < 0.5) return;
+  const [S, O] = A[SURF] < 0.5 ? [A, B] : [B, A];
+  S[SURF] = O[SURF]; S[MAP] = 0; S[ZW] = O[ZW]; S[PITCH] = 0; S[DIST] = O[DIST]; S[OFF['cam.roll']] = O[OFF['cam.roll']]; S[OFF['cam.yaw']] = O[OFF['cam.yaw']];
+};
 export const hasField = s => s[SHARE] !== 0;
 const rings = s => hasField(s) && s[OFF['star._1']] === 0;
 const real = (s, i) => s[OFF[`f${i}.on`]] >= 0.5 && Math.abs(s[OFF[`f${i}.d`]]) <= 1.01;
@@ -42,6 +50,7 @@ export const bleed = {
     const x = st.x, side = x < 0.5 ? A : B, F = st.plan.fields, kept = F.map(n => side[n]);
     const s = x < 0.5 ? 1 - smoother(x / 0.5) : smoother((x - 0.5) / 0.5);
     A[OFF.theta] = st.theta; B[OFF.theta] = st.theta;
+    samePlane(A, B);
     applySlide(A, B, st.plan, st.x * st.x * (3 - 2 * st.x));
     F.forEach((n, i) => { A[n] = kept[i]; });
     A[SHARE] = kept[F.indexOf(SHARE)] * s;
@@ -53,7 +62,7 @@ export const feed = {
   id: 'feed', enter: glideEnter,
   levers: { 'a wider front': G => { if (!G.xform || G.xform.W) return null; G.xform.W = 0.85; return () => { delete G.xform.W; }; } },
   plan(a, b, ctx) {
-    if (tipped(a) || tipped(b) || winds(a, 0) || winds(b, 0) || ctx.D < 2) return null;
+    if (!planar(a) || !planar(b) || winds(a, 0) || winds(b, 0) || ctx.D < 2) return null;
     const o = ctx.xform?.id === 'feed' || ctx.xform?.dir ? ctx.xform : {}, dir = o.dir ?? 3, centre = dir === 3 ? [0, 0] : o.centre ?? [b[OFF['blobs.x1']] || 0, b[OFF['blobs.y1']] || 0], reach = dir === 3 ? 2.3 : Math.hypot(ctx.aspect + Math.abs(centre[0]), 1 + Math.abs(centre[1])) * 1.05;
     return { kind: 'feed', onClock: true, ...partners(a, b), dir, centre, reach, W: o.W ?? 0.5, ang: o.ang ?? 0 };
   },
@@ -75,7 +84,7 @@ export const fill = {
   id: 'fill', enter: glideEnter,
   levers: {},
   plan(a, b, ctx) {
-    if (tipped(a) || tipped(b) || winds(a, 0) || winds(b, 0) || ctx.D < 2) return null;
+    if (!planar(a) || !planar(b) || winds(a, 0) || winds(b, 0) || ctx.D < 2) return null;
     const o = ctx.xform?.id === 'fill' ? ctx.xform : {};
     return { kind: 'fill', onClock: true, ...partners(a, b), ang: o.ang ?? 0, reach: 1.9, order: o.order ?? null, strips: o.strips ?? STRIPS };
   },
@@ -104,6 +113,7 @@ export default {
     const x = st.x, from = x < 0.5 ? A : B, kept = STEPPED.map(n => from[n]), X = x * x * (3 - 2 * x), ta = A[OFF['blobs.beta']], tb = B[OFF['blobs.beta']];
     const depth = x < 0.5 ? A[DEPTH] * (1 - smoother(x / 0.5)) : B[DEPTH] * smoother((x - 0.5) / 0.5);
     A[OFF.theta] = st.theta; B[OFF.theta] = st.theta;
+    samePlane(A, B);
     applySlide(A, B, st.plan, X);
     STEPPED.forEach((n, i) => { A[n] = kept[i]; });
     A[DEPTH] = depth;

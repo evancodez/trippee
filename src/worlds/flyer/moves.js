@@ -19,8 +19,8 @@ const own = {
     out[OFF['f2.on']] = 1; out[OFF['f2.x']] = m.fx ?? 2.3; out[OFF['f2.y']] = m.fy ?? 0; out[OFF['f2.d']] = -1 + a * open;
     out[OFF['f2.ph']] = 0.25 * Math.floor(s);
   } },
-  // Windmill: Townshend's arm. The whole sheet goes a long way round on each strong beat, and hangs between.
-  windmill: { write(out, { t, m }) { const s = surged(evalTrack(clockOf(m), t)), a = ease((t - m.hits[0] + (m.lead || 1)) / (m.lead || 1)), z = ease((m.hits.at(-1) + (m.coast || 1) - t) / (m.coast || 1)); out[OFF.rot] += (m.turn ?? 0.32) * a * s * (m.way ?? 1) * (z * 0 + 1); } },
+  // Windmill: Townshend's arm. The whole sheet swings a long way over on each strong beat, the other way each time, and hangs at the top.
+  windmill: { write(out, { t, m }) { out[OFF.rot] += (m.turn ?? 0.34) * ampAt(m, t) * (m.way ?? 1) * swing(evalTrack(clockOf(m), t)); } },
   // Headbang: the sheet drops on the beat and comes back up slowly. A long way down, a long way back, and no shake in it.
   headbang: { write(out, { t, m }) {
     const s = evalTrack(clockOf(m), t), u = s - Math.floor(s), a = ampAt(m, t), v = 0.5 - 0.5 * Math.cos(2 * Math.PI * (u < 0.28 ? 0.5 * u / 0.28 : 0.5 + 0.5 * (u - 0.28) / 0.72));
@@ -29,6 +29,8 @@ const own = {
   } },
   // Crank: the depth of the edges goes up in steps with the hits, and rolls off and starts again.
   crank: { write(out, { t, m }) { const s = evalTrack(clockOf(m), t), a = ampAt(m, t), k = ((Math.floor(s) % 4) + 4) % 4; out[OFF['field.ph']] *= 1 + a * (0.25 + (m.amp ?? 0.8) * (k + (s - Math.floor(s))) / 4); } },
+  // Separate: the plates drift apart over the stay, and slam home on its last hit. It's all in the colour stage (src/worlds/flyer.js): nothing here moves the sheet.
+  separate: { write() {} },
   // Lead: one cone takes the frame and passes it on.
   lead: { write(out, { t, m }) {
     const s = surged(evalTrack(clockOf(m), t)), a = ampAt(m, t) * (m.amp ?? 0.5), on = POLES.filter(p => out[p[2]] > 0);

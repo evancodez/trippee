@@ -7,7 +7,7 @@ import { MOVES } from '../../score/moves/index.js';
 import { base } from '../../score/slot.js';
 import './moves.js';
 
-const SHARE = { target: 0.24, icon: 0.3, plate: 0.14, op: 0.22, film: 0.1 };
+const SHARE = { target: 0.2, icon: 0.24, pop: 0.1, plate: 0.13, op: 0.22, film: 0.11 };
 const rng = seed => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216; };
 
 export function cast(score, A, M) {
@@ -25,7 +25,7 @@ export function cast(score, A, M) {
     let group;
     if (i === 0) group = 'target';
     else {
-      const lean = { target: (0.5 - e) * 0.12, icon: (e - 0.5) * 0.16, plate: 0, op: (e - 0.5) * 0.08, film: 0 };
+      const lean = { target: (0.5 - e) * 0.12, icon: (e - 0.5) * 0.16, pop: (e - 0.5) * 0.08, plate: 0, op: (e - 0.5) * 0.08, film: 0 };
       group = Object.keys(SHARE).filter(k => by[k].length && k !== last?.group).sort((a, b) => (SHARE[b] - had[b] / Math.max(total, 1) + lean[b]) - (SHARE[a] - had[a] / Math.max(total, 1) + lean[a]))[0];
     }
     const p = i === 0 ? by.target.find(x => x.id === 'flyer.target') ?? by.target[0] : pick(group);
@@ -66,7 +66,7 @@ export function landings(score, song) {
 
 // What it does while it's there. A long stay has to earn it: one thing after another, each a dozen seconds or so.
 export function moves(score, A, M) {
-  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['windmill', 'upstroke', 'crumple', 'headbang', 'crank', 'lead', 'wring', 'fan', 'slit', 'bellows', 'rotator', 'ratchet', 'scissor', 'echo', 'ramp', 'forever'];
+  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['windmill', 'separate', 'upstroke', 'crumple', 'headbang', 'crank', 'lead', 'wring', 'fan', 'slit', 'bellows', 'separate', 'rotator', 'ratchet', 'scissor', 'echo', 'ramp', 'forever'];
   let at = 0;
   const fits = (id, G) => {
     const p = G.pattern, S = base(p), num = n => S[OFF[n]], flat = num('surf.kind') < 0.5, field = num('field.kind') === 4 && num('field.k0') !== 0 && num('star._1') === 0, plain = (p.g?.fams?.length ?? 1) < 2;
@@ -75,7 +75,7 @@ export function moves(score, A, M) {
     if (id === 'upstroke') return flat && plain && num('field.kind') === 4 && !num('round') && !num('spare.a');
     if (id === 'bellows') return (p.g?.fams?.length ?? 1) >= 2 && !num('shape.round') && !num('round');
     if (id === 'wring') return flat;
-    if (id === 'ramp') return true;
+    if (id === 'ramp' || id === 'separate') return true;
     if (id === 'crank') return field && num('field.ph') > 0;
     if (id === 'lead' || id === 'rotator') return field && !num('blobs.beta') && countPoles(p) > 1;
     if (id === 'windmill' || id === 'headbang') return flat;
@@ -92,10 +92,11 @@ export function moves(score, A, M) {
       let id = null;
       for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (fits(c, G) && !G.moves?.some(m => m.id === c) && !(c === 'ramp' && part)) { id = c; at = (at + n + 1) % rotation.length; break; } }
       if (!id) continue;
-      const half = ['windmill', 'upstroke', 'headbang', 'wring', 'ratchet', 'bellows', 'scissor'].includes(id);
+      const half = ['windmill', 'upstroke', 'headbang', 'wring', 'ratchet', 'bellows', 'scissor', 'separate'].includes(id);
       let hits = hitsFor(half ? 'half' : 'bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
       if (hits.length > 1 && (hits.at(-1) - hits[0]) / (hits.length - 1) < 1.1) hits = hitsFor('bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
       if (hits.length < 3 && id !== 'ramp') continue;
+      if (id === 'separate') { const m = { id, hits, to: hits.at(-1), from }; (G.moves ??= []).push(m); continue; }
       if (id === 'ramp') {
         const a = (M?.arrivals?.(0.2) ?? []).find(x => x.t > from + 2 && x.t < to - 2)?.t ?? (from + to) / 2, k = rampTrack(G, { hit: a });
         if (k) { G.uTrack = k; (G.moves ??= []).push({ id: 'ramp', hit: a }); }

@@ -26,14 +26,16 @@ const keyOf = st => (st.key === 'title' ? titleOf() : st.key);
 
 // What a slot's stencil is doing, and which page it's on. share: how much of it is cut, 0..1, and it goes through dots.
 const slotPage = G => G?.page ?? 0;
-function writeStencil(a, G, t, pop, share) {
-  const st = G?.pattern?.stencil;
-  a[4 * 25] = 0;
+function writeStencil(a, G, t, pop, share, S, f) {
+  const P = G?.pattern, st = P?.stencil;
+  a[4 * 25] = 0; a[4 * 26] = 0;
   if (!st || share <= 0) return;
-  const drift = t * 0.05, sway = Math.sin(drift * 2.1), lift = 0.03 * Math.sin(drift * 1.3 + 1), s = st.s * (1 + 0.035 * clamp(pop, -0.4, 1.2));
-  a[4 * 24] = st.x + 0.05 * sway; a[4 * 24 + 1] = st.y + lift; a[4 * 24 + 2] = s; a[4 * 24 + 3] = st.rot + 0.025 * sway;
+  const drift = t * 0.05, sway = Math.sin(drift * 2.1), lift = 0.03 * Math.sin(drift * 1.3 + 1), rows = P.grid?.[1] ?? 1, s = (st.s / rows) * (1 + 0.035 * clamp(pop, -0.4, 1.2));
+  a[4 * 24] = (st.x + 0.05 * sway) / rows; a[4 * 24 + 1] = (st.y + lift) / rows; a[4 * 24 + 2] = s; a[4 * 24 + 3] = st.rot + 0.025 * sway;
   a[4 * 25] = share; a[4 * 25 + 1] = PAGE_ROWS[slotPage(G)]; a[4 * 25 + 2] = 0; a[4 * 25 + 3] = PAGE_ASPECT;
+  if (P.grid) { a[4 * 26] = P.grid[0]; a[4 * 26 + 1] = P.grid[1]; a[4 * 26 + 2] = S; a[4 * 26 + 3] = f; }
 }
+const WARHOL = [[1, 5, 6, 3], [7, 5, 2, 9], [6, 1, 3, 8], [5, 4, 6, 1]];
 
 export default {
   id: 'flyer', name: 'Flyer', chips, pool, borrow: [], needs: ['wave', 'snare', 'clip', 'fill'],
@@ -89,6 +91,11 @@ export default {
     waveAt(a, song, t, d, 0);
     // The plates. Always a little off, and the drums knock them.
     const oA = [REGISTER, REGISTER * 0.6], oB = [-REGISTER * 0.8, REGISTER];
+    // A stay can let the plates drift right apart, three ghosts of one picture, and they slam home on a hit. So does the wind-up to the whoa.
+    const sep = here?.moves?.find(m => m.id === 'separate'), wW = song?.whoa;
+    let apart = sep ? ease((t - sep.from) / Math.max(sep.to - sep.from - 0.3, 1)) * (t < sep.to ? 1 : 0) : 0;
+    if (wW && t > wW.t - wW.wind && t < wW.t) apart = Math.max(apart, ease((t - (wW.t - wW.wind)) / wW.wind));
+    if (apart > 0) { const ang = (sep?.from ?? 0) * 1.7; oA[0] += 0.075 * apart * Math.cos(ang); oA[1] += 0.075 * apart * Math.sin(ang); oB[0] -= 0.075 * apart * Math.cos(ang + 0.9); oB[1] -= 0.075 * apart * Math.sin(ang + 0.9); }
     if (song) knocks(song, t, KNOCK * (0.45 + 0.55 * d), oA, oB);
     else { const n = (t * 104 / 120), k = Math.floor(n), u = (n - k) * 120 / 104, e = Math.min(1, u / 0.03) * Math.exp(-u / 0.17) * Math.cos(u * 17) * KNOCK * (0.45 + 0.55 * d); oA[0] += e * Math.cos(k * 2.399); oA[1] += e * Math.sin(k * 2.399); }
     a[32] = oA[0]; a[33] = oA[1]; a[34] = oB[0]; a[35] = oB[1];
@@ -114,10 +121,16 @@ export default {
         a[88 + i] = clamp((t - go) / STEP);
       }
     }
+    // Warhol's panels: a strong beat hands one panel new inks.
+    let hopS = 0, hopF = 1;
+    if (song) { let lo = 0, hi = song.hits.length; while (lo < hi) { const m = (lo + hi) >> 1; if (song.hits[m] <= t) lo = m + 1; else hi = m; } hopS = lo; hopF = lo ? clamp((t - song.hits[lo - 1]) / 0.42) : 1; }
+    else { const n = t * 104 / 120; hopS = Math.floor(n); hopF = clamp(((n - hopS) * 120 / 104) / 0.42); }
+    const showing = [here, to].find(G => G?.pattern?.grid);
+    if (showing) { const set = WARHOL[(showing.page ?? 0) + (showing.pattern.g['blobs.a1'] ? 2 : 0)] ?? WARHOL[0]; set.forEach((e, i) => putInks(b, 5 * i, INKS[e])); }
     // Stencils. A flight's two patterns are each drawn with their own. Anything else has only the one colour stage: the old one goes through its dots by half way, and the new one comes up through them after.
-    if (kind === 'dive' || kind === 'rise' || kind === 'iris' || kind === 'fall') { writeStencil(a, here, t, pop, 1); writeStencil(b, to, t, pop, 1); }
-    else if (from && to) { const u = x < 0.5 ? 1 - ease(x / 0.45) : ease((x - 0.55) / 0.45); writeStencil(a, x < 0.5 ? from : to, t, pop, u); writeStencil(b, null, t, pop, 0); }
-    else { writeStencil(a, here, t, pop, 1); writeStencil(b, null, t, pop, 0); }
+    if (kind === 'dive' || kind === 'rise' || kind === 'iris' || kind === 'fall') { writeStencil(a, here, t, pop, 1, hopS, hopF); writeStencil(b, to, t, pop, 1, hopS, hopF); }
+    else if (from && to) { const u = x < 0.5 ? 1 - ease(x / 0.45) : ease((x - 0.55) / 0.45); writeStencil(a, x < 0.5 ? from : to, t, pop, u, hopS, hopF); writeStencil(b, null, t, pop, 0, 0, 1); }
+    else { writeStencil(a, here, t, pop, 1, hopS, hopF); writeStencil(b, null, t, pop, 0, 0, 1); }
   },
   pace: { bars: [8, 6, 4, 3, 2], morph: [3.2, 6.5], most: 15 },
   motion: { len: [10, 16], morph: [4.5, 7], xforms: { crank, bleed, feed, fill }, xform: 'crank', keep: ['crank', 'bleed', 'feed', 'fill'], front: true },

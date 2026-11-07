@@ -12,7 +12,7 @@ const PH = 3;
 
 // Where a ring-born line sits before the clock: so that a pole's centre has about the same number in every pattern, and a landing doesn't send rings past on top of the flow.
 const atCentre = (k, swell, e) => -k * (swell > 0.5 ? Math.log(e + 0.12) : 0.2 * swell);
-function poster({ id, name, group = 'target', k = 2.5, n = 6, a = 0.2, kappa = 0, beta = 3, swell = 0.3, e = 0.16, motif = 0, poles = [], orbit = 0.12, spin = 0.14, arcs = [], over = {}, fams = [], lines = LINES, kind = 0, extra = 0, tile = 0, screen = 6, plates = 0, stencil = null, ph = null, field = true, flow = null, can = [], pool = true, edition = null }) {
+function poster({ id, name, group = 'target', k = 2.5, n = 6, a = 0.2, kappa = 0, beta = 3, swell = 0.3, e = 0.16, motif = 0, poles = [], orbit = 0.12, spin = 0.14, arcs = [], over = {}, fams = [], lines = LINES, kind = 0, extra = 0, tile = 0, screen = 6, plates = 0, stencil = null, grid = null, ph = null, field = true, flow = null, can = [], pool = true, edition = null }) {
   const P = [...poles, ...Array(5).fill([0, 0, 0, 0])].slice(0, 5), kinds = Array.isArray(motif) ? motif : P.map(() => motif);
   const g = {
     fams: [{ y: lines, ph: ph ?? (field && kind === 0 ? atCentre(k, swell, e) : PH) }, ...fams],
@@ -29,7 +29,7 @@ function poster({ id, name, group = 'target', k = 2.5, n = 6, a = 0.2, kappa = 0
   };
   const phase = poles.map((_, i) => 1.7 * i + 0.4);
   return {
-    id, name, family: 'flyer', group, fine: false, lambda: 0.05, g, can, stencil, pool, edition,
+    id, name, family: 'flyer', group, fine: false, lambda: 0.05, g, can, stencil, grid, pool, edition,
     flow: { 'f1.ph': 1, ...flow },
     arcs,
     // The film's one clock, surging. Poles go round on it too, so they go with the music and stop when it stops.
@@ -78,22 +78,29 @@ export const pool = [
     arcs: [{ path: 'scale', from: 1, to: 1.2, log: true }, { path: 'tx', from: -0.14, to: 0.14 }] }),
   poster({ id: 'flyer.stage', name: 'Stage Door', group: 'icon', motif: STAGE, k: 2.6, n: 8, a: 0.05, swell: 0.6, beta: 3, spin: 0, orbit: 0.05, poles: [[0, 0, 1, 0]],
     arcs: [{ path: 'scale', from: 0.95, to: 1.3, log: true }, { path: 'rot', from: -0.1, to: 0.1 }] }),
-  poster({ id: 'flyer.skull', name: 'Skull', group: 'icon', k: 2.6, n: 12, a: 0.1, swell: 0.3, poles: [[0.05, -0.1, 1.1, 0]], orbit: 0.2, stencil: { key: 'skull', x: 0, y: -0.02, s: 0.92, rot: 0 }, screen: 6,
-    arcs: swing(0.14) }),
-  poster({ id: 'flyer.bolt', name: 'Thunderbolt', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 2.6, stencil: { key: 'bolt', x: 0, y: 0, s: 0.98, rot: 0.1 }, kind: 0, screen: 5,
-    over: { zig: { a: 0.2, c: 1.2, b: 0, n: 0 } },
+  poster({ id: 'flyer.skull', name: 'Skull', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 1.15, stencil: { key: 'skull', x: 0, y: -0.02, s: 0.98, rot: 0 }, screen: 6,
+    arcs: [{ path: 'rot', from: -0.5, to: 0.1 }, { path: 'scale', from: 1, to: 1.2, log: true }] }),
+  poster({ id: 'flyer.bolt', name: 'Thunderbolt', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 1.5, stencil: { key: 'bolt', x: 0, y: 0, s: 1.0, rot: 0.1 }, kind: 0, screen: 5,
+    over: { rot: 0.8 },
     arcs: [{ path: 'rot', from: -0.25, to: 0.25 }, { path: 'scale', from: 1, to: 1.2, log: true }] }),
-  poster({ id: 'flyer.ace', name: 'Black Spade', group: 'icon', k: 2.0, n: 9, a: 0.12, beta: 2.4, poles: [[-1.1, 0.2, 0.7, 0], [1.1, -0.2, 0.7, 1]], stencil: { key: 'spade', x: 0, y: 0, s: 0.95, rot: 0 }, screen: 6,
+  poster({ id: 'flyer.ace', name: 'Black Spade', group: 'icon', k: 1.5, n: 9, a: 0.14, beta: 2.4, poles: [[-1.5, 0.3, 0.8, 0], [1.5, -0.3, 0.8, 1]], stencil: { key: 'spade', x: 0, y: 0, s: 0.97, rot: 0 }, screen: 6,
     arcs: swing(0.12) }),
-  poster({ id: 'flyer.vee', name: 'Flying V', group: 'icon', a: 0, k: 2.3, swell: 0.7, poles: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0.3, -0.5, 1, 1]], spin: 0, orbit: 0, fams: [{ t1: 16 }], flow: { 'f1.ph': -1 }, stencil: { key: 'vee', x: 0, y: 0, s: 0.96, rot: 0 }, screen: 6,
-    arcs: [{ path: 'p1.x', from: 0.6, to: -0.6 }], can: ['turnstile'] }),
-  poster({ id: 'flyer.fist', name: 'Fist', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 2.2, fams: [{ x: 2.2 }], stencil: { key: 'fist', x: 0, y: -0.02, s: 0.96, rot: 0 }, screen: 7,
-    over: { bulge: { a: 0.5, r: 1.0, cx: 0, cy: 0 } },
+  poster({ id: 'flyer.vee', name: 'Flying V', group: 'icon', a: 0, k: 1.5, swell: 0, poles: [[0.3, -0.5, 1, 0]], spin: 0, orbit: 0.2, stencil: { key: 'vee', x: 0, y: 0, s: 0.96, rot: 0 }, n: 12, screen: 6,
+    arcs: swing(0.14) }),
+  poster({ id: 'flyer.fist', name: 'Fist', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 1.5, stencil: { key: 'fist', x: 0, y: -0.02, s: 0.98, rot: 0 }, screen: 7,
     arcs: [{ path: 'rot', from: -0.3, to: 0.3 }, { path: 'scale', from: 1, to: 1.2, log: true }] }),
+  // ---------------------------------------------------------------- Warhol: the same screen in panels, every panel in inks of its own
+  poster({ id: 'flyer.factory', name: 'The Factory', group: 'pop', field: false, poles: [[0, 0, 1, 0]], lines: 2.1, stencil: { key: 'skull', x: 0, y: 0, s: 0.86, rot: 0 }, grid: [4, 2], screen: 11,
+    arcs: [{ path: 'rot', from: 0.5, to: 0.9 }] }),
+  poster({ id: 'flyer.fists', name: 'Power', group: 'pop', field: false, poles: [[0, 0, 1, 0.5]], lines: 2.3, stencil: { key: 'fist', x: 0, y: 0, s: 0.88, rot: 0 }, grid: [3, 2], screen: 10,
+    arcs: [{ path: 'rot', from: -0.9, to: -0.5 }] }),
+  poster({ id: 'flyer.stars', name: 'Superstars', group: 'pop', k: 2.6, a: 0.1, n: 9, poles: [[0, 0, 1, 0]], stencil: { key: 'star', x: 0, y: 0, s: 0.9, rot: 0 }, grid: [4, 2], screen: 11, arcs: swing(0.2) }),
+  poster({ id: 'flyer.bolts', name: 'Sparks', group: 'pop', field: false, poles: [[0, 0, 1, 0.5]], lines: 2.0, fams: [{ x: 2.0 }], stencil: { key: 'bolt', x: 0, y: 0, s: 0.92, rot: 0.08 }, grid: [5, 2], screen: 12,
+    arcs: [{ path: 'rot', from: 0.2, to: 0.5 }] }),
   // ---------------------------------------------------------------- headlines: wood type, and the first is the song's own name
-  poster({ id: 'flyer.headliner', name: 'Headliner', group: 'icon', k: 2.3, n: 10, a: 0.12, poles: [[0, 0, 1, 0]], orbit: 0.3, stencil: { key: 'title', x: 0, y: 0, s: 0.86, rot: -0.04 }, screen: 6,
-    arcs: swing(0.2) }),
-  poster({ id: 'flyer.loud', name: 'LOUD', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 2.4, fams: [{ x: 2.4 }], stencil: { key: 'word:LOUD', x: 0, y: 0, s: 0.9, rot: 0.03 }, screen: 7,
+  poster({ id: 'flyer.headliner', name: 'Headliner', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 1.4, stencil: { key: 'title', x: 0, y: 0, s: 0.84, rot: -0.04 }, screen: 6,
+    arcs: [{ path: 'rot', from: 0.6, to: 1 }, { path: 'scale', from: 1, to: 1.2, log: true }] }),
+  poster({ id: 'flyer.loud', name: 'LOUD', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 1.7, fams: [{ x: 1.7 }], stencil: { key: 'word:LOUD', x: 0, y: 0, s: 0.9, rot: 0.03 }, screen: 7,
     arcs: [{ path: 'rot', from: 0.2, to: 0.5 }, { path: 'scale', from: 1, to: 1.2, log: true }] }),
   poster({ id: 'flyer.tonight', name: 'Tonight', group: 'icon', a: 0, k: 1.1, swell: 0, spin: 0, orbit: 0, fams: [{ t1: 14 }], flow: { 'f1.ph': -1.2 }, poles: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0.2, -1.1, 1, 1]], stencil: { key: 'word:LIVE\nTONIGHT', x: 0, y: 0.02, s: 0.92, rot: 0 }, screen: 6,
     arcs: [{ path: 'p1.x', from: 0.7, to: -0.7 }], can: ['turnstile'] }),
