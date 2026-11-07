@@ -2,6 +2,7 @@
 //   SONG=media/mgmt.mp3 node tools/lab.mjs tests/flash.mjs --out lab-out/repair         the whole film at 12 fps, and at 60 around each thing flagged
 //   AT=204.5-206.2 EVERY=.1 ...                                                         close frames across a stretch, with their numbers, as <song>-<at>.jpg
 //   FLAGS=lung=0,weight=0 SET=reactAmt=0 SEED=3                                         another configuration of the same film
+//   OLD=1                                                                               also says what the old reading of every third pixel would have counted
 //   WORLD=numbers ...                                                                   a world: true colour through all three channels (luma, WCAG's red, red minus cyan), at a world's limits, 0 and 1. No WORLD and nothing here reads them
 import { resolve, basename } from 'node:path';
 import { enterWorld, makeChannels, CHANNELS, WORLD_FLASH } from '../tools/look.mjs';
@@ -33,7 +34,7 @@ export default async ({ page, log, save }) => {
   for (let i = 0; i < 1800; i++) { if (await page.eval('app.ui.song.state==="ready"')) break; await sleep(100); }
   const world = process.env.WORLD && process.env.WORLD !== 'film' ? process.env.WORLD : null;
   if (world) await enterWorld(page, world, log);
-  await page.eval(async ({ flags, set, seed }) => {
+  await page.eval(async ({ flags, set, seed, old }) => {
     const F = await import(new URL('src/score/flags.js', location.href).href);
     for (const f of flags) { const [k, v] = f.split('='); F.setFlag(k, +v !== 0); }
     // Another seed the way another take is made (song.prepareTake): rehearsed out of sight, so the guard may change its first gesture too.
@@ -42,13 +43,15 @@ export default async ({ page, log, save }) => {
     for (const f of set) { const [k, v] = f.split('='); app.edits[k] = +v; }
     app.song.pause(); app.ui.song.show(false); app.manual = true; app.governor.enabled = false; app.R.drawScale = 1; app.t = 0;
     const c = document.createElement('canvas'); c.width = 320; c.height = 180; const x = c.getContext('2d', { willReadFrequently: true });
+    window.__oldTiles = old;
     window.__tiles = () => {
       x.drawImage(window.trippee.canvas, 0, 0, 320, 180); const d = x.getImageData(0, 0, 320, 180).data, W = 320, H = 180; let sum = 0, white = 0;
       const L_ = new Uint8Array(W * H); for (let k = 0; k < L_.length; k++) { const v = (d[k * 4] * 0.2126 + d[k * 4 + 1] * 0.7152 + d[k * 4 + 2] * 0.0722) | 0; L_[k] = v; sum += v; if (v > 127) white++; }
-      const tiles = []; for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) { let s = 0, n = 0; for (let y = (ty * H / 4) | 0; y < ((ty + 1) * H / 4 | 0); y += 3) for (let X = (tx * W / 4) | 0; X < ((tx + 1) * W / 4 | 0); X += 3) { s += L_[y * W + X]; n++; } tiles.push(+(s / n).toFixed(1)); }
-      return { mean: +(sum / L_.length).toFixed(2), white: +(white / L_.length).toFixed(4), tiles };
+      const tilesAt = step => { const o = []; for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) { let s = 0, n = 0; for (let y = (ty * H / 4) | 0; y < ((ty + 1) * H / 4 | 0); y += step) for (let X = (tx * W / 4) | 0; X < ((tx + 1) * W / 4 | 0); X += step) { s += L_[y * W + X]; n++; } o.push(+(s / n).toFixed(1)); } return o; };
+      // Every pixel of the tile. thirds is what this used to read, every third pixel, which aliases on fine upright lines: kept only so that OLD=1 can say what the old reading was.
+      return { mean: +(sum / L_.length).toFixed(2), white: +(white / L_.length).toFixed(4), tiles: tilesAt(1), thirds: window.__oldTiles ? tilesAt(3) : null };
     };
-  }, { flags: (process.env.FLAGS || '').split(',').filter(Boolean), set: (process.env.SET || '').split(',').filter(Boolean), seed: +(process.env.SEED || 0) });
+  }, { flags: (process.env.FLAGS || '').split(',').filter(Boolean), set: (process.env.SET || '').split(',').filter(Boolean), seed: +(process.env.SEED || 0), old: !!process.env.OLD });
   const info = await page.eval(() => { const s = app.song.score; return { duration: app.song.duration, gestures: s.gestures.map(G => ({ t0: +G.t0.toFixed(2), t1: +G.t1.toFixed(2), morph: +(G.morph || 0).toFixed(2), id: G.pattern.id, moves: (G.moves || []).map(m => m.id), xform: G.xform?.id })) }; });
   const reh = await page.eval(() => { const r = app.song.rehearsal; return r && { seconds: r.seconds, flash: r.flash, jumps: r.jumps?.length }; });
   log(`rehearsal ${reh?.seconds?.toFixed(2)} s, guard ${JSON.stringify(reh?.flash)}, jumps ${reh?.jumps}`);
@@ -77,10 +80,10 @@ export default async ({ page, log, save }) => {
 
   const FPS = +(process.env.FPS || 12);
   const res = await page.eval(async ({ duration, FPS }) => {
-    const T = window.trippee, o = { mean: [], tiles: [], time: [], kinds: [], ids: [] }, N = Math.floor(duration * FPS);
+    const T = window.trippee, o = { mean: [], tiles: [], thirds: [], time: [], kinds: [], ids: [] }, N = Math.floor(duration * FPS);
     for (let i = 0; i < N; i++) {
       const t = i / FPS; T.seek(t); const v = window.__tiles();
-      o.mean.push(v.mean); o.tiles.push(v.tiles); o.time.push(+t.toFixed(3)); o.kinds.push(app.lastFrame?.kind || ''); o.ids.push(app.lastFrame?.G?.pattern?.id);
+      o.mean.push(v.mean); o.tiles.push(v.tiles); if (v.thirds) o.thirds.push(v.thirds); o.time.push(+t.toFixed(3)); o.kinds.push(app.lastFrame?.kind || ''); o.ids.push(app.lastFrame?.G?.pattern?.id);
       if (i % 40 === 0) await new Promise(r => setTimeout(r));
     }
     return o;
@@ -105,6 +108,7 @@ export default async ({ page, log, save }) => {
   const whole = flashSpans(res.mean, FPS, res.time, 0);
   const tiles = Array.from({ length: 16 }, (_, k) => flashSpans(res.tiles.map(a => a[k]), FPS, res.time, 2));
   log(`FLASH ${song}: whole ${whole.worst} tile ${Math.max(...tiles.map(t => t.worst))}`);
+  if (process.env.OLD) log(`FLASH ${song}, the old reading of every third pixel: tile ${Math.max(...Array.from({ length: 16 }, (_, k) => flashSpans(res.thirds.map(a => a[k]), FPS, res.time, 2).worst))}`);
   const spots = [...whole.spans.map(s => ({ ...s, who: 'whole' })), ...tiles.flatMap((t, k) => t.spans.map(s => ({ ...s, who: 't' + k })))].sort((a, b) => a.t - b.t);
   const merged = [];
   for (const s of spots) { const l = merged.at(-1); if (l && s.t < l.t1 + 1.2) { l.t1 = s.t; l.who.add(s.who); l.n = Math.max(l.n, s.n); } else merged.push({ t0: s.t, t1: s.t, who: new Set([s.who]), n: s.n }); }

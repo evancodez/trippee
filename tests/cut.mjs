@@ -162,7 +162,7 @@ export default async ({ page, save, log }) => {
         const look = () => {
           x.drawImage(T.canvas, 0, 0, W, H); const d = x.getImageData(0, 0, W, H).data; let sum = 0;
           const L = new Uint8Array(W * H); for (let k = 0; k < L.length; k++) { const v = (d[k * 4] * 0.2126 + d[k * 4 + 1] * 0.7152 + d[k * 4 + 2] * 0.0722) | 0; L[k] = v; sum += v; }
-          const tiles = []; for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) { let s = 0, n = 0; for (let y = (ty * H / 4) | 0; y < ((ty + 1) * H / 4 | 0); y += 3) for (let X = (tx * W / 4) | 0; X < ((tx + 1) * W / 4 | 0); X += 3) { s += L[y * W + X]; n++; } tiles.push(+(s / n).toFixed(1)); }
+          const tiles = []; for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) { let s = 0, n = 0; for (let y = (ty * H / 4) | 0; y < ((ty + 1) * H / 4 | 0); y++) for (let X = (tx * W / 4) | 0; X < ((tx + 1) * W / 4 | 0); X++) { s += L[y * W + X]; n++; } tiles.push(+(s / n).toFixed(1)); }
           return { mean: +(sum / L.length).toFixed(2), tiles };
         };
         const walk = async (a, b, fps) => {
