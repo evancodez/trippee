@@ -55,11 +55,11 @@ export default [
   // A still picture that turns.
   item('snakes', 'Rotating Snakes', { fams: [logring(13 / (2 * Math.PI)), spokes(26)] }, { time: { id: 'snakes' } }),
 
-  // Ouchi's disc: it floats on a sheet that's all one piece. It only comes and goes by turning.
-  item('ouchi', 'Floating Disc', { fams: [plane(9, 0), plane(2.25, 90)] }, { fine: true, time: { id: 'ouchi' } }),
+  // Ouchi's disc: it floats on a sheet that's all one piece. It only comes and goes by turning. At 9 its stripes were hairlines.
+  item('ouchi', 'Floating Disc', { fams: [plane(6.4, 0), plane(1.6, 90)] }, { fine: true, time: { id: 'ouchi' } }),
 
-  // The sheet XOR-ed with itself a moment ago.
-  item('echo', 'Echo', { fams: [plane(3.4, 0), plane(3.4, 90)] }, {
+  // The sheet XOR-ed with itself a moment ago. At 3.4 it was grey mush and hairline crosses (MGMT 123-137).
+  item('echo', 'Echo', { fams: [plane(2.4, 0), plane(2.4, 90)] }, {
     time: { id: 'echo' },
     drive(out, c) { if (c.G.moves?.some(m => m.id === 'echo')) return; writeEchoMove(out, { turn: 0.4 }, surged(timeClock(c))); },
   }),
