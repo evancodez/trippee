@@ -8,14 +8,26 @@ import { OFF, FRAME } from '../pattern/layout.js';
 import { smoother } from '../score/curves.js';
 import { pool, borrow } from './matter/patterns.js';
 import { FIELD } from './matter/divide.js';
-import { WARP, CELLS, shardsAt, writeShatter, fillShatter } from './matter/shatter.js';
+import { WARP, CELLS, shardsAt, writeShatter, fillShatter, layoutOf } from './matter/shatter.js';
 import { cast, placeShatters, lengthen, divisions, moves, calmCamera } from './matter/direct.js';
 
 const LEAN = 0.13;          // radians: how far the tune leans the split, at the middle of it
 const FULL = OFF['star._3'];      // a slot marked so the frame draws with the mode's fuller programs, which have the shatter in them
 const T = new Float32Array(CELLS * 4);
 const live = { on: false, L: null };      // what uniforms worked out for this frame, for the table that's filled straight after it
-const shatterAt = (score, t) => (score?.matter?.bare ? null : score?.matter?.shatters?.find(S => t >= S.hit && t < S.back) ?? null);      // bare: a test's look at the same frame with nothing broken
+// With no song (the wander), every other bold sheet that stays long enough breaks a few seconds after it lands and heals before it goes. Worked out once a gesture, from when it starts.
+const wanderShatter = G => {
+  if (!G || G._matterShatter !== undefined) return G?._matterShatter ?? null;
+  const end = G.t1 - (G.morph || 0), on = G.pattern?.group === 'sheet' && end - G.t0 >= 14 && end - G.t0 < 600 && Math.floor(G.t0 * 7.3) % 2 === 0;
+  return (G._matterShatter = on ? { hit: G.t0 + 4, back: end - 2, bar: 2, L: layoutOf((Math.floor(G.t0 * 1000) >>> 0) + 7, 0.3 * Math.sin(G.t0), 0.2 * Math.cos(G.t0 * 1.7)) } : null);
+};
+const shatterAt = (score, t, G) => {
+  if (score?.matter?.bare) return null;      // bare: a test's look at the same frame with nothing broken
+  if (score?.matter) return score.matter.shatters.find(S => t >= S.hit && t < S.back) ?? null;
+  if (score?.song) return null;
+  const S = wanderShatter(G);
+  return S && t >= S.hit && t < S.back ? S : null;
+};
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const PO = FRAME.pose * 4, ML = FRAME.mel * 4, TU = FRAME.tune * 4, FO = FRAME.focus * 4, RP = FRAME.ripple * 4, HM = FRAME.hear * 4;
 const isCells = H => (H?.pattern?.group === 'cells' ? 1 : 0);
@@ -56,17 +68,20 @@ export default {
       for (let i = 4; i < 8; i++) F[RP + 4 * i + 3] *= 1 - 0.9 * quiet;
       for (let i = 8; i < 20; i += 4) F[HM + i + 2] *= 1 - 0.7 * quiet;
       F[HM + 6] *= 1 - 0.6 * quiet;
+      // And the song's own camera in front of it all, which pushes and turns on a hit: the division is its own push and turn, and a crack wants the lines it breaks to hold still.
+      F[HM] *= 1 - 0.6 * quiet; F[HM + 1] *= 1 - 0.6 * quiet;
     }
     // The shatter, if one's on.
-    const sh = shatterAt(score, t);
+    const sh = shatterAt(score, t, from ?? G);
     live.on = false; U.a[0] = 0;
     if (sh && geo > 0 && shardsAt(sh, t, tune, T)) { writeShatter(U.a, U.b, sh, geo); live.on = true; live.L = sh.L; A[FULL] = 1; }
   },
   // src/score/woah.js casts these on the bold sheets, by the music. Never on the dots while they're dividing, and never on a sheet that's going to break: each of those is its own big moment.
   woah: { tricks: ['crumple', 'roll', 'slit', 'limit', 'pearls', 'echo'], fond: { crumple: 1.2, roll: 0.8, slit: 0.6 }, gap: [30, 50], least: 6,
     fits: (id, G, S) => !G.mitosis && !G.shatter && G.pattern.group !== 'cells' && S[OFF['surf.kind']] < 0.5 && S[OFF['fold.n']] < 2 },
-  pace: { bars: [10, 8, 6, 5, 4], morph: [5, 8], most: 20 },
-  motion: { len: [14, 24], morph: [6, 9] },
+  // Changes take a little longer than the film's: a flight over bold shapes in less swings a tile more than once a second.
+  pace: { bars: [10, 8, 6, 5, 4], morph: [7, 10], most: 20 },
+  motion: { len: [14, 24], morph: [7, 10] },
   // The division is the pulse, so the song's own beat on the threshold is turned down. The tune and the chords stay.
   hear: { pulse: 0.6, melody: 1, tone: 0.5, harmony: 0.8, lung: 0.8, threshold: 0.5 },
 };

@@ -195,7 +195,7 @@ function clockFor(G, hits, rests, bar) {
 
 // ---------------------------------------------------------------- what the bold sheets do between
 export function moves(score, A, M) {
-  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['wring', 'bellows', 'ramp', 'wring', 'bellows'];
+  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['wring', 'bellows'];      // not the ramp: its long move all at once on the hit is a zoom too fast for a mode's limit
   let at = 0;
   const fits = (id, G) => {
     const p = G.pattern, S = base(p), fams = p.g.fams?.length ?? 1;
@@ -219,8 +219,8 @@ export function moves(score, A, M) {
         if (k) { G.uTrack = k; (G.moves ??= []).push({ id: 'ramp', hit: a }); }
         continue;
       }
-      let hits = hitsFor('half', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
-      if (hits.length > 1 && (hits.at(-1) - hits[0]) / (hits.length - 1) < 1.15) hits = hitsFor('bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
+      // Once a bar: on a half note these sit at the film's two flashes a second on a tile, and a mode has one.
+      const hits = hitsFor('bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
       if (hits.length < 3) continue;
       (G.moves ??= []).push({ id, beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - from, 0.5)), coast: Math.min(bar, Math.max(to + 0.5 * bar - hits.at(-1), 0.5)), from, to });
     }
@@ -228,26 +228,31 @@ export function moves(score, A, M) {
 }
 
 // ---------------------------------------------------------------- the camera, on a stay the dots are dividing on
-// The division is a push-in and a turn of its own, so the film's camera keeps to a slow drift there: a little of its turn and its zoom, none of its travel, and only a little tip.
+// The division is a push-in and a turn of its own, so the film's camera keeps to a slow drift there: a little of its turn and its zoom, none of its travel, and only a little tip. The same share all the stay, so it's only slower.
+// On a stay that shatters, the camera goes on its own clock at a third of the speed, all stay long: the cracks read as straight breaks in straight lines and a whip meant for a hit is a slow
+// turn. Slowing it only round the shatter left it behind for the rest of the stay, and it caught up with a whip in the wrong place (PPP 49.5 s); slowing it and letting it catch up swung the
+// sheet through all the turn it had held back (9 flashes a second on a tile, MGMT 208 s). The same share all stay, so it's only slower, never faster.
 const SCALE = OFF.scale, ROT = OFF.rot, TX = OFF.tx, TY = OFF.ty, PITCH = OFF['cam.pitch'];
-// Round a shatter it calms too, from two bars before the hit to two after the lock, so the cracks read as straight breaks in straight lines.
+const SHATTER_CAM = 0.3;
+// And on a sheet of three or more sets of lines, the camera doesn't lift them to different heights: each set sliding by its own share as it pans takes triangles to all-white hexagons and
+// all-black ones and back, the whole frame swinging with it (PPP 172 s, 199 to 73 to 146 in a second and a half).
+const PH = [1, 2, 3].map(i => OFF[`f${i}.ph`]), ON = [1, 2, 3].map(i => OFF[`f${i}.on`]);
+const layered = G => (G.pattern.g.fams ?? []).filter(f => (f.x || f.y) && !f.r1 && !f.l1 && !f.t1).length >= 3;
 export function calmCamera(film) {
   for (const G of film.gestures) {
-    if (!(G.mitosis || G.shatter) || !G.cam || G.cam._matter) continue;
-    const cam = G.cam, S = G.shatter;
-    const how = t => {
-      if (!S) return [0.25, 0.3, 0.12, 0.35];
-      const w = smoother((t - S.hit + 2 * S.bar) / (2 * S.bar)) * (1 - smoother((t - S.back) / (2 * S.bar))), k = 1 - 0.6 * w;
-      return [k, k, 1 - 0.7 * w, 1 - 0.7 * w];
-    };
-    const calm = function (out, t, g) {
-      const s0 = out[SCALE], r0 = out[ROT], x0 = out[TX], y0 = out[TY], p0 = out[PITCH], [zk, rk, pk, tk] = how(t);
+    if (!G.cam || G.cam._matter || !(G.shatter || G.mitosis || layered(G))) continue;
+    const cam = G.cam;
+    let calm = cam;
+    if (G.shatter) { const t0 = G.t0; calm = (out, t, g) => cam(out, t0 + SHATTER_CAM * (t - t0), g); }
+    else if (G.mitosis) calm = function (out, t, g) {
+      const s0 = out[SCALE], r0 = out[ROT], x0 = out[TX], y0 = out[TY], p0 = out[PITCH];
       cam(out, t, g);
-      out[SCALE] = s0 * Math.pow(Math.max(out[SCALE], 1e-6) / Math.max(s0, 1e-6), zk);
-      out[ROT] = r0 + (out[ROT] - r0) * rk;
-      out[TX] = x0 + (out[TX] - x0) * pk; out[TY] = y0 + (out[TY] - y0) * pk;
-      out[PITCH] = p0 + (out[PITCH] - p0) * tk;
+      out[SCALE] = s0 * Math.pow(Math.max(out[SCALE], 1e-6) / Math.max(s0, 1e-6), 0.25);
+      out[ROT] = r0 + (out[ROT] - r0) * 0.3;
+      out[TX] = x0 + (out[TX] - x0) * 0.12; out[TY] = y0 + (out[TY] - y0) * 0.12;
+      out[PITCH] = p0 + (out[PITCH] - p0) * 0.35;
     };
+    if (layered(G)) { const inner = calm; calm = (out, t, g) => { const was = PH.map((o, i) => (out[ON[i]] > 0.5 ? out[o] : null)); inner(out, t, g); PH.forEach((o, i) => { if (was[i] !== null) out[o] = was[i]; }); }; }
     calm._matter = true;
     G.cam = calm;
   }

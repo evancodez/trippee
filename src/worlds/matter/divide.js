@@ -19,10 +19,10 @@ import { OFF } from '../../pattern/layout.js';
 import { evalTrack, smoother } from '../../score/curves.js';
 import { surged, handClock } from '../../score/moves/surge.js';
 
-export const R0 = 0.37;          // the parent's radius, in cells: black is pi*R0^2 = 43% of the sheet
+export const R0 = 0.4;           // the parent's radius, in cells: black is pi*R0^2, half the sheet, so a dot sheet is as bright as a sheet of stripes and a change in or out of one doesn't swing the frame
 export const KB = 0.12;          // the waist's round, in cells: the two halves are joined by a round fillet this big, which lets go after the hit
 export const W = 0.5;            // where in a step the hit falls
-const LAM = 0.22;                // the share of the push-in that goes steadily, so the view never stops travelling. The rest surges after each hit
+const LAM = 0.45;                // the share of the push-in that goes steadily, so the view never stops travelling. The rest surges after each hit. Not more: an eighth of a turn going fast swings the corners' dots past a tile too often
 export const KK = 8;             // cycles of the field to a cell. Steep, so the song moving the threshold or a line's weight moves a dot's edge by a pixel at most: its size is its own, and the division is the beat
 export const LINES = 2.2;        // the stripes under the field
 const AX = Math.SQRT1_2;         // how far apart the halves end up, in cells
