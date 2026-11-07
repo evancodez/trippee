@@ -433,9 +433,10 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
     const ctx = G => ({ score, A, M, G, shot: null, at: score.time ?? (x => x), bar, beat, meter: A.meter || 4, tau: score.tau });
     for (const h of cast) {
       if (h.kind !== 'countdown') continue;
-      const dial = h.G.pattern, seg = A.segments.find(x => h.at >= x.t0 - bar && h.at < x.t1);
+      const dial = h.G.pattern, seg = A.segments.find(x => h.at >= x.t0 - bar && h.at < x.t1), once = new Set();
       for (const G of score.gestures) {
-        if (!seg || G === h.G || G.t0 <= h.at || G.part?.way !== 'riot' || G.part.w.key !== seg.label || (G.part.seg.visit || 0) === (seg.visit || 0) || G.xform?.id === 'iris') continue;
+        if (!seg || G === h.G || G.t0 <= h.at || G.part?.way !== 'riot' || G.part.w.key !== seg.label || (G.part.seg.visit || 0) === (seg.visit || 0) || G.xform?.id === 'iris' || once.has(G.part.seg)) continue;
+        once.add(G.part.seg);
         const id = MOVES.ratchet.needs(base(dial), { pattern: dial }) ? 'ratchet' : 'wring', end = G.t1 - (G.morph || 0);
         const m = MOVES[id].cue({ id, beats: 'half', from: G.t0, to: end, ...(id === 'wring' ? { amp: 0.8 } : {}) }, ctx({ ...G, pattern: dial }));
         if (!m) continue;
