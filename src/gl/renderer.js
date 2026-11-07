@@ -7,9 +7,9 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // One shader, built sixteen ways: with or without the hand, colour's second plate, a flight between two patterns, and the rarer moves (slip, star, coin, fields). A GPU pays for what
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
 // The first four are what a film needs to run; the rest build behind it.
-export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8;
-const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
-export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
+export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8, SPACE = 16;     // SPACE: the sheet in space, src/gl/chunks/space.js. It has what EXTRA has, so there's no SPACE | EXTRA
+const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT, SPACE, SPACE | FLIGHT, SPACE | PLATES, SPACE | PLATES | FLIGHT, SPACE | HAND, SPACE | HAND | FLIGHT, SPACE | HAND | PLATES, SPACE | HAND | PLATES | FLIGHT];
+export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & (EXTRA | SPACE) ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -56,7 +56,7 @@ export class Renderer {
     gl.disable(gl.BLEND);
 
     this.vs = compile(gl, gl.VERTEX_SHADER, VERT);
-    this.progs = new Array(16).fill(null);
+    this.progs = new Array(32).fill(null);
     this.variant = 0;
     this._start(0);
     this._whenReady = new Promise(res => { this._resolveReady = res; });
@@ -129,7 +129,9 @@ export class Renderer {
 
   // The smallest program with what this frame needs. One still building, the frame goes without the hand or colour for a moment. They both come up slowly anyway.
   _variantOf(F) {
-    return (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0) | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0);
+    const v = (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0);
+    if (F[FRAME.dive * 4 + 3] > 5.5 || this.slotA[OFF['space.kind']] > 0.5 || (this.slotB[OFF['space.kind']] > 0.5 && (F[FRAME.compose * 4 + 1] > 0.5 || F[FRAME.dive * 4 + 3] > 0.5))) return v | SPACE;
+    return v | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0);
   }
 
   // Does this slot wear anything only the fuller programs have?

@@ -12,6 +12,9 @@ const vec4 DS=vec4(1.,-.5,.75,-.25);   // each family's share of the tune's chan
 #endif
 // Everything up to the threshold: where this pixel lands, what each family's phase and gradient are. Returns coverage of the surface.
 float prepare(int K,int b,vec2 p){
+#ifdef SPACE
+  bool spEdge,spBrk=gBreak; p=spaceOne(b,p,spEdge); gBreak=gBreak||spEdge;
+#endif
   p=moveCarry(b,p);
   float cover=1.,parity=1.,slipY=0.;
   // On a surface wrapped by angle the around-count has to stay a whole number, or there's a seam. So the view can't scale or turn
@@ -162,6 +165,9 @@ float prepare(int K,int b,vec2 p){
   }
 #ifdef WORLD_COVER
   for(int i=K*FAM;i<(K+1)*FAM;i++){ gGn[i]*=uW[1].x; gGr[i]*=uW[1].x; }      // the sound's small coverage draw filters as if drawn full size, as the film's picture it would otherwise have read down from
+#endif
+#ifdef SPACE
+  gBreak=spBrk;
 #endif
   gRnd[K]=uG[b+I_shape].x; gSum[K]=uG[b+I_shape].y;
   return cover;

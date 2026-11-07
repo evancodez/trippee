@@ -100,6 +100,11 @@ void main(){
   // The iris (src/score/xform/iris.js): A is wound on a tube, and flat inside it. B lies flat outside it. Each leans in to the tube where they meet. What's wound comes from further out, so one prepare each still does.
   bool iris=dv.w>4.5,rolled=false,limb=false;
   float irisB=0.;
+#ifdef SPACE
+  bool spEdge2=false;
+  if(dv.w>5.5){ spaceTwo(p,pA,pz,irisB,spEdge2); limb=spEdge2; }
+  else
+#endif
   if(iris){
     vec2 d=p-dv.xy; vec4 xa=uF[F_XF2]; float q=length(d),Rt=xa.z,s=q-dv.z;
     pz=p-d*xa.y*exp(-max(s-Rt,0.)/xa.x);
@@ -117,7 +122,11 @@ void main(){
   vec4 so=uF[7];
   float mm[3],cc[5];
   for(int j=0;j<(so.w>0.?3:2);j++){
+#ifdef SPACE
+    bool brk=gBreak; if((j==0||dv.w>5.5)&&limb) gBreak=true;
+#else
     bool brk=gBreak; if(j==0&&limb) gBreak=true;
+#endif
     mm[j]=prepare(j,j==1?SLOT:0,j==2?rot(so.z)*p+so.xy:(j==0)==bOuter?pA:pz);
     gBreak=brk;
   }
@@ -126,6 +135,9 @@ void main(){
 #endif
   // Going round the edge of the tube the lines get too fine to draw, and they close up to solid, or they'd be a thin grey ring.
   if(rolled) for(int i=0;i<FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.16,.42,gGn[i]);
+#ifdef SPACE
+  if(dv.w>5.5) for(int i=0;i<2*FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.16,.42,gGn[i]);
+#endif
   // The outer one first, each time: what it shows at this pixel decides how far the inner one has opened here. Then one threshold does for both sides of an edge.
   // In order: outer, inner, the same two on colour's second plate, and the hand's lifted sheet.
   for(int n=0;n<5;n++){
