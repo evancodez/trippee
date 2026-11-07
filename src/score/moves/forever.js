@@ -1,0 +1,53 @@
+// Forever. A flight down a tunnel of stars that always goes in and never arrives. The radius folds between two circles, again and again, so every ring is the mirror image of the next and the sheet inside it is just the same sheet, smaller. No ring has a seam, because each is a reflection of the last, and
+// because the fold goes by ln r the whole of it repeats exactly as the camera flies, whole rings at a time. Then the mirrors of a Fan cut across it and the rings go to stars, and a twist leans them: the rings zigzag, and the zigzag runs in as you go. A real spiral would tear where the angle wraps. This doesn't, because the angle's already folded.
+// Cell size goes with the distance from the middle and only there does it get fine, in a few pixels. The rim's as bold as the sheet.
+//
+//   G.moves = [{ id: 'forever', n, D, per, tw, ... }]     and the options in cueFold (foldkit.js)
+//     n       mirrors. Default 6. They open over the first half of the way in.
+//     inner, outer  ln of the two circles. Default -.55, .35. Their difference is how wide a ring is, and the frame's corners are at .71.
+//     per     strong beats to one ring going by. Default 2.
+//     tw      how far the twist goes, at the song's loudest. Default .45
+// The tune turns the whole star. Loudness leans it. Each strong beat throws the camera on, and it hangs between.
+// By hand: foreverDrive.
+import { OFF } from '../../pattern/layout.js';
+import { clamp, smoother } from '../curves.js';
+import { cueFold, inBy, songNow, journey, boldUp, writeFan, writeLog } from './foldkit.js';
+
+const FAR_IN = -7, FAR_OUT = 4;
+
+function write(out, { k, off, n, inner, outer, tw, S, rot0 = 0.2 }) {
+  // The circles come in from nothing and from past the corners. Then the mirrors part.
+  const c = smoother(clamp(k / 0.65)), lerp = (a, b, x) => a + (b - a) * x;
+  boldUp(out, k);
+  const fan = smoother(clamp((k - 0.2) / 0.8)), rot = rot0 + 0.3 * S.mel + 0.01 * S.s;
+  writeFan(out, { x: 0, y: 0, al: Math.PI / (1 + (n - 1) * fan), rot });
+  writeLog(out, { a: lerp(FAR_IN, inner, c), b: lerp(FAR_OUT, outer, c), off, tw: tw * smoother(clamp((k - 0.5) / 0.5)) * (0.35 + 0.65 * S.en) });
+  out[OFF.rot] += 0.008 * S.s * k;
+}
+
+const D0 = 0.9;
+export const foreverWith = ({ n = 6, tw = 0.45, per = 2, turn = 0.2 } = {}) => (out, c) => {
+  if (c.G.moves?.some(m => m.id === 'forever')) return;
+  const S = songNow(c, 3, 1.5);
+  write(out, { k: 1, off: -S.s * 2 * D0 / (2 * per), n, inner: -0.55, outer: 0.35, tw, S, rot0: turn });
+};
+export const foreverDrive = foreverWith();
+
+export default {
+  id: 'forever',
+  needs: () => true,
+  cue(m, ctx) {
+    if (!cueFold(m, ctx)) return null;
+    m.inner ??= -0.55; m.outer ??= 0.35; m.n ??= 6; m.tw ??= 0.45; m.per ??= 2;
+    m._D = m.outer - m.inner;
+    const go = m.from + m.open * 0.75, stop = m.stay ? m.to + 1e3 : m.to - m.close * 0.9;
+    if (stop - go < 2) return null;
+    m._go = journey(m, { go, stop: Math.min(stop, go + 3600), perBeat: 0.5 / m.per, ease: 2 * ctx.bar });
+    return m;
+  },
+  write(out, c) {
+    const { m, t } = c, S = songNow(c, 3, 1.5), k = inBy(m, t), wholes = m._go(t), period = 2 * m._D;
+    const off = -(wholes - Math.floor(wholes)) * period;      // at a whole number it's the same picture, exactly: that's how it gets out at the end
+    write(out, { k, off, n: m.n, inner: m.inner, outer: m.outer, tw: m.tw, S });
+  },
+};

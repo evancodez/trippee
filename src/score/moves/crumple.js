@@ -1,0 +1,51 @@
+// Crumple. Plain stripes, folded. A chain of creases sweeps in, each one in the frame the last one left, and each turned and smaller than the last: the folding that makes a fractal, with no scaling in it. So a reflection changes no sizes and the lines stay exactly as bold as they started, however many folds there are, and what grows without end isn't finer lines but
+// the way the pieces fit: bold hooked shapes, teeth, hand-cut things nobody drew. Past the size of a line a crease makes no difference, so it can't go to wallpaper. A small turn of the first crease swings everything after it. A plain check or a sheet of stripes grows that as the song builds, and goes back to being plain.
+//
+//   G.moves = [{ id: 'crumple', folds, c, shrink, turn, ... }]     and the options in cueFold (foldkit.js)
+//     folds   how many creases by the end, up to 8. They come in one by one over the way in. Default 8
+//     c       how far the first is from the middle. Default about three of the sheet's lines, so a piece is never all one colour
+//     shrink  each is this much nearer than the last. Default .74
+//     turn    how far each is turned from the last, radians. Default 1.1
+//     swing   how far a strong beat swings `turn`, radians. Default .02
+// By hand: crumpleDrive.
+import { clamp, smoother } from '../curves.js';
+import { cueFold, inBy, songNow, boldUp, writeChain, lineM } from './foldkit.js';
+
+const FAR = 5;
+
+// Each crease in the frame the last one left: its normal's turned by `turn` and its foot is along the last crease by `c`, shrinking. All one coordinate system, since a fold's an isometry and the sheet's coordinates are where the point has got to.
+const list = [];
+function creases({ folds, c, shrink, turn, k }) {
+  list.length = 0;
+  let ox = 0, oy = 0, ang = 0.2, cc = c;
+  for (let i = 0; i < folds; i++) {
+    const nx = Math.cos(ang), ny = Math.sin(ang), d = nx * ox + ny * oy;
+    const come = 1 - smoother(clamp(k * folds - i));       // one at a time
+    list.push(lineM(nx, ny, d + FAR * come));
+    ox += -ny * cc; oy += nx * cc; ang += turn; cc *= shrink;
+  }
+  return list;
+}
+
+function write(out, { k, folds = 8, c, lines = 3.6, shrink = 0.76, turn = 1.1, swing = 0.02, S }) {
+  const f = boldUp(out, k, 4), t = turn + swing * (S.s % 64 > 32 ? 64 - S.s % 64 : S.s % 64) + 0.05 * S.mel;
+  writeChain(out, creases({ folds, c: (c ?? clamp(lines / f, 0.6, 1.8)) * (1 + 0.06 * S.mel), shrink, turn: t, k }), 1);
+}
+
+export const crumpleWith = o => (out, c) => {
+  if (c.G.moves?.some(m => m.id === 'crumple')) return;
+  const S = songNow(c, 3, 1.5);
+  write(out, { k: 1, S, ...o });
+};
+export const crumpleDrive = crumpleWith();
+
+export default {
+  id: 'crumple',
+  needs: () => true,
+  cue(m, ctx) { return cueFold(m, ctx); },
+  write(out, c) {
+    const { m, t } = c, S = songNow(c, 3, 1.5), k = inBy(m, t);
+    if (k <= 0) return;
+    write(out, { k, S, folds: m.folds, c: m.c, shrink: m.shrink, turn: m.turn, swing: m.swing });
+  },
+};

@@ -15,8 +15,9 @@ import vertigo from './vertigo.js';
 import confocal from './confocal.js';
 import mirror from './mirror.js';
 import riot from './riot.js';
+import folds from './folds.js';
 
-export const MOVES = { slip, star, coin, snap, cue, moire, vertigo, confocal, mirror, relay, ramp, ...riot };
+export const MOVES = { slip, star, coin, snap, cue, moire, vertigo, confocal, mirror, relay, ramp, ...riot, ...folds };
 
 export function runMoves(out, ctx) {
   for (const m of ctx.G.moves) {

@@ -25,3 +25,71 @@ export function writeMobius(out, [ax, ay], [bx, by], [cx, cy], [dx, dy]) {
   out[OFF['mob.ax']] = ax; out[OFF['mob.ay']] = ay; out[OFF['mob.bx']] = bx; out[OFF['mob.by']] = by;
   out[OFF['mob.cx']] = cx; out[OFF['mob.cy']] = cy; out[OFF['mob.dx']] = dx; out[OFF['mob.dy']] = dy;
 }
+
+// ---------------------------------------------------------------- what they all share about time and the song
+import { evalTrack, clamp, smoother } from '../curves.js';
+import { surged, clockOf, cueHits, handClock, PEAK } from './surge.js';
+import { reactAt } from '../react.js';
+import { fineness } from '../slot.js';
+
+// Recursion goes to hairlines first. So the camera comes in on a fine sheet as it folds, until its lines are this bold, cycles per picture unit: a move, and the big shapes stay big.
+export function boldUp(out, k, target = 3.4) { const f = fineness(out); if (f > target) out[OFF.scale] *= Math.pow(f / target, k); return Math.min(f, target); }
+
+export const TAU = Math.PI * 2;
+const ease = x => smoother(clamp(x));
+
+// A cut's way in, for a move that opens over the first of its shot and shuts again before the shot's own transformation, so the next pattern gets a plain sheet.
+//   beats    what it marches on: 'strong' (the default), 'half', 'bar', 'beat', or a list of song seconds
+//   open, close   bars it takes to get in and to get out. Default 4 and 3.
+//   stay     true: it doesn't shut, and the shot's transformation flies out of the folded sheet.
+//   times: { from, to }   where it runs, song seconds. Default the shot's body
+// Unlike the riot set it asks the song's own reaction to carry on as it was: this sits on top of it.
+export function cueFold(m, ctx) {
+  const { G, bar, score } = ctx;
+  m.from ??= G.t0; m.to ??= G.t1 - (G.morph || 0);
+  m.calm ??= 1;
+  m.open = (m.open ?? 4) * bar; m.close = (m.close ?? 3) * bar;
+  m.coast ??= 2; m.lead ??= 2;
+  m._R = score?.react ?? null;
+  return cueHits(m, ctx);
+}
+// How far in it is, 0 to 1. A pattern picked by hand is simply in.
+export const inBy = (m, t) => (m?.beats ? ease((t - m.from) / m.open) * (m.stay ? 1 : ease((m.to - t) / m.close)) : 1);
+
+// The song as a fold wants it: e, how many strong beats have gone by, whole on each one, and s, the same with a surge on it, so a thing that goes by s crosses each strong beat at speed and hangs between them. And the tune (mel, about +-1, slow), how loud (en) and how bright (tone).
+const now = { e: 0, s: 0, mel: 0, en: 0.6, tone: 0.5 };
+export function songNow(c, ghost = 2, peak = PEAK) {
+  const { t, phi, G, m } = c;
+  let R = m?._R;
+  if (m?.beats) now.e = evalTrack(clockOf(m), t);
+  else { G.calm ??= 1; now.e = handClock(c, ghost); R = globalThis.app?.stage?.score?.react; }
+  now.s = surged(now.e, peak);
+  if (R?.energy) { const q = reactAt(R, R.C ? R.C(t) : t); now.mel = clamp(q.melSlow, -1.5, 1.5); now.en = q.energy; now.tone = q.tone; }
+  else { now.mel = 0.6 * Math.sin(phi * 1.3) + 0.3 * Math.sin(phi * 3.1); now.en = 0.6; now.tone = 0.5; }
+  return now;
+}
+
+// A journey along something whose every `whole` is the same picture, so it can go on for ever and still come back to nothing: it's still until `go`, goes `perBeat` of a whole a strong beat, surged, and has come to rest by `stop`, on a whole number of them.
+// Worked out once, from the beats, as a table. read(t) is how many wholes, and it's exact at both ends.
+export function journey(m, { go, stop, perBeat, peak = PEAK, ease: ramp = 2 }) {
+  const HZ = 60, n = Math.max(2, Math.ceil((stop - go) * HZ)), T = new Float32Array(n + 1), K = clockOf(m);
+  let last = surged(evalTrack(K, go), peak);
+  for (let i = 1; i <= n; i++) {
+    const t = go + i / HZ, s = surged(evalTrack(K, t), peak), w = ease((t - go) / ramp) * ease((stop - t) / ramp);
+    T[i] = T[i - 1] + Math.max(0, s - last) * w * perBeat; last = s;
+  }
+  const whole = Math.round(T[n]) || (T[n] > 0.2 ? 1 : 0), k = T[n] > 0 ? whole / T[n] : 0;
+  for (let i = 0; i <= n; i++) T[i] *= k;
+  T[n] = whole;
+  return t => { const x = clamp((t - go) * HZ, 0, n), i = Math.min(n - 1, x | 0); return T[i] + (T[i + 1] - T[i]) * (x - i); };
+}
+
+// A list of numbers, one for each strong beat, as a smooth track on the beat clock. Speed is what the neighbours say, so it never overshoots a whole number and turns round at rest.
+export function beatsTrack(list) {
+  const n = list.length, K = [];
+  for (let i = 0; i < n; i++) {
+    const a = i ? list[i] - list[i - 1] : 0, b = i < n - 1 ? list[i + 1] - list[i] : 0;
+    K.push({ t: i, x: list[i], v: a * b > 0 ? 2 * a * b / (a + b) : 0 });
+  }
+  return K;
+}
