@@ -117,7 +117,7 @@ vec3 worldColor(int k0,int k1,float c){
   float hi=clamp(.5+.5*q.y,0.,1.);
   vec3 col=mix(wBez(X,uW[10].rgb,uW[11].rgb,uW[12].rgb,uW[13].rgb),wBez(X,uW[14].rgb,uW[15].rgb,uW[16].rgb,uW[17].rgb),hi);
   // Halation: light that went through the film and came back red, just ahead of a bright edge.
-  col+=Tl.y*exp(-(1.-f0)/clamp(7.*g0,.03,.12))*(1.-X)*smoothstep(.2,.05,g0)*vec3(.42,.08,.04);
+  col+=Tl.y*exp(-(1.-f0)/max(min(uF[8].y*.012*g0,.12),1e-4))*(1.-X)*smoothstep(.2,.05,g0)*vec3(.42,.08,.04);
   // The lamps. Each has its place on its line, somewhere in the dark part of the hill, and comes on when the evening reaches it. Going by with what they're on, and as big as what they're on is near.
   if(uW[9].w>0.&&n>0){
     int kl=(uF[0].y>.5&&uF[0].x>.5)?1:0;

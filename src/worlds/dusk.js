@@ -18,6 +18,7 @@ const CHART = 32, CHART_S = 5;     // the strip chart: how many samples and how 
 const FREE_SUN = [0.55, 0.3, 0.3];
 const LEAK = { line: 0.34, fall: 0.2, flare: 0.28, settle: 0 };
 const NOLAKE = -3;
+const RING = 0.24, GATHER = 0.2;     // a ring of light on the strong beat: how bright, and how long it gathers before it
 const discOf = p => (p?.sun || p?.group === 'land' ? 1 : 0);      // the sun's a disc where there's a sky for it to be in. In a room or on a string it's only the light
 
 // Where a pattern has its sun, in the frame, as its view has it now.
@@ -70,23 +71,28 @@ export default {
     E[3] = (0.5 + 0.5 * v * Math.min(1, tune + 0.3)) * (path[1] + (Math.max(path[1], 0.7) - path[1]) * kk);
     // The tails, the film's halation, the strip chart, and the frame's light.
     const energy = song ? read(song, song.energy, t) : 0.4 + 0.2 * Math.sin(t * 0.07), lung = s ? Math.min(s.lung, 1.2) : 0.5, pulse = s ? Math.min(s.pulse, 1.2) : 0, air = song?.air ?? 2.6, hold = song ? holdAt(song, t) : 0;
-    const held = song ? read(song, song.held, t) : 0.5, L = (0.34 + 0.1 * (air - 2.6) + 0.28 * held + 0.1 * lung + 0.08 * pulse) * (1 - 0.92 * hold);
+    const held = song ? read(song, song.held, t) : 0.5, L = (0.34 + 0.1 * (air - 2.6) + 0.28 * held + 0.1 * lung + 0.14 * pulse) * (1 - 0.92 * hold);
     E[4] = Math.max(0.05, L);
     E[5] = 0.7 + 0.35 * energy;
     E[6] = 0.42;
-    E[7] = 0.1 * energy * (1 - hold);
+    E[7] = (0.09 * energy + 0.05 * pulse) * (1 - hold);
     // Age, and the lake.
     E[8] = s ? 0.55 * smooth((s.tension - 0.45) / 0.8) : 0.12;
     const wa = waterOf(G, t), wb = N ? waterOf(N, t) : wa;
     E[9] = wa + (wb - wa) * Tx; E[10] = 1; E[11] = t * 0.55;
-    // The rings of light out of the sun, on the strong beats.
+    // The rings of light out of the sun, on the strong beats. It gathers just before, and it's at its height on the beat, and then it goes out. The two nearest in time, one of which may not have left yet.
     let r0 = 0, a0 = 0, r1 = 0, a1 = 0;
-    const P = score.react?.pulses;
+    const P = score.react?.pulses, Dp = score.react?.depths, songT = score.react?.M?.T ? score.react.M.T(c) : c;
     if (P?.length) {
       let lo = 0, hi = P.length - 1;
-      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= c) lo = m; else hi = m - 1; }
-      const one = k => { if (k < 0) return [0, 0]; const x = c - P[k]; return x < 0 ? [0, 0] : [0.15 + 1.7 * x, 0.2 * smooth(x / 0.22) * Math.exp(-x / 1.1) * Math.min(1, s?.gains?.drums ?? 1)]; };
-      [r0, a0] = one(lo); [r1, a1] = one(lo - 1);
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= songT) lo = m; else hi = m - 1; }
+      const one = k => {
+        if (k < 0 || k >= P.length) return [0, 0];
+        const x = songT - P[k], drums = Math.min(1, 0.4 + 0.6 * (s?.gains?.drums ?? 1));
+        return x < -GATHER ? [0, 0] : x < 0 ? [0.12, RING * smooth((x + GATHER) / GATHER) * drums] : [0.12 + 1.6 * x, RING * Math.exp(-x / 1.05) * drums];
+      };
+      const near = P[lo + 1] != null && P[lo + 1] - songT < GATHER ? lo + 1 : lo;
+      [r0, a0] = one(near); [r1, a1] = one(near - 1);
     }
     E[12] = r0; E[13] = a0 * (1 - hold); E[14] = r1; E[15] = a1 * (1 - hold);
     // The dusk line's leak, the sun's path, the tremolo's ribs.
@@ -136,8 +142,8 @@ export default {
     // A string rings on the strong beat, at the room's own rate: anything that's lines.
     if (P?.length && s) {
       let lo = 0, hi = P.length - 1;
-      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= c) lo = m; else hi = m - 1; }
-      const x = c - P[lo];
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= songT) lo = m; else hi = m - 1; }
+      const x = songT - P[lo];
       if (x >= 0) {
         const ring = geo * 0.02 * Math.exp(-x / Math.max(air * 0.35, 0.6)) * Math.sin(Math.min(x * 3, 1) * Math.PI / 2) * Math.cos(x * 7.5);
         for (const [S, p] of [[A, G?.pattern], [B, N?.pattern]]) if (p && (p.group === 'strings' || p.group === 'road') && S[OFF['bend2.a']] === 0) { S[OFF['bend2.a']] = ring; S[OFF['bend2.f']] = 3.1; S[OFF['bend2.ang']] = 0.02; }
@@ -146,5 +152,5 @@ export default {
   },
   pace: { bars: [8, 7, 5, 4, 3], morph: [6, 9], most: 17 },
   motion: { len: [14, 24], morph: [7, 11], xforms: KINDS, xform: 'line', keep: ['line', 'fall', 'flare', 'settle'], front: true },
-  hear: { pulse: 0.5, melody: 0.9, tone: 0.5, harmony: 0.6, lung: 0.8, threshold: 0, depth: 0 },
+  hear: { pulse: 0.6, melody: 0.9, tone: 0.5, harmony: 0.6, lung: 0.8, threshold: 0, depth: 0.4 },
 };
