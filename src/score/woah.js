@@ -8,6 +8,7 @@
 //
 // Two kinds of trick. A stretch is a move on a gesture's body, which comes up and goes back to the plain sheet by itself, so what's either side of it stays as it was. A change is a transformation through space at a landing, with the hit in the middle of its journey.
 import { rng, clamp, lerp } from './curves.js';
+import { directing } from './flags.js';
 import { MOVES } from './moves/index.js';
 import { rewindClock } from './moves/time.js';
 import { canShock } from './xform/shock.js';
@@ -36,7 +37,7 @@ const MOVE_OF = { hallway: 'hall' };      // the stretch of a hall, whose name a
 const CHANGES = ['flood', 'drop', 'tube', 'pleat', 'hall', 'span'];
 const STRETCHES = ['forever', 'limit', 'screen', 'pearls', 'fan', 'crumple', 'roll', 'slit', 'ghost', 'fringe', 'snakes', 'ouchi', 'echo', 'slice', 'swell', 'terraces', 'pleats', 'ride', 'hallway', 'rewind'];
 const LINES_ONLY = new Set(['crumple', 'limit']), MARCH = new Set(['ratchet', 'wring', 'scissor', 'bellows']);
-const OVER_RELAY = new Set(['forever', 'limit', 'screen', 'pearls', 'fan', 'swell', 'terraces', 'ride', 'hallway', 'pleats']);      // it doesn't care what's on the sheet, and a Relay's steps can go on under it
+const OVER_RELAY = new Set(['forever', 'limit', 'screen', 'pearls', 'fan', 'roll', 'crumple', 'swell', 'terraces', 'ride', 'hallway', 'pleats']);      // it doesn't care what's on the sheet, and a Relay's steps can go on under it
 
 // How well each suits a place. All 0 to about 1. These started from what the lanes guessed, and were gone over on sheets of real frames.
 const near = (x, c, w) => clamp(1 - Math.abs(x - c) / w);
@@ -89,7 +90,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const note = (t, what, why) => refused.push({ t: +(+t).toFixed(2), what, why });
 
   // ---------------------------------------------------------------- the take
-  const TRICKS = world ? STRETCHES.filter(id => SET[id] !== 'space' && id !== 'rewind') : [...STRETCHES, ...CHANGES];
+  const TRICKS = (world ? STRETCHES.filter(id => SET[id] !== 'space' && id !== 'rewind') : [...STRETCHES, ...CHANGES]).filter(id => !directing.woahOnly || directing.woahOnly.includes(id));
   const lean = { space: 0.2 + 1.5 * rand(), folds: 0.2 + 1.5 * rand(), time: 0.2 + 1.5 * rand() };
   const fond = Object.fromEntries(TRICKS.map(id => [id, 2.4 * (rand() - 0.5)]));
   const chill = P?.register === 'chill';
@@ -159,12 +160,12 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const nothingElse = G => !G.moves?.some(m => !m.woah && m.id !== 'relay' && !MARCH.has(m.id));
   // A body that can wear a stretch: nothing on it but perhaps a Relay, which can go on under it
   const wearable = G => (!G.hero || MARCH.has(G.hero) || G.pattern.family === 'riley') && nothingElse(G);
-  const absorbable = G => !G.hero && !G.xform && !G.carry && !G.moves?.length && !G.pattern.drive && G.k != null;
+  const absorbable = G => !G.hero && !G.moves?.length && !G.pattern.drive && G.k != null && G.xform?.id !== 'iris';
   const bodyOf = G => [G.t0, G.t1 - (G.morph || 0)];
   // What it could reach, taking in the plain gestures after it
   const reach = (i, want) => {
     let j = i, end = bodyOf(g[i])[1];
-    while (end - g[i].t0 < want && j + 1 < g.length - 1 && absorbable(g[j + 1]) && !g[j].xform) { j++; end = bodyOf(g[j])[1]; }
+    while (end - g[i].t0 < want && j + 1 < g.length - 1 && absorbable(g[j + 1]) && g[j].xform?.id !== 'iris') { j++; end = bodyOf(g[j])[1]; }
     return { j, end };
   };
   // Its body runs on over those. What they were is what it can't get back: a guard's swap keeps this and changes what's worn.
@@ -257,7 +258,9 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
       const inside = moments.filter(x => x.sign > 0 && x.s >= 0.3 && x.t > from + 3 * bar && x.t < to - 1.5 * bar).sort((a, b) => b.s - a.s)[0]?.t;
       const H = inside ?? (hit != null && hit > from + 3 * bar && hit < to + 1.5 * bar ? hit : null), map = MAPS[Math.floor(rand() * MAPS.length)], top = (map === 'wave' ? 1.1 : map === 'cells' ? 1.8 : 2.2) * (1 + 0.35 * s);
       const D = H ? [[from, 0], [Math.max(from + 2 * bar, H - 1.5 * bar), top], [H, 0.15 * top], [H + 2 * bar, top]] : [[from, 0], [from + 3 * bar, top], [to, top]];
-      const o = { id: 'slit', from, to, beats: 'strong', D, turn: 0.42 + 0.14 * s, push: map === 'target' || map === 'rings' ? 0.18 : 0, lead: 0.5, coast: 2 };
+      const o = { id: 'slit', from, to, beats: 'strong', D, lead: 0.5, coast: 2 };
+      if (G.pattern.time?.id === 'slit') return o;      // it's one of its own, and says for itself
+      Object.assign(o, { turn: 0.42 + 0.14 * s, push: map === 'target' || map === 'rings' ? 0.18 : 0 });
       if (map === 'rings') Object.assign(o, { map: 'target', bands: 7, register: 0.5 });
       else if (map === 'spiral') Object.assign(o, { map: 'spiral', arms: 1, wind: 0.9 });
       else if (map === 'wave') Object.assign(o, { map: 'wave', wave: 3, waveV: 0.6, ang: 0.4, spin: 0.08 });
@@ -279,13 +282,22 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   };
   // The pattern a trick wants a sheet to be, if it isn't.
   const OWN = { slice: 'space.crystal', fringe: 'time.fringe', ouchi: 'time.ouchi' };
-  const canWear = (id, G) => {
+  // ...and those that can have one, if what's there can't take them. A Relay can't: a time trick reads the sheet's phases, and it's changing all of them.
+  const OWN_IF = { ghost: ['time.ghostcheck', 'time.ghost'], snakes: ['time.snakes'], echo: ['time.echo'], slit: ['time.shutter', 'time.target', 'time.rings', 'time.venetian', 'time.wave', 'time.spiral', 'time.cells'], swell: ['space.swell'], terraces: ['space.terraces'], pleats: ['space.pleats'], ride: ['space.ride'], hallway: ['space.hall'] };
+  const ownFor = (id, G) => {
+    if (world) return null;
+    if (OWN[id]) return lib(OWN[id]);
+    const list = OWN_IF[id];
+    if (!list || directFits(id, G)) return null;
+    return lib(list[Math.floor(rand() * list.length)]);
+  };
+  // Can this sheet wear it as it stands?
+  const directFits = (id, G) => {
     const s = base(G.pattern), mv = MOVES[MOVE_OF[id] ?? id];
     if (!mv) return false;
-    if (OWN[id] && !world) return !!lib(OWN[id]) && !G.moves?.some(m => m.woah) && !G.xform;
+    if (OWN[id] && !world) return false;
     if (LINES_ONLY.has(id) && crossed(G)) return false;
     if ((relayOf(G) || marches(G) || G.pattern.drive) && !OVER_RELAY.has(id)) return false;
-    if (id === 'fringe' || id === 'slice' || id === 'ouchi') { if (mv.needs && !mv.needs(s, G)) return false; }
     if ((id === 'slit' || id === 'echo') && !flatSheet(s)) return false;
     // A sheet in space on a floor that's already gone off to its own horizon is hairlines to the horizon
     if (SET[id] === 'space' && id !== 'slice' && !flatSheet(s)) return false;
@@ -293,6 +305,8 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if (world && !flatSheet(s) && SET[id] === 'time') return false;
     return true;
   };
+  const canCarve = G => !world && !!film.remake && G.k != null && !G.moves?.some(m => m.woah) && !marches(G) && !G.hero;
+  const canWear = (id, G) => directFits(id, G) || (canCarve(G) && (OWN[id] ? !!lib(OWN[id]) : !!OWN_IF[id]?.some(lib)));
 
   const wearStretch = (id, i, from, to, s, more = {}) => {
     const G = g[i];
@@ -307,8 +321,9 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
       return { undo: () => { film.rewinds = film.rewinds.filter(x => x !== k); film.rewind = film.rewinds.length ? rewindClock(film.rewinds) : null; } };
     }
     let on = G;
-    if (OWN[id] && !world) {
-      const c = carve(i, from, to, lib(OWN[id]));
+    const own = ownFor(id, G);
+    if (own) {
+      const c = carve(i, from, to, own);
       if (!c) return null;
       on = c.G;
     }
@@ -322,17 +337,18 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     return { on, before };
   };
 
-  // A change at a landing: the hit's in the middle of its journey. It keeps what it needs either side.
+  // A change at a landing: the hit's in the middle of its journey. It keeps what it needs either side, taking in plain gestures on the way if it has to.
   const changeRoom = (i, id, hit) => {
     const G = g[i], N = g[i + 1], [lo, hi] = SPACE_D[id];
     if (!N || i + 1 >= g.length - 1) return null;
-    const share = SHARE[id];
-    let D = hi;
-    // Not longer than there is on G's side of the hit (taking in what's before it if it has to) and on N's
-    const before = hit - G.t0 - 1.2, after = N.t1 - (N.morph || 0) - hit - 0.5;
-    D = Math.min(D, before / share, after / (1 - share));
+    const share = SHARE[id], need = hi;
+    let back = i, a0 = G.t0;
+    while (back > 1 && (hit - a0 - 1.2) / share < need && absorbable(g[back]) && !appointments(g[back - 1]) && !g[back - 1].moves?.some(m => m.woah) && g[back - 1].xform?.id !== 'iris' && !g[back - 1].hero) { back--; a0 = g[back].t0; }
+    let fwd = i + 1, e0 = bodyOf(N)[1];
+    while (fwd + 1 < g.length - 1 && (e0 - hit - 0.5) / (1 - share) < need && absorbable(g[fwd + 1]) && !N.moves?.some(m => m.woah)) { fwd++; e0 = bodyOf(g[fwd])[1]; }
+    const D = Math.min(hi, (hit - a0 - 1.2) / share, (e0 - hit - 0.5) / (1 - share));
     if (D < lo) return null;
-    return { D, a: hit - share * D, b: hit + (1 - share) * D };
+    return { D, a: hit - share * D, b: hit + (1 - share) * D, back, fwd };
   };
   const wearChange = (id, i, hit, D, s) => {
     const G = g[i], N = g[i + 1], t1 = hit + (1 - SHARE[id]) * D, o = {};
@@ -353,6 +369,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const said = new Map();     // a section's label: the first thing it wore
   const uses = new Map(), list = [], slots = [];
   let lastId = null, lastSet = null;
+  const recent = [];
   // What's there already, that counts: nothing else goes on top of these
   const heroes = g.slice(0, -1).filter(G => appointments(G) || G.xform?.id === 'iris').map(G => ({ a: G.xform?.id === 'iris' ? G.t1 - G.morph : G.t0, b: G.t1, kind: G.hero ?? G.xform?.id, G }));
   for (const h of heroes) taken.push([h.a, h.b]);
@@ -367,22 +384,28 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const scoreOf = (id, f, seg, entry, mid, rel) => {
     const set = SET[id];
     let v = 2.4 * SUIT[id](f) + (lean[set] ?? 1) + (fond[id] ?? 0) + rel.bonus;
-    v -= 1.3 * (uses.get(id) ?? 0);
-    if (set === lastSet) v -= 0.45;
+    v -= 1.6 * (uses.get(id) ?? 0);
+    if (recent.includes(id)) v -= 1.2;
+    if (set === lastSet) v -= 0.5;
     v -= 0.03 * Math.abs(entry - mid);
     return v + 0.35 * rand();
   };
 
   const place = (c, alts) => {
-    const { id, kind, i, from, to, hit, D, rel, f } = c, G = g[i], seg = segAt((from + to) / 2);
-    const N = g[i + 1], slot = { id, kind, G, N, from, to, hit, D, s: rel.s, alts, tried: [id] };
+    const { id, kind, from, to, hit, D, rel, f } = c, seg = segAt((from + to) / 2);
+    let i = c.i;
     if (kind === 'stretch' && c.j > i) absorb(i, c.j);
+    if (kind === 'change') {
+      if (c.fwd > i + 1) absorb(i + 1, c.fwd);
+      if (c.back < i) { absorb(c.back, i); i = c.back; }
+    }
+    const G = g[i], N = g[i + 1], slot = { id, kind, G, N, from, to, hit, D, s: rel.s, alts, tried: [id] };
     slot.keptG = keepOf(G); slot.keptN = N ? keepOf(N) : null; slot.i = i;
     const did = kind === 'change' ? wearChange(id, i, hit, D, rel.s) : wearStretch(id, i, from, to, rel.s, { hit });
     if (!did) { putBack(G, slot.keptG); if (N) putBack(N, slot.keptN); return null; }
     slot.undo = did.undo ?? null;
     if (did.on) { slot.G = did.on; slot.keptG = did.before; slot.N = null; slot.keptN = null; }
-    slot.alts = alts.filter(x => !OWN[x]);
+    slot.alts = alts.filter(x => !OWN[x] && !OWN_IF[x]);
     forget(G); forget(g[i - 1]);
     const out = { id, kind, at: +(kind === 'change' ? hit : from).toFixed(2), t0: +from.toFixed(2), t1: +to.toFixed(2), pattern: (did.on ?? G).pattern.id, why: Object.entries(f).filter(([k, v]) => v >= 0.5 && k !== 'lv').map(([k]) => k).join(' '), ...(rel.again ? { again: true } : {}), ...(rel.answers ? { answers: rel.answers } : {}), ...(c.climax ? { climax: true } : {}) };
     list.push(out); slots.push(slot); slot.out = out;
@@ -391,6 +414,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if (!said.has(seg.label) && kind === 'stretch') said.set(seg.label, { id, s: rel.s });
     if (!said.has(segAt(hit ?? from).label) && kind === 'change') said.set(segAt((hit ?? from) + bar).label, { id, s: rel.s });
     lastId = id; lastSet = SET[id];
+    recent.unshift(id); recent.length = Math.min(recent.length, 3);
     return out;
   };
 
@@ -422,7 +446,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
         const hit = G.peak?.hit ?? G.t1, a = hit - 3 * bar - 6 * bar;
         if (a >= lo && a <= hi && hit > G.t0 + 7 * bar && clear(hit - 3 * bar, hit + bar)) {
           const f = featuresOf(hit - 6 * bar, hit, hit), rel = relationOf('rewind', segAt(hit - bar));
-          if (f.build > 0.4) out.push({ id: 'rewind', kind: 'stretch', i, j: i, from: hit - 3 * bar, to: hit + bar, hit, f, rel, v: scoreOf('rewind', f, segAt(hit - bar), a, mid, rel) });
+          if (f.build > 0.25) out.push({ id: 'rewind', kind: 'stretch', i, j: i, from: hit - 3 * bar, to: hit + bar, hit, f, rel, v: scoreOf('rewind', f, segAt(hit - bar), a, mid, rel) });
         }
       }
       // A change, at its landing
@@ -434,7 +458,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
           if (!room || room.a < lo || room.a > hi || !clear(room.a, room.b)) continue;
           const f = featuresOf(room.a, room.b, hit), seg = segAt(hit + bar), rel = relationOf(id, seg);
           if (SUIT[id](f) < 0.25 && !rel.bonus) continue;
-          out.push({ id, kind: 'change', i, from: room.a, to: room.b, hit, D: room.D, f, rel, v: scoreOf(id, f, seg, room.a, mid, rel) });
+          out.push({ id, kind: 'change', i, back: room.back, fwd: room.fwd, from: room.a, to: room.b, hit, D: room.D, f, rel, v: scoreOf(id, f, seg, room.a, mid, rel) });
         }
       }
     }
@@ -462,7 +486,8 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
         const iris = taken.findIndex(([a, b]) => Math.abs(b - G.t1) < 1e-3);
         if (iris >= 0) taken.splice(iris, 1);
         const f = featuresOf(room.a, room.b, hit), rel = { bonus: 0, s: 0.6 };
-        place({ id: climaxIdea, kind: 'change', i, from: room.a, to: room.b, hit, D: room.D, f, rel, climax: true }, ['flood', 'tube', 'pleat'].filter(x => x !== climaxIdea));
+        place({ id: climaxIdea, kind: 'change', i, back: room.back, fwd: room.fwd, from: room.a, to: room.b, hit, D: room.D, f, rel, climax: true }, ['flood', 'tube', 'pleat'].filter(x => x !== climaxIdea));
+        i = g.findIndex(x => x.xform?.id === climaxIdea);
       }
     }
     // What opens after it is the biggest stretch this take has
@@ -474,7 +499,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     }
     // The build into it winds up
     const B = g[i], [ba, be] = bodyOf(B);
-    if (wearable(B) && !relayOf(B) && be - ba >= 5 && canWear('slit', B) && clear(ba, be)) place({ id: 'slit', kind: 'stretch', i, j: i, from: ba, to: be, hit, f: featuresOf(ba, be, hit), rel: { bonus: 0, s: 0.5 }, climax: true }, ['crumple', 'fan']);
+    if (wearable(B) && !relayOf(B) && be - ba >= 5 && directFits('slit', B) && clear(ba, be)) place({ id: 'slit', kind: 'stretch', i, j: i, from: ba, to: be, hit, f: featuresOf(ba, be, hit), rel: { bonus: 0, s: 0.5 }, climax: true }, ['crumple', 'fan']);
   };
   if (!world) climaxPlace();
 
@@ -506,7 +531,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     // Still never the same one twice running
     const k = slots.filter(x => x !== slot).sort((a, b) => a.from - b.from), before = k.filter(x => x.from < slot.from).at(-1), after = k.find(x => x.from > slot.from);
     if (id != null && (before?.id === id || after?.id === id)) return null;
-    if (id != null && slot.kind === 'stretch' && (slot.to - slot.from < LEAST[id] || !canWear(id, G))) return null;
+    if (id != null && slot.kind === 'stretch' && (slot.to - slot.from < LEAST[id] || !directFits(id, G))) return null;
     slot.undo?.();
     putBack(G, slot.keptG); if (N) putBack(N, slot.keptN);
     const rel = { s: slot.s };

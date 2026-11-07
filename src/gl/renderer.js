@@ -100,7 +100,7 @@ export class Renderer {
       wait();
     });
   }
-  _next() { const next = this.order.find(n => !this.progs[n]); if (next !== undefined) { this._start(next); this._poll(); } else this._warmAll(); }
+  _next() { if (this._pending) return; const next = this.order.find(n => !this.progs[n]); if (next !== undefined) { this._start(next); this._poll(); } else this._warmAll(); }
 
   _start(v) {
     const gl = this.gl, fs = compile(gl, gl.FRAGMENT_SHADER, sourceOf(v));
@@ -108,6 +108,7 @@ export class Renderer {
   }
 
   _poll() {
+    if (!this._pending) return;
     const gl = this.gl, { v, prog, fs } = this._pending;
     const done = !this.parallel || gl.getProgramParameter(prog, this.parallel.COMPLETION_STATUS_KHR);
     if (!done) { setTimeout(() => this._poll(), 16); return; }

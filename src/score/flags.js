@@ -28,6 +28,7 @@ export const directing = { peak: true, sheet: false };
 directing.folds = new URLSearchParams(globalThis.location?.search ?? '').get('folds') === '1';      // src/score/moves/foldfilm.js: a generated film wears the fold set on its long stays. Off unless ?folds=1 for now, so the film is exactly the film
 directing.pace = new URLSearchParams(globalThis.location?.search ?? '').get('pace') !== '0';      // src/score/pace.js: how often a film changes, and with what. On unless ?pace=0
 directing.woah = new URLSearchParams(globalThis.location?.search ?? '').get('woah') !== '0';      // src/score/woah.js: a film goes through the tricks, by the music. On unless ?woah=0
+directing.woahOnly = new URLSearchParams(globalThis.location?.search ?? '').get('woahOnly')?.split(',') ?? null;      // ?woahOnly=forever,slit: only those, for looking at them
 directing.cam = new URLSearchParams(globalThis.location?.search ?? '').get('cam') !== '0';      // src/score/camera.js: a camera that travels. On unless ?cam=0
 {
   const q = new URLSearchParams(globalThis.location?.search ?? ''), all = q.get('direct') === '1';
