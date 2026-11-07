@@ -60,7 +60,7 @@ vec2 spaceFold(int b,vec2 z,inout float par){
         if(mod(floor(x/D),2.)>.5) par=-par;
         e=max(e,clamp(.5-min(mod(x,D),D-mod(x,D))*r/sqrt(1.+l.w*l.w)/jac*pxs,0.,.5));
       }
-      th+=l.w*(lr+l.z*0.);
+      th+=l.w*lr;
       r=exp(rr);
       jac*=r/r0*sqrt(1.+l.w*l.w);
     }

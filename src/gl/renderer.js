@@ -64,7 +64,6 @@ export class Renderer {
     this._whenReady = new Promise(res => { this._resolveReady = res; });
     this._whenAll = new Promise(res => { this._resolveAll = res; });
     this._whenFold = new Promise(res => { this._resolveFold = res; });
-    this._warmedTo = 0;
     this._poll();
   }
 

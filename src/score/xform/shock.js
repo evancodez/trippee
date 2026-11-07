@@ -43,7 +43,7 @@ function phaseAt(s, i, px, py, scale) {
 // A hidden seam: the phase jumps by a whole number somewhere, which nobody can see until it's mixed with something else, when it becomes a part of a cycle.
 // These can open and close, but they can't travel, unless the partner jumps by the same amount in the same place.
 const around = (s, i) => s[OFF['surf.kind']] > 0.5 && s[OFF['surf.map']] > 0.5 && Math.abs(fam(s, i, 'x')) > 1e-6;        // what runs round a wrapped surface. What runs along it is fine.
-const warpJumps = s => s[OFF['droste.lnS']] !== 0 || s[OFF['conf.amt']] !== 0;
+const warpJumps = s => s[OFF['droste.lnS']] !== 0 || s[OFF['conf.amt']] !== 0 || s[OFF['sf.on']] > 0.5;
 const turns = (s, i) => Math.abs(fam(s, i, 't1')) + Math.abs(fam(s, i, 't2')) > 1e-6;
 function canTravel(a, i, b, j) {
   if (around(a, i) || around(b, j) || warpJumps(a) || warpJumps(b)) return false;

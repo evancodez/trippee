@@ -54,7 +54,7 @@ export function matchFamilies(a, b) {
     allPaired: !close.length && !open.length,
     fewExtras: close.length + open.length <= 2 && pair.some(p => p >= 0),
     // A field draws differently for different numbers, and they snap: gliding across them would be a cut.
-    plain: !shaped(a) && !shaped(b) && sameBody && same('fold.n') && a[OFF['droste.lnS']] === 0 && b[OFF['droste.lnS']] === 0 && a[OFF['conf.amt']] === b[OFF['conf.amt']]
+    plain: a[OFF['sf.on']] < 0.5 && b[OFF['sf.on']] < 0.5 && !shaped(a) && !shaped(b) && sameBody && same('fold.n') && a[OFF['droste.lnS']] === 0 && b[OFF['droste.lnS']] === 0 && a[OFF['conf.amt']] === b[OFF['conf.amt']]
       && same('field.kind') && same('field.a') && same('field.b')
       // ...and so does how a sheet's cut into bands: gliding into a dial that's come apart would keep the old cuts to the last frame, and then the whole picture jumps.
       && same('slip.kind') && same('slip.n'),
