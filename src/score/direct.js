@@ -104,7 +104,9 @@ export function direct(score, A, M) {
   while (g.length > 3 && g[0].t1 < (score.pace ? 12 : OPENING)) { const n = g[1]; g[0].t1 = n.t1; g[0].morph = n.morph; g.splice(1, 1); }
   if (g[0].morph && g[0].t1 - g[0].morph < 7.5) g[0].morph = Math.max(g[0].t1 - 7.5, 5);
   // Pace (src/score/pace.js): the same moves, for what they do and not for how long they take over the film
-  const P = score.pace, PAST_T = P ? Math.max(4 * bar, 6) : PAST, STAR_T = P ? [14, 26] : STAR_LEN, COIN_T = P ? [10, 18] : COIN_SECONDS, ROOM_T = P ? Math.max(1.5 * bar, 2.5) : ROOM, STAR_BODY = P ? 12 : 16, SHOCK_D = P ? clamp(3 * bar, 4, 7) : 10, SHOCK_ROOM = P ? 1 : 4;
+  const P = score.pace;
+  if (P && !score.world) { const w = P.warp(score.time ?? (t => t), score.time?.windows ?? []), phi0 = score.phi; if (w) score.phi = (t, G, now = t, rho) => phi0(w(t), G, now, rho); }
+  const PAST_T = P ? Math.max(4 * bar, 6) : PAST, STAR_T = P ? [14, 26] : STAR_LEN, COIN_T = P ? [10, 18] : COIN_SECONDS, ROOM_T = P ? Math.max(1.5 * bar, 2.5) : ROOM, STAR_BODY = P ? 12 : 16, SHOCK_D = P ? clamp(3 * bar, 4, 7) : 10, SHOCK_ROOM = P ? 1 : 4;
   const lastG = () => g.length - 1;      // the film's tail: what carries on after the song, and nothing transforms into it
 
   // Who's on, and when. [a, b]: all the time it holds, so no one else can be put there. [wa, wb]: when everything else steps back for it. at: where it falls, for "never twice running".
