@@ -100,6 +100,8 @@ export class Library {
   async begin() {
     if (this.started) return;
     this.started = true;
+    // A fold tile flies in on programs the picture hasn't needed yet, and a flight that has to wait for them starts without the mirrors and pops into them (folds.crumplerings, 27 /255 on its first frames). They're built behind the picture now, while the shelves are looked at.
+    this.app.R?.wantFold?.();
     try {
       const cv = document.createElement('canvas');
       this.R = new Renderer(cv);

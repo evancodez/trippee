@@ -81,7 +81,7 @@ export class Renderer {
   // The ones a fold's likely to want, or just this one. It's a program's first draw that's the stall, so they're warmed one at a time with the picture carrying on, as at the start.
   wantFold(v = null, now = false) {
     if (v == null) this.foldAsked = true;
-    const add = v != null ? [v] : ORDER.slice(0, this.bare ? 4 : 8).map(n => n | FOLD);       // the hand's only if it's ever drawn over one
+    const add = v != null ? [v, v ^ FLIGHT] : ORDER.slice(0, this.bare ? 4 : 8).map(n => n | FOLD);       // the hand's only if it's ever drawn over one. One asked for by a frame brings its other half, flying or not: a click's flight into a fold had only the flight's, and the landing drew two frames without its mirrors and popped (folds.crumplerings, 96 /255)
     const more = add.filter(n => !this.order.includes(n));
     if (!more.length) return;
     this.order = [...this.order, ...more];
