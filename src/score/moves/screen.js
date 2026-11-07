@@ -25,7 +25,7 @@ export const screenWith = ({ Sz = 0.5, turn = 0.5, speed = 0.3, par = 1, rx, ry 
   if (c.G.moves?.some(m => m.id === 'screen')) return;
   const S = songNow(c);
   out[OFF['sf.par']] = par;
-  write(out, { k: 1, tau: (S.sec * speed / Math.log(1 / Sz) + S.big) % 1, Sz, turn, S });
+  write(out, { k: 1, tau: (S.sec * speed / Math.log(1 / Sz) + 2 * S.big) % 2, Sz, turn, S });
 };
 export const screenDrive = screenWith();
 
@@ -37,13 +37,13 @@ export default {
     m.S ??= 0.5; m.turn ??= 0.5; m.speed ??= 0.3; m.par ??= 1;
     const go = m.from + m.open * 0.9, stop = m.stay ? m.to + 600 : m.to - m.close * 0.95;
     if (stop - go < 2) return null;
-    m._go = journey(m, { go, stop, speed: m.speed / Math.log(1 / m.S), lurch: 1, ramp: ctx.bar });
+    m._go = journey(m, { go, stop, speed: m.speed / Math.log(1 / m.S), lurch: 2, ramp: ctx.bar, unit: 2 });      // two levels: with each the negative of the last, one level on is the whole frame inverted
     return m;
   },
   write(out, c) {
     const { m, t } = c, S = songNow(c), k = inBy(m, t), w = m._go(t);
     if (k <= 0) return;
     out[OFF['sf.par']] = m.par;
-    write(out, { k, tau: w - Math.floor(w), Sz: m.S, turn: m.turn, S });
+    write(out, { k, tau: w % 2, Sz: m.S, turn: m.turn, S });
   },
 };

@@ -3,6 +3,7 @@
 //
 //   G.moves = [{ id: 'crumple', folds, c, shrink, turn, ... }]     and the options in cueFold (foldkit.js)
 //     folds   how many creases by the end, up to 8. They come in one by one over the way in. Default 8
+//     open, close   as in cueFold, and here the default's 6 and 4 bars: a crease going by is what's quick
 //     c       how far the first is from the middle. Default about three of the sheet's lines, so a piece is never all one colour
 //     shrink  each is this much nearer than the last. Default .74
 //     turn    how far each is turned from the last, radians. Default 1.1
@@ -11,7 +12,7 @@
 import { clamp, smoother } from '../curves.js';
 import { cueFold, inBy, songNow, boldUp, writeChain, lineM } from './foldkit.js';
 
-const FAR = 5;
+const FAR = 3.6;
 
 // Each crease in the frame the last one left: its normal's turned by `turn` and its foot is along the last crease by `c`, shrinking. All one coordinate system, since a fold's an isometry and the sheet's coordinates are where the point has got to.
 const list = [];
@@ -20,7 +21,7 @@ function creases({ folds, c, shrink, turn, k }) {
   let ox = 0, oy = 0, ang = 0.2, cc = c;
   for (let i = 0; i < folds; i++) {
     const nx = Math.cos(ang), ny = Math.sin(ang), d = nx * ox + ny * oy;
-    const come = 1 - smoother(clamp(k * folds - i));       // one at a time
+    const come = 1 - smoother(clamp((k * (folds + 2) - i) / 3));       // one after another, three of them on the move at once: it's the crease going by that's quick, so each gets its share of the way in
     list.push(lineM(nx, ny, d + FAR * come));
     ox += -ny * cc; oy += nx * cc; ang += turn; cc *= shrink;
   }
@@ -44,9 +45,9 @@ export const crumpleDrive = crumpleWith();
 export default {
   id: 'crumple',
   needs: () => true,
-  cue(m, ctx) { return cueFold(m, ctx); },
+  cue(m, ctx) { m.open ??= 6; m.close ??= 4; return cueFold(m, ctx); },
   write(out, c) {
-    const { m, t } = c, S = songNow(c), k = inBy(m, t);
+    const { m, t } = c, S = songNow(c), k = clamp((t - m.from) / m.open) * (m.stay ? 1 : clamp((m.to - t) / m.close));      // steady, so the creases come in evenly
     if (k <= 0) return;
     write(out, { k, S, folds: m.folds, c: m.c, shrink: m.shrink, turn: m.turn, speed: m.speed });
   },

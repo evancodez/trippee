@@ -14,6 +14,12 @@ export function writeChain(out, mirrors, reps = 1) {
 export function writeFan(out, { x = 0, y = 0, al = 0, rot = 0 }) {
   out[OFF['sf.on']] = 1; out[OFF['fan.x']] = x; out[OFF['fan.y']] = y; out[OFF['fan.al']] = al; out[OFF['fan.rot']] = rot;
 }
+// The mirrors of a fan, from nothing. The first comes in from off the frame on the near side of everything and stops through the centre, at k = .5. Then it parts, and they come round from the back.
+const FAN_FAR = 3.4;
+export function fanIn(out, k, n, rot) {
+  const come = 1 - smoother(clamp(k / 0.5)), open = smoother(clamp((k - 0.35) / 0.65));
+  writeFan(out, { x: -FAN_FAR * come * Math.sin(rot), y: -FAN_FAR * come * Math.cos(rot), al: Math.PI / Math.max(1 + (n - 1) * open, 1), rot });
+}
 export function writeLog(out, { a, b, off = 0, tw = 0 }) {
   out[OFF['sf.on']] = 1; out[OFF['lf.a']] = a; out[OFF['lf.b']] = b; out[OFF['lf.off']] = off; out[OFF['lf.tw']] = tw;
 }
@@ -91,14 +97,14 @@ export function songNow(c, ghost = 3, peak = 1.5) {
 
 // A journey along something whose every `whole` is the same picture, so it can go on for ever and still come back to nothing: it's still until `go`, goes `speed` wholes a second on the strong beats' surge, and `lurch` wholes further for each size-1 moment, and has come to rest by `stop`, on a whole number of them.
 // Worked out once, from the beats, as a table. read(t) is how many wholes, and it's exact at both ends.
-export function journey(m, { go, stop, speed, lurch = 0, peak = 1.5, ramp = 2 }) {
+export function journey(m, { go, stop, speed, lurch = 0, peak = 1.5, ramp = 2, unit = 1 }) {
   const HZ = 60, n = Math.max(2, Math.ceil((stop - go) * HZ)), T = new Float32Array(n + 1), K = clockOf(m), B = m._big ?? [];
   let lastS = surged(evalTrack(K, go), peak), lastB = bigAt(B, go);
   for (let i = 1; i <= n; i++) {
     const t = go + i / HZ, s = surged(evalTrack(K, t), peak), b = bigAt(B, t), w = ease((t - go) / ramp) * ease((stop - t) / ramp);
     T[i] = T[i - 1] + (Math.max(0, s - lastS) * m._P * speed + (b - lastB) * lurch) * w; lastS = s; lastB = b;
   }
-  const whole = Math.round(T[n]) || (T[n] > 0.2 ? 1 : 0), k = T[n] > 0 ? whole / T[n] : 0;
+  const whole = unit * (Math.round(T[n] / unit) || (T[n] > 0.2 * unit ? 1 : 0)), k = T[n] > 0 ? whole / T[n] : 0;
   for (let i = 0; i <= n; i++) T[i] *= k;
   T[n] = whole;
   return t => { const x = clamp((t - go) * HZ, 0, n), i = Math.min(n - 1, x | 0); return T[i] + (T[i + 1] - T[i]) * (x - i); };

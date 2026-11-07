@@ -4,7 +4,7 @@
 //   feedback  the frame holds a smaller, turned picture of itself, which holds another. uG[sfD]: S (0 off), turn per level, the screen's half width and height. uG[sfD2]: centre, tau (how far along one level the camera has flown: whole numbers change nothing), unused. A level's edge is a real jump, and it's a seam.
 //   mobius    the Riemann sphere rolling: z -> (az+b)/(cz+d). uG[sfM]: a, b. uG[sfM2]: c, d. All zero off.
 //   fan       mirrors through one centre, at every multiple of `al`, for any real al: an exact kaleidoscope only at pi/n, and always continuous, because the angle is folded after |th| and both sides of th = pi are the same. uG[sfF]: centre, al (0 off), its turn.
-//   log       the radius folds between two circles, again and again, in and out for ever. uG[sfL]: ln of the inner circle, ln of the outer (equal: off), how far the circles have flown, the twist. A twist needs the fan on, or it tears where th wraps.
+//   log       the radius folds between two circles, again and again, in and out for ever. uG[sfL]: ln of the inner circle, ln of the outer (equal: off), how far the circles have flown, the twist. uG[sfL2]: their centre. A twist needs the fan on, and on the same centre, or it tears where th wraps.
 //   chain     up to 8 generalised mirrors, a line or a circle: reflect what's on the far side, in order, up to `reps` times round. uG[sfM0+i]: a, bx, by, c. f = a|z|^2 - 2 b.z + c, with |b|^2 - ac = 1, and where f > 0 z becomes (z + b f) / (1 + a f). A line has a = 0.
 // par: every reflection also inverts the sheet, so each room is the negative of the next and the mirrors show as an edge. The phase jumps there, but gPh takes it after the gradient, so it's only the edge's own pixels: gFoldE takes those to their true coverage in main.js.
 export default `#ifdef FOLD
@@ -39,32 +39,30 @@ vec2 spaceFold(int b,vec2 z,inout float par){
     jac*=length(ad-bc)/vv;
   }
   vec4 f=uG[b+I_sfF],l=uG[b+I_sfL];
-  if(f.z>0.||l.y>l.x){
+  if(f.z>0.){
     vec2 c=rot(f.w)*(z-f.xy);
-    float r=max(length(c),1e-6),th=atan(c.y,c.x),r0=r;
-    if(f.z>0.){
-      float ath=abs(th),m=mod(ath,2.*f.z);
-      float sec=floor(ath/f.z);
-      if(m>f.z) m=2.*f.z-m;
-      if(flip){
-        if(mod(sec,2.)>.5) par=-par;
-        if(th<0.) par=-par;
-        e=max(e,clamp(.5-min(min(m,f.z-m),min(ath,PI-ath))*r/jac*pxs,0.,.5));
-      }
-      th=m;
+    float r=length(c),th=atan(c.y,c.x),ath=abs(th),m=mod(ath,2.*f.z),sec=floor(ath/f.z);
+    if(m>f.z) m=2.*f.z-m;
+    if(flip){
+      if(mod(sec,2.)>.5) par=-par;
+      if(th<0.) par=-par;
+      e=max(e,clamp(.5-min(min(m,f.z-m),min(ath,PI-ath))*r/jac*pxs,0.,.5));
     }
-    if(l.y>l.x){
-      float lr=log(r),rho=lr+l.z-l.w*th,D=l.y-l.x,x=rho-l.x,mm=mod(x,2.*D);
-      float rr=l.y-abs(mm-D);
-      if(flip){
-        if(mod(floor(x/D),2.)>.5) par=-par;
-        e=max(e,clamp(.5-min(mod(x,D),D-mod(x,D))*r/sqrt(1.+l.w*l.w)/jac*pxs,0.,.5));
-      }
-      th+=l.w*lr;
-      r=exp(rr);
-      jac*=r/r0*sqrt(1.+l.w*l.w);
+    z=f.xy+rot(-f.w)*(r*vec2(cos(m),sin(m)));
+  }
+  if(l.y>l.x){
+    vec2 lc=uG[b+I_sfL2].xy,c=rot(f.w)*(z-lc);      // past the fan's fold, the angle's already in one wedge, so a twist can't tear where it wraps
+    float r=max(length(c),1e-6),th=atan(c.y,c.x),lr=log(r),rho=lr+l.z-l.w*th,D=l.y-l.x,x=rho-l.x,mm=mod(x,2.*D);
+    float rr=l.y-abs(mm-D);
+    if(flip){
+      if(mod(floor(x/D),2.)>.5) par=-par;
+      float md=mod(x,D);
+      e=max(e,clamp(.5-min(md,D-md)*r/sqrt(1.+l.w*l.w)/jac*pxs,0.,.5));
     }
-    z=f.xy+rot(-f.w)*(r*vec2(cos(th),sin(th)));
+    th+=l.w*lr;
+    jac*=exp(rr)/r*sqrt(1.+l.w*l.w);
+    r=exp(rr);
+    z=lc+rot(-f.w)*(r*vec2(cos(th),sin(th)));
   }
   int n=int(s.w),reps=int(s.z);
   for(int k=0;k<reps;k++){

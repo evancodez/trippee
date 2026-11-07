@@ -11,17 +11,16 @@
 // By hand: foreverDrive.
 import { OFF } from '../../pattern/layout.js';
 import { clamp, smoother } from '../curves.js';
-import { cueFold, inBy, songNow, journey, boldUp, writeFan, writeLog } from './foldkit.js';
+import { cueFold, inBy, songNow, journey, boldUp, fanIn, writeLog } from './foldkit.js';
 
-const FAR_IN = -7, FAR_OUT = 4;
+const FAR_OUT = 1.25;
 
 function write(out, { k, off, n, inner, outer, tw, S, rot0 = 0.2 }) {
-  // The circles come in from nothing and from past the corners. Then the mirrors part.
-  const c = smoother(clamp(k / 0.65)), lerp = (a, b, x) => a + (b - a) * x;
+  // The rim comes in from past the corners and the inner circle opens from a point, each at about the same speed across the frame. Then the mirrors part.
+  const c = smoother(clamp(k / 0.7)), rIn = Math.exp(inner) * c + 1e-3 * (1 - c);
   boldUp(out, k, 3);
-  const fan = smoother(clamp((k - 0.2) / 0.8)), rot = rot0 + 0.3 * S.mel + 0.012 * S.sec;
-  writeFan(out, { x: 0, y: 0, al: Math.PI / (1 + (n - 1) * fan), rot });
-  writeLog(out, { a: lerp(FAR_IN, inner, c), b: lerp(FAR_OUT, outer, c), off, tw: tw * smoother(clamp((k - 0.5) / 0.5)) * (0.35 + 0.65 * S.en) });
+  fanIn(out, smoother(clamp((k - 0.15) / 0.85)), n, rot0 + 0.3 * S.mel + 0.012 * S.sec);
+  writeLog(out, { a: Math.log(rIn), b: outer + (FAR_OUT - outer) * (1 - c), off, tw: tw * smoother(clamp((k - 0.75) / 0.25)) * (0.35 + 0.65 * S.en) });
   out[OFF.rot] += 0.01 * S.sec * k;
 }
 

@@ -8,22 +8,16 @@
 //     walk     how far the sheet walks, picture units a second. Default .08
 // By hand: fanDrive, and it goes up and down for ever.
 import { OFF } from '../../pattern/layout.js';
-import { evalTrack, clamp, smoother } from '../curves.js';
-import { cueFold, inBy, songNow, beatsTrack, boldUp, writeFan } from './foldkit.js';
-
-const FAR = 7;
-const mirrors = n => Math.PI / Math.max(n, 1);
+import { evalTrack, clamp } from '../curves.js';
+import { cueFold, inBy, songNow, beatsTrack, boldUp, fanIn } from './foldkit.js';
 
 function write(out, { k, n, S, walk = 0.08, rot0 = 0.2 }) {
   const rot = rot0 + 0.012 * S.sec + 0.24 * S.mel * k + 0.5 * S.big * k;
   boldUp(out, k, 3);
-  // The first mirror comes in from below: the frame's all on its near side until it arrives
-  const come = 1 - smoother(clamp(k / 0.4)), x = -FAR * come * Math.sin(rot), y = -FAR * come * Math.cos(rot);
-  const open = smoother(clamp((k - 0.3) / 0.7));
-  writeFan(out, { x, y, al: mirrors(1 + (n - 1) * open), rot });
+  fanIn(out, k, n, rot);
   // The sheet goes on under the mirrors, in long curves. Each strong beat takes it a step, and the tune leans it.
-  const w = walk * S.sec, sc = out[OFF.scale];
-  out[OFF.tx] += k * (w * Math.cos(0.09 * S.sec) + 0.12 * S.mel) / sc * sc;
+  const w = walk * S.sec;
+  out[OFF.tx] += k * (w * Math.cos(0.09 * S.sec) + 0.12 * S.mel);
   out[OFF.ty] += k * w * Math.sin(0.06 * S.sec + 1);
   out[OFF.rot] += 0.012 * S.sec * k;
 }
