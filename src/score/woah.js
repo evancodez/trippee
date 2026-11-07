@@ -35,6 +35,9 @@ const SET = {      // id: which set
 };
 const MOVE_OF = { hallway: 'hall' };      // the stretch of a hall, whose name a change has
 const CHANGES = ['flood', 'drop', 'tube', 'pleat', 'hall', 'span'];
+// Out of the casting, still clickable and still called by name in a cut or by directing.woahOnly: span (PPP 74-110: frames to 100 ms, the governor at .6, then fine diagonals for 35 s) and limit (plain bold stripes on all three songs that got it, in place of richer rooms).
+// They're still read and scored, so the take's dice fall as they did, and only where one of them would have won does anything change.
+const OFF_CAST = new Set(['span', 'limit']);
 const STRETCHES = ['forever', 'limit', 'screen', 'pearls', 'fan', 'crumple', 'roll', 'slit', 'ghost', 'fringe', 'snakes', 'ouchi', 'echo', 'slice', 'swell', 'terraces', 'pleats', 'ride', 'hallway', 'rewind'];
 const LINES_ONLY = new Set(['crumple', 'limit']), MARCH = new Set(['ratchet', 'wring', 'scissor', 'bellows']);
 const OVER_RELAY = new Set(['forever', 'limit', 'screen', 'pearls', 'fan', 'roll', 'swell', 'terraces', 'pleats']);      // it doesn't care what's on the sheet, and a Relay's steps can go on under it
@@ -467,7 +470,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
         }
       }
     }
-    return out.sort((x, y) => y.v - x.v);
+    return out.filter(x => !OFF_CAST.has(x.id) || directing.woahOnly?.includes(x.id)).sort((x, y) => y.v - x.v);
   };
 
   // ---------------------------------------------------------------- the climax: what's saved
@@ -497,7 +500,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     }
     // What opens after it is the biggest stretch this take has
     const O = g[i + 1], [oa, oe] = bodyOf(O);
-    const ids = [lean.folds >= lean.space ? 'forever' : 'ride', 'forever', 'limit', 'screen', 'terraces'].filter(id => canWear(id, O));
+    const ids = [lean.folds >= lean.space ? 'forever' : 'ride', 'forever', 'screen', 'terraces'].filter(id => canWear(id, O));
     if (wearable(O) && oe - oa >= 10 && ids.length) {
       const id = ids[0], { j, end } = reach(i + 1, 18), to = Math.min(end, oa + MOST), f = featuresOf(oa, to, O.t1), rel = { bonus: 0, s: 1 };
       if (clear(oa, to)) place({ id, kind: 'stretch', i: i + 1, j, from: oa, to, hit: O.t1, f, rel, climax: true }, ids.slice(1));
