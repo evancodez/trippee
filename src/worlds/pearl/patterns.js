@@ -44,7 +44,7 @@ function own(from, id, name, film = {}, more = {}) {
   if (!o) throw new Error(`no ${from}`);
   const flow = { ...o.flow };
   delete flow['f0.ph'];
-  return { ...o, id: `pearl.${id}`, name, family: 'pearl', group: more.group ?? 'op', pool: true, fine: o.fine, flow, film: { ...FILM, lets: 0.55, ...film }, ...more,
+  return { ...o, id: `pearl.${id}`, name, family: 'pearl', group: more.group ?? 'op', pool: true, fine: o.fine, flow, arcs: (o.arcs ?? []).filter(a => a.path !== 'f0.ph'), film: { ...FILM, lets: 0.55, ...film }, ...more,
     drive(out, ctx) { o.drive?.(out, ctx); out[ctx.OFF['f0.ph']] -= FLOW * ctx.phi; } };
 }
 

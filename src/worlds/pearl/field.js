@@ -166,7 +166,7 @@ export const PREINK = `vec2 wP0(){ return (gl_FragCoord.xy-.5*uF[8].xy)/uF[8].y*
 float wFocusOf(float lets){
   vec4 F=uW[24],G=uW[25]; vec2 p0=wP0();
   float d=max(abs(dot(p0-F.xy,F.zw))-G.x,0.),front=wT*(1.-wT)*4.;
-  return (G.y*d*d/(1.+.6*d)+G.z)*lets*(1.-wOrbSharp)+uW[31].x*front*front;
+  return (G.y*d*d/(1.+.6*d)+G.z*smoothstep(0.,.25,d))*lets*(1.-wOrbSharp)+uW[31].x*front*front;
 }
 void worldPreInk(int K){
   if(uW[0].x>.5){ wBlurNow=0.; return; }
