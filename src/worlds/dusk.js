@@ -1,0 +1,118 @@
+// Dusk: wistful. Slow, sad, beautiful: the end of an afternoon seen from a train, and the room you got home to. docs/MODES.md, section 3.
+// A whole way of seeing: colour is time since an edge passed, through film stock, in the light of one low sun. A song is one evening, its voice is the sun, its reverb is how long the light lingers, and the last few seconds of it are written along every line.
+import { OFF } from '../pattern/layout.js';
+import { pool } from './dusk/patterns.js';
+import { FIELD } from './dusk/field.js';
+import { DEFS, WARP, COLOR } from './dusk/light.js';
+import { writeStock, chips } from './dusk/stocks.js';
+import { hearDusk, whoaOf, read, holdAt } from './dusk/song.js';
+import { KINDS } from './dusk/across.js';
+import { cast, landings, moves } from './dusk/direct.js';
+import { wearDuskCamera } from './dusk/camera.js';
+import './dusk/moves.js';
+
+const clamp01 = x => Math.max(0, Math.min(1, x));
+const smooth = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
+const ASPECT = 16 / 9;
+const CHART = 32, CHART_S = 5;     // the strip chart: how many samples and how many seconds a cycle's tail holds
+const FREE_SUN = [0.55, 0.3, 0.3];
+const LEAK = { line: 0.34, fall: 0.2, flare: 0.28, settle: 0 };
+const NOLAKE = -3;
+const discOf = p => (p?.sun || p?.group === 'land' ? 1 : 0);      // the sun's a disc where there's a sky for it to be in. In a room or on a string it's only the light
+
+// Where a pattern has its sun, in the frame, as its view has it now.
+function sunIn(p, S, t, melSlow) {
+  const s = p?.sun;
+  if (!s) return [FREE_SUN[0] + 0.5 * Math.sin(t * 0.021), FREE_SUN[1] + melSlow, FREE_SUN[2]];
+  const sc = S[OFF.scale], c = Math.cos(S[OFF.rot]), n = Math.sin(S[OFF.rot]), x = (s[0] - S[OFF.tx]) * sc, y = (s[1] - S[OFF.ty]) * sc;
+  return [c * x - n * y, n * x + c * y, s[2] * sc];
+}
+function waterOf(G, t) {
+  const p = G?.pattern;
+  let y = p?.lake ?? NOLAKE;
+  const w = G?.water;
+  if (w) { const k = smooth((t - w.t0) / 3.5) * smooth((w.t1 - t) / 3.5); y = NOLAKE + (Math.max(y, w.y) - NOLAKE) * k; if (k <= 0) y = p?.lake ?? NOLAKE; }
+  return y;
+}
+
+export default {
+  id: 'dusk', name: 'Dusk', chips, pool, borrow: ['lines.river', 'lines.fall', 'waves.current', 'pole.whirl', 'pole.dipole', 'rooms.nested', 'void.zebra', 'checks.vega', 'rooms.arrows', 'riley.metamorphosis'],
+  needs: ['trem', 'air', 'sustain'],
+  glsl: { defs: DEFS, field: FIELD, warp: WARP, color: COLOR },
+  camera: false,
+  fuller: S => S[OFF['field.kind']] === 4 && S[OFF['field.a']] === 12,
+  tables: (A, M) => hearDusk(A, M),
+  whoa: (A, M) => whoaOf(A, M),
+  direct(score, A, M) {
+    if (!score.tau || !score.react) return score;
+    cast(score, A, M);
+    landings(score);
+    moves(score, A, M);
+    wearDuskCamera(score, A, M, ((score.seed | 0) * 7919) >>> 0);
+    return score;
+  },
+  uniforms(U, ctx) {
+    const { A, B, t, c, T: Tm, from, to, kind, score, plan } = ctx, E = U.a, song = ctx.tables, s = ctx.at(c), G = from ?? ctx.G, N = to ?? null, Tx = N ? (Tm ?? ctx.x ?? 0) : 0;
+    const melSlow = s ? Math.max(-0.5, Math.min(0.5, s.melSlow * 0.045)) : 0.1 * Math.sin(t * 0.17);
+    // The sun.
+    const a = sunIn(G?.pattern, A, t, melSlow), b = N ? sunIn(N.pattern, B, t, melSlow) : a;
+    const v = song ? read(song, song.voice, t) : 0.6 + 0.4 * Math.sin(t * 0.11), tune = s?.gains?.tune ?? 1;
+    E[0] = a[0] + (b[0] - a[0]) * Tx; E[1] = a[1] + (b[1] - a[1]) * Tx;
+    E[2] = (a[2] + (b[2] - a[2]) * Tx) * (0.92 + 0.14 * v);
+    E[3] = 0.5 + 0.5 * v * Math.min(1, tune + 0.3);
+    // The tails, the film's halation, the strip chart, and the frame's light.
+    const energy = song ? read(song, song.energy, t) : 0.4 + 0.2 * Math.sin(t * 0.07), lung = s ? Math.min(s.lung, 1.2) : 0.5, pulse = s ? Math.min(s.pulse, 1.2) : 0, air = song?.air ?? 2.6, hold = song ? holdAt(song, t) : 0;
+    const L = (0.5 + 0.1 * (air - 2.6) + 0.12 * lung + 0.1 * pulse) * (1 - 0.92 * hold);
+    E[4] = Math.max(0.05, L);
+    E[5] = 0.7 + 0.35 * energy;
+    E[6] = 0.42;
+    E[7] = 0.1 * energy * (1 - hold);
+    // Age, and the lake.
+    E[8] = s ? 0.55 * smooth((s.tension - 0.45) / 0.8) : 0.12;
+    const wa = waterOf(G, t), wb = N ? waterOf(N, t) : wa;
+    E[9] = wa + (wb - wa) * Tx; E[10] = 1; E[11] = t * 0.55;
+    // The rings of light out of the sun, on the strong beats.
+    let r0 = 0, a0 = 0, r1 = 0, a1 = 0;
+    const P = score.react?.pulses;
+    if (P?.length) {
+      let lo = 0, hi = P.length - 1;
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= c) lo = m; else hi = m - 1; }
+      const one = k => { if (k < 0) return [0, 0]; const x = c - P[k]; return x < 0 ? [0, 0] : [0.15 + 1.7 * x, 0.2 * smooth(x / 0.22) * Math.exp(-x / 1.1) * Math.min(1, s?.gains?.drums ?? 1)]; };
+      [r0, a0] = one(lo); [r1, a1] = one(lo - 1);
+    }
+    E[12] = r0; E[13] = a0 * (1 - hold); E[14] = r1; E[15] = a1 * (1 - hold);
+    // The dusk line's leak, the sun's path, the tremolo's ribs.
+    const leak = plan && LEAK[kind] ? LEAK[kind] : 0, pa = G?.pattern?.path ?? 0, pb = N?.pattern?.path ?? 0;
+    E[16] = leak;
+    E[17] = (pa + (pb - pa) * Tx) * E[3];
+    const trem = song ? read(song, song.trem.depth, t) : 0, rate = song ? read(song, song.trem.rate, t) : 0;
+    E[18] = trem > 0.03 ? Math.min(0.5, trem * 1.2) : 0;
+    E[19] = Math.max(3, Math.min(9, rate * 1.2));
+    E[20] = song ? read(song, song.heave, t) : 0;
+    const da = discOf(G?.pattern), db = N ? discOf(N.pattern) : da;
+    E[21] = da + (db - da) * Tx;
+    E[22] = 0.32;
+    // The evening.
+    const day = song ? read(song, song.day, t) : (t * 0.022) % 8;
+    writeStock(E, 24, day);
+    for (let i = 3; i < 32; i += 4) E[24 + i] = 1;
+    // The strip chart: a cycle's tail is the last CHART_S seconds, newest at the edge.
+    for (let i = 0; i < CHART; i++) E[56 + i] = song ? read(song, song.level, t - (i / (CHART - 1)) * CHART_S) : 0.5 + 0.3 * Math.sin(t * 1.1 - i * 0.6);
+    // Whichever way a change is going, the strings' slide goes with the tune.
+    if (s) for (const S of [A, B]) if (S[OFF['squeeze.a']] !== 0) S[OFF['squeeze.x0']] = Math.max(-1.5, Math.min(1.5, s.melody * 0.14));
+    // A string rings on the strong beat, at the room's own rate: anything that's lines.
+    if (P?.length && s) {
+      const k = P.reduce ? null : null;
+      let lo = 0, hi = P.length - 1;
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= c) lo = m; else hi = m - 1; }
+      const x = c - P[lo];
+      if (x >= 0) {
+        const ring = 0.02 * Math.exp(-x / Math.max(air * 0.35, 0.6)) * Math.sin(Math.min(x * 3, 1) * Math.PI / 2) * Math.cos(x * 7.5);
+        for (const [S, p] of [[A, G?.pattern], [B, N?.pattern]]) if (p && (p.group === 'strings' || p.group === 'road') && S[OFF['bend2.a']] === 0) { S[OFF['bend2.a']] = ring; S[OFF['bend2.f']] = 3.1; S[OFF['bend2.ang']] = 0.02; }
+      }
+    }
+  },
+  pace: { bars: [8, 7, 5, 4, 3], morph: [6, 9], most: 17 },
+  motion: { len: [14, 24], morph: [7, 11], xforms: KINDS, xform: 'line', keep: ['line', 'fall', 'flare', 'settle'], front: true },
+  hear: { pulse: 0.5, melody: 0.9, tone: 0.5, harmony: 0.6, lung: 0.8, threshold: 0, depth: 0 },
+};

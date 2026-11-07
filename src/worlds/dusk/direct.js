@@ -1,0 +1,75 @@
+// Dusk's film: who's on, how they get to the next, and what they do on the way. The heart is land and road, and it never stays with one kind for long.
+import { OFF } from '../../pattern/layout.js';
+import { reactAt } from '../../score/react.js';
+import { hitsFor } from '../../score/moves/surge.js';
+import { base } from '../../score/slot.js';
+
+const SHARE = { land: 0.38, road: 0.2, strings: 0.14, room: 0.18, film: 0.1 };
+const rng = seed => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216; };
+export const groupOf = p => p.group ?? 'film';
+
+export function cast(score, A, M) {
+  const g = score.gestures, rand = rng(((score.seed | 0) * 7919 + (A.hash ? parseInt(String(A.hash).slice(0, 7), 16) : 3)) >>> 0), energyAt = t => { try { return reactAt(score.react, M?.C ? M.C(t) : t).energy; } catch { return 0.5; } };
+  const P = score.patterns.filter(p => p.pool !== false), by = {};
+  for (const p of P) (by[groupOf(p)] ??= []).push(p);
+  const had = {}, seen = new Map();
+  let last = null, run = 0, total = 0;
+  const pickFrom = group => {
+    const pool = by[group], least = Math.min(...pool.map(p => seen.get(p) ?? -1)), fresh = pool.filter(p => (seen.get(p) ?? -1) === least && p !== last);
+    const from = fresh.length ? fresh : pool.filter(p => p !== last);
+    return from[Math.floor(rand() * from.length)] ?? pool[0];
+  };
+  const groups = Object.keys(SHARE).filter(k => by[k]?.length);
+  for (let i = 0; i < g.length; i++) {
+    const G = g[i], len = G.t1 - G.t0, e = energyAt((G.t0 + G.t1) / 2);
+    let group = 'land';
+    if (i) {
+      const lean = { land: (0.5 - e) * 0.12, room: (0.5 - e) * 0.15, road: (e - 0.5) * 0.15, strings: (e - 0.5) * 0.1, film: (e - 0.5) * 0.12 };
+      group = groups.filter(k => !(k === groupOf(last) && run >= (k === 'land' ? 2 : 1))).sort((a, b) => (SHARE[b] - (had[b] ?? 0) / Math.max(total, 1) + lean[b]) - (SHARE[a] - (had[a] ?? 0) / Math.max(total, 1) + lean[a]))[0];
+    }
+    const p = i === 0 ? by.land.find(x => x.id === 'dusk.ridge') ?? by.land[0] : pickFrom(group);
+    run = last && groupOf(last) === groupOf(p) ? run + 1 : 1;
+    last = p; seen.set(p, i); had[groupOf(p)] = (had[groupOf(p)] ?? 0) + len; total += len;
+    if (G.pattern !== p && G.k == null) { G.pattern = p; G.arcs = p.arcs; delete G.flow; delete G.range; }
+    else if (G.pattern !== p) { const N = score.remake(G, p); N.t0 = G.t0; N.t1 = G.t1; N.arcEnd = G.arcEnd; if (G.rise != null) N.rise = G.rise; g[i] = N; }
+  }
+  return g;
+}
+
+// The ways across. The dusk line's the signature. Between two places on the road or the land it's that, and into a room from outside it's the light that does it.
+const WEIGHT = { line: 3, flare: 2, fall: 2, settle: 2 };
+export function landings(score) {
+  const g = score.gestures, used = {};
+  let prev = null;
+  for (let i = 0; i + 1 < g.length; i++) {
+    const G = g[i], N = g[i + 1], a = base(G.pattern), b = base(N.pattern), flat = S => S[OFF['surf.kind']] < 0.5, wants = N.pattern.sun && N.pattern.cam === 'anchor', open = [];
+    if (flat(a) && flat(b)) open.push('line', 'fall', 'settle');
+    if (flat(a) && flat(b) && wants) open.push('flare');
+    if (!open.length) { G.xform = { id: 'dive', chosen: true }; continue; }
+    const score1 = k => WEIGHT[k] / (1 + (used[k] ?? 0)) * (k === prev ? 0.001 : 1) * (k === 'flare' && wants ? 1.5 : 1), k = open.sort((x, y) => score1(y) - score1(x))[0];
+    used[k] = (used[k] ?? 0) + 1;
+    prev = k;
+    const s = N.pattern.sun;
+    G.xform = k === 'flare' ? { id: 'flare', chosen: true, centre: [s[0], s[1]] } : { id: k, chosen: true };
+  }
+  return used;
+}
+
+// What it does while it's there. Long stays have to earn it.
+export function moves(score, A, M) {
+  const g = score.gestures, bar = M?.bar ?? 2;
+  const rotation = ['gust', 'sway', 'water', 'breath', 'gust', 'sway'];
+  let at = 0;
+  for (let i = 1; i + 1 < g.length; i++) {
+    const G = g[i], start = G.t0 + 0.5, end = G.t1 - (G.morph || 0), body = end - start;
+    if (body < 2.5 * bar) continue;
+    const parts = Math.max(1, Math.min(3, Math.round(body / 12)));
+    for (let part = 0; part < parts; part++) {
+      const from = start + (body * part) / parts, to = start + (body * (part + 1)) / parts, id = rotation[at++ % rotation.length];
+      if (id === 'water') { if (G.pattern.lake != null || G.pattern.g?.rot) continue; G.water = { t0: from, t1: to, y: -0.35 - 0.2 * (i % 3) }; continue; }
+      const hits = hitsFor(id === 'gust' ? 'bar' : 'half', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
+      if (hits.length < 2) continue;
+      (G.moves ??= []).push({ id: `dusk.${id}`, beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - from, 0.5)), coast: Math.min(bar, Math.max(to + 0.5 * bar - hits.at(-1), 0.5)), from, to });
+    }
+  }
+}
