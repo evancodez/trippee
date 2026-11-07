@@ -66,7 +66,7 @@ export function moves(score, A, M) {
   for (let i = 1; i + 1 < g.length; i++) {
     const G = g[i], start = G.t0 + 0.5, end = G.t1 - (G.morph || 0), body = end - start;
     if (body < 2.5 * bar) continue;
-    if (++since >= 3 && body >= 6 && !G.pattern.lake && (G.pattern.g?.fams?.length ?? 1) <= 2 && !G.pattern.g?.rot) {
+    if (++since >= 3 && body >= 6 && !G.pattern.lake && !G.pattern.g?.rot) {
       const id = BIG[big % BIG.length], made = id === 'slit' ? MOVES.slit.cue({ id, beats: 'strong', map: 'sweep', D: Math.min(body, 2 * bar), from: start, to: end }, ctxOf(G)) : MOVES[id].cue({ id, from: G.t0, to: end, open: Math.min(3, (0.3 * body) / bar), close: Math.min(2.5, (0.22 * body) / bar) }, ctxOf(G));
       big++;
       if (made) { G.moves = [made]; since = 0; continue; }

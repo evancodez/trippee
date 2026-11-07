@@ -141,6 +141,20 @@ async function stages({ page, log, save, sleep }) {
     }
     log(`clicks: ${good}/${ids.length} landed`);
   }
+  if (want.includes('trem')) {
+    // No test song has a tremolo the extras can hear, so its ribs get proved by telling the world there is one: the same frames with and without, side by side.
+    const r = await page.eval(async ids => {
+      const W = await F_.enter(), by = id => W._pool.find(p => p.id === 'dusk.' + id), was = W.uniforms, w = 640, h = 360, cv = document.createElement('canvas'); cv.width = w * 2; cv.height = h * ids.length;
+      const g = cv.getContext('2d');
+      ids.forEach((id, i) => {
+        W.uniforms = was; F_.show(by(id), 60); g.drawImage(trippee.canvas, 0, i * h, w, h);
+        W.uniforms = function (U, c) { was.call(this, U, c); U.a[18] = 0.45; U.a[19] = 7; }; F_.show(by(id), 60); g.drawImage(trippee.canvas, w, i * h, w, h);
+      });
+      W.uniforms = was;
+      return cv.toDataURL('image/jpeg', 0.9);
+    }, (process.env.IDS || 'ridge,strings,road').split(','));
+    save(process.env.NAME || 'trem.jpg', r);
+  }
   if (want.includes('frames')) {
     // Frames of the film at given moments, big enough to look at: SONG=... AT=t,t,t COLS=4
     const songPath = process.env.SONG || 'media/mgmt.mp3';

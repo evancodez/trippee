@@ -36,7 +36,7 @@ function waterOf(G, t) {
 }
 
 export default {
-  id: 'dusk', name: 'Dusk', chips, pool, borrow: ['lines.river', 'lines.fall', 'waves.current', 'pole.whirl', 'pole.dipole', 'rooms.nested', 'void.zebra', 'checks.vega', 'rooms.arrows', 'riley.metamorphosis'],
+  id: 'dusk', name: 'Dusk', chips, pool, borrow: [],
   needs: ['trem', 'air', 'sustain'],
   glsl: { defs: DEFS, field: FIELD, warp: WARP, color: COLOR },
   camera: false,
@@ -55,9 +55,10 @@ export default {
   uniforms(U, ctx) {
     const { A, B, t, c, T: Tm, from, to, kind, score, plan } = ctx, E = U.a, song = ctx.tables, s = ctx.at(c), G = from ?? ctx.G, N = to ?? null, Tx = N ? (Tm ?? ctx.x ?? 0) : 0;
     // The tune doesn't travel through this sheet in a line: where a broad band meets a walk of notes it comes out ragged. It's the sun, the lenses and the lift.
-    ctx.F[FRAME.mel * 4] = 0;
+    const geo = ctx.geo ?? 1;     // the rule for a change of world: anything the film's own program would draw differently lets go with the geometry share, so the middle of a change can't tell
+    ctx.F[FRAME.mel * 4] *= 1 - geo;
     // Nor the song's rings, which tear the edge of a band this broad: its strong beats are the rings of light out of the sun. The hand's own ripples fill from the front, and stay.
-    for (let i = 4; i < RIPPLES; i++) ctx.F[(FRAME.ripple + i) * 4 + 3] = 0;
+    for (let i = 4; i < RIPPLES; i++) ctx.F[(FRAME.ripple + i) * 4 + 3] *= 1 - geo;
     const melSlow = s ? Math.max(-0.5, Math.min(0.5, s.melSlow * 0.045)) : 0.1 * Math.sin(t * 0.17);
     // The sun.
     const a = sunIn(G?.pattern, A, t, melSlow), b = N ? sunIn(N.pattern, B, t, melSlow) : a;
@@ -67,7 +68,7 @@ export default {
     E[3] = 0.5 + 0.5 * v * Math.min(1, tune + 0.3);
     // The tails, the film's halation, the strip chart, and the frame's light.
     const energy = song ? read(song, song.energy, t) : 0.4 + 0.2 * Math.sin(t * 0.07), lung = s ? Math.min(s.lung, 1.2) : 0.5, pulse = s ? Math.min(s.pulse, 1.2) : 0, air = song?.air ?? 2.6, hold = song ? holdAt(song, t) : 0;
-    const L = (0.5 + 0.1 * (air - 2.6) + 0.12 * lung + 0.1 * pulse) * (1 - 0.92 * hold);
+    const held = song ? read(song, song.held, t) : 0.5, L = (0.34 + 0.1 * (air - 2.6) + 0.28 * held + 0.1 * lung + 0.08 * pulse) * (1 - 0.92 * hold);
     E[4] = Math.max(0.05, L);
     E[5] = 0.7 + 0.35 * energy;
     E[6] = 0.42;
@@ -98,7 +99,7 @@ export default {
     E[21] = da + (db - da) * Tx;
     E[22] = 0.32;
     // The evening.
-    const day = song ? read(song, song.day, t) : (t * 0.022) % 8;
+    const day = (song ? read(song, song.day, t) + read(song, song.mood, t) : t * 0.03) % 8;
     writeStock(E, 24, day);
     // Lamps and windows, as the evening reaches them. They're on the land and the road and in the houses, and not in a pattern that isn't anywhere.
     const lampShare = p => (p ? (p.lamps ?? 0) * (p.group === 'land' || p.group === 'road' ? 1 : 0) : 0), litShare = p => (p?.lit ? 1 : 0), L0 = lampsAt(day);
@@ -117,15 +118,14 @@ export default {
     // The strip chart: a cycle's tail is the last CHART_S seconds, newest at the edge.
     for (let i = 0; i < CHART; i++) E[56 + i] = song ? read(song, song.level, t - (i / (CHART - 1)) * CHART_S) : 0.5 + 0.3 * Math.sin(t * 1.1 - i * 0.6);
     // Whichever way a change is going, the strings' slide goes with the tune.
-    if (s) for (const S of [A, B]) if (S[OFF['squeeze.a']] !== 0) S[OFF['squeeze.x0']] = Math.max(-1.5, Math.min(1.5, s.melody * 0.14));
+    if (s) for (const S of [A, B]) if (S[OFF['squeeze.a']] !== 0) S[OFF['squeeze.x0']] += geo * (Math.max(-1.5, Math.min(1.5, s.melody * 0.14)) - S[OFF['squeeze.x0']]);
     // A string rings on the strong beat, at the room's own rate: anything that's lines.
     if (P?.length && s) {
-      const k = P.reduce ? null : null;
       let lo = 0, hi = P.length - 1;
       while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= c) lo = m; else hi = m - 1; }
       const x = c - P[lo];
       if (x >= 0) {
-        const ring = 0.02 * Math.exp(-x / Math.max(air * 0.35, 0.6)) * Math.sin(Math.min(x * 3, 1) * Math.PI / 2) * Math.cos(x * 7.5);
+        const ring = geo * 0.02 * Math.exp(-x / Math.max(air * 0.35, 0.6)) * Math.sin(Math.min(x * 3, 1) * Math.PI / 2) * Math.cos(x * 7.5);
         for (const [S, p] of [[A, G?.pattern], [B, N?.pattern]]) if (p && (p.group === 'strings' || p.group === 'road') && S[OFF['bend2.a']] === 0) { S[OFF['bend2.a']] = ring; S[OFF['bend2.f']] = 3.1; S[OFF['bend2.ang']] = 0.02; }
       }
     }

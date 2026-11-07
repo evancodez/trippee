@@ -42,10 +42,18 @@ export function hearDusk(A, M) {
     day[i] = start + steps * (mid + (S.t1 - S.t0) / dur * (0.3 * into));
   }
   const dayS = smooth(day, 3.5);
+  // Harmony: a minor chord's a little later in the evening than a major one, so each change of chord moves the light. Held, as the conductor's tension is on top of it.
+  const mood = new Float32Array(n), runs = M?.runs ?? [];
+  { let k = 0; for (let i = 0; i < n; i++) { const t = i / HZ; while (k + 1 < runs.length && runs[k + 1].t0 <= t) k++; const r = runs[k]; mood[i] = r ? (r.c & 1 ? 0.2 : -0.1) : 0; } }
+  const moodS = smooth(mood, 0.9);
+  // Reverb, as near as the song can say: how much of it's being held. The tail is longest when nothing's stopping it.
+  const held = new Float32Array(n);
+  for (let i = 0; i < n; i++) held[i] = at(A.harm, i / HZ);
+  const heldS = smooth(held, 1);
   const trem = tremOf(A, n);
   // The eclipse: the song's biggest arrival, once, with room for the moon to come over before it. The first of the sun comes back on the hit.
   const top = (M?.arrivals?.(0.3) ?? []).filter(a => a.t > 28 && a.t < dur - 14).sort((p, q) => q.a - p.a)[0];
-  const out = { n, hz: HZ, air, level, eclipse: top ? { t: top.t, a: top.a } : null, voice: sunV, heave, energy, day: dayS, trem, id: A.hash ?? String(dur), tremHeard: A.x?.heard?.trem ?? false, whoas: holdsOf(A, M, e, air) };
+  const out = { n, dur, hz: HZ, air, level, eclipse: top ? { t: top.t, a: top.a } : null, voice: sunV, heave, energy, day: dayS, mood: moodS, held: heldS, trem, id: A.hash ?? String(dur), tremHeard: A.x?.heard?.trem ?? false, whoas: holdsOf(A, M, e, air) };
   memo.set(A, out);
   return out;
 }
@@ -73,6 +81,8 @@ export function eclipseAt(song, t) {
 }
 // How much of the tail has gone, at this moment: 0 to 1.
 export function holdAt(song, t) {
+  // And the last of the song: the same thing, all the way out.
+  if (t > song.dur - 6) return 0.9 * up(t, song.dur - 6, song.dur - 0.5);
   for (const w of song.whoas) { if (t < w.t || t > w.back + 1.4) continue; const a = 1 - Math.exp(-(t - w.t) / Math.max(song.air * 0.4, 0.7)); return a * (1 - up(t, w.back, w.back + 1.4)); }
   return 0;
 }

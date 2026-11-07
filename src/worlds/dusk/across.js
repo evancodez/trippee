@@ -29,6 +29,8 @@ const across = (id, opts) => ({
   levers: { 'a wider front': G => { if (!G.xform || G.xform.W) return null; G.xform.W = 0.85; return () => { delete G.xform.W; }; } },
   plan(a, b, ctx) {
     if (!flat(a) || !flat(b) || ctx.D < 3) return null;
+    // Nobody chose (a wander, or a film that didn't say): it isn't always the one thing. Which goes by the two patterns, so the same two always go the same way.
+    if (!ctx.xform?.chosen && id === 'line') { const h = Math.abs(Math.round((a[OFF['field.a']] * 3 + b[OFF['field.a']] * 7 + a[OFF['field._2']] * 11 + b[OFF['field._1']] * 13) * 10)) % 4; if (h) return KINDS[['line', 'fall', 'flare', 'settle'][h]].plan(a, b, { ...ctx, xform: { chosen: true, id: ['line', 'fall', 'flare', 'settle'][h] } }); }
     const o = ctx.xform?.id === id ? ctx.xform : {}, dir = opts.dir, ang = o.ang ?? opts.ang ?? 0, centre = dir === 3 ? [0, 0] : o.centre ?? [0, 0], reach = Math.hypot(ctx.aspect + Math.abs(centre[0]), 1 + Math.abs(centre[1])) * 1.05;
     return { kind: id, onClock: true, ...partners(a, b), dir, centre, reach, W: o.W ?? opts.W ?? WIDE, ang };
   },

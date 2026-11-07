@@ -43,7 +43,7 @@ export const pool = [
   land({ id: 'dusk.crowns', name: 'Tree Crowns', sharp: -1, amp: 0.7, hz: 0.5, q: 1.42, D: 0.2, fr: 8, seed: 0.7, train: 0.7, arcs: [crane(0.06, -0.06)] }),
   land({ id: 'dusk.lake', name: 'Still Water', amp: 0.8, hz: 0.5, q: 1.4, D: 0.11, fr: 1.4, seed: 3.3, train: 0.3, lake: -0.05, path: 0.0, arcs: [crane(0.02, 0.09)] }),
   land({ id: 'dusk.mackerel', name: 'Mackerel Sky', sharp: -1, amp: 0.55, hz: 0.8, q: 1.26, D: 0.2, fr: 7, seed: 5.1, train: 0.3, over: { rot: 3.1416 }, arcs: [push(1.05, 1.18)], cam: 'train' }),
-  field({ id: 'dusk.sea', name: 'Long Swell', group: 'land', kind: 'sea', a: 0.05, f2: [0.14, 0, 0.1, 1.3], sp: [0, 0, 1.25, 0], flow: 0.5, train: 0.8, path: 0.55, sun: [0.15, 0.32, 0.24], arcs: [crane(-0.04, 0.05), push(1, 1.12)] }),
+  field({ id: 'dusk.sea', name: 'Long Swell', group: 'land', kind: 'sea', a: 0.05, f2: [0.14, 0, 0.1, 1.3], sp: [0, 0, 1.25, 0], flow: 0.5, train: 0.8, path: 0.55, sun: [0.15, 0.32, 0.24], cam: 'train', arcs: [crane(-0.04, 0.05), push(1, 1.12)] }),
   field({ id: 'dusk.lowsun', name: 'Low Sun', group: 'land', kind: 'rings', lamps: 0, f2: [0.1, 0.26, 0.2, 2.3], flow: 0.45, lake: -0.28, path: 0.2, sun: [0.1, 0.26, 0.3], cam: 'anchor', arcs: [pan(-0.12, 0.1), push(1, 1.14)] }),
   // ---------------------------------------------------------------- the road: going somewhere, or away
   field({ id: 'dusk.wires', name: 'Wires', group: 'road', kind: 'wires', a: 0.42, f2: [0, 0, 0, 1.75], sp: [0, 0, 0.42, 0], train: 0.2, cam: 'train', flow: 0, arcs: [crane(0, 0.3), push(1, 1.1)] }),
@@ -67,7 +67,9 @@ export const pool = [
 const rays = pool.find(p => p.id === 'dusk.rays');
 rays.g.field = { kind: 0, a: 0, b: 0, ph: 0 }; rays.g['field.k0'] = 0; rays.g.fams = [{ t1: 22, ph: 0.25 }]; rays.g['p1.x'] = -0.5; rays.g['p1.y'] = -0.38; rays.g['p1.q'] = 0; rays.flow = {}; rays.drive = (out, { OFF, phi }) => { out[OFF['f0.ph']] += 0.5 * phi; };
 for (const id of ['dusk.strings', 'dusk.harmonics', 'dusk.windows']) { const p = pool.find(x => x.id === id); p.g.field = { kind: 0, a: 0, b: 0, ph: 0 }; p.g['field.k0'] = 0; }
-// The film's own patterns, in this evening's light. Ones with one or two families and no field of their own, which is what a tail can show.
-export const BORROW = [];
-export const FAR = pool;
-export { byId };
+// The film's own patterns, in this evening's light: ones with one or two families and no field of their own, which is what a tail can show. Copies, so that a click on one can come by this world's way across, and the library's own stay as they are.
+const film = (from, name) => { const o = byId[from]; return o ? [{ ...o, id: `dusk.${from}`, name: name ?? o.name, group: 'film', family: 'dusk', pool: true, cam: 'sheet', lamps: 0 }] : []; };
+pool.push(...film('lines.river'), ...film('lines.fall'), ...film('waves.current'), ...film('pole.whirl'), ...film('pole.dipole'), ...film('rooms.nested'), ...film('void.zebra'), ...film('checks.vega'), ...film('rooms.arrows'), ...film('riley.metamorphosis'));
+// How a click on each comes: by this world's own ways across. The next place comes into the window, the light does it, or it drifts.
+const COMES = { land: 'line', road: 'line', strings: 'settle', room: 'flare', film: 'fall' };
+for (const p of pool) p.arrive = p.sun && p.group !== 'land' ? { id: 'flare', chosen: true, centre: [p.sun[0], p.sun[1]] } : { id: COMES[p.group] ?? 'line', chosen: true };
