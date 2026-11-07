@@ -6,6 +6,7 @@
 //   cueHits(m, ctx)                    what a hand cut says, as hits on the picture's clock. 'strong' (the film's own strong beats), 'half' (the 1 and 3), 'bar', 'beat', or a list of song seconds.
 //   handClock(ctx, ghost)              s for a pattern picked by hand, which has no list of hits: the song's strong beats if one's playing, and otherwise phi, so it still marches with no song at all.
 import { evalTrack } from '../curves.js';
+import { drawnScore } from '../drawing.js';
 
 export const PEAK = 1.85;
 export const CALM = 0.12;    // how much of the song's own strong beats (the rings of line weight) and its lung a riot move leaves on: the move is the beat, and two of them fight. The tune and the chords stay
@@ -25,12 +26,12 @@ export function beatClock(hits, { lead = 0, coast = 0 } = {}) {
   return knots;
 }
 
-// A pick has no list, and its drive only gets a gesture, a time and phi. The film's strong beats aren't on any of those, so this one reads them off the score that's up, and nothing else here does:
+// A pick has no list, and its drive only gets a gesture, a time and phi. The film's strong beats aren't on any of those, so this one reads them off the film being drawn (src/score/drawing.js):
 // it's the same numbers for the whole of a song, so a seek or a rehearsal gets the same picture. With no song, or in node, it goes by phi. The clock's memoised by the pulses themselves.
 let seen = null, seenClock = null;
 export function handClock({ t, phi, G }, ghost = 6) {
   G.calm ??= CALM;
-  const P = globalThis.app?.stage?.score?.react?.pulses;
+  const P = drawnScore()?.react?.pulses;
   if (!P || P.length < 2) return phi * ghost;
   if (seen !== P) { seen = P; seenClock = beatClock(P); }
   return evalTrack(seenClock, t);

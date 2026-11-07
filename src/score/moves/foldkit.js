@@ -38,6 +38,7 @@ import { surged, clockOf, cueHits, handClock } from './surge.js';
 import { reactAt } from '../react.js';
 import { momentsOf } from '../hear.js';
 import { fineness } from '../slot.js';
+import { drawnScore } from '../drawing.js';
 
 // Recursion goes to hairlines first. So the camera comes in on a fine sheet as it folds, until its lines are this bold, cycles per picture unit: a move, and the big shapes stay big.
 export function boldUp(out, k, target = 3.4) { const f = fineness(out); if (f > target) out[OFF.scale] *= Math.pow(f / target, k); return Math.min(f, target); }
@@ -82,7 +83,7 @@ export function songNow(c, ghost = 3, peak = 1.5) {
   if (m?.beats) { now.e = evalTrack(clockOf(m), t); now.P = m._P; }
   else {
     G.calm ??= 1; now.e = handClock(c, ghost);
-    const sc = globalThis.app?.stage?.score;
+    const sc = drawnScore();
     R = sc?.react;
     if (sc?.hear?.moments !== seenH) { seenH = sc?.hear?.moments; seenB = bigOf(seenH ?? []); }
     B = seenB;

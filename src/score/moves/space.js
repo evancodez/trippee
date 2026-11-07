@@ -16,8 +16,9 @@ import { OFF } from '../../pattern/layout.js';
 import { clamp, smoother } from '../curves.js';
 import { val } from './long.js';
 import { melodyAt, reactAt } from '../react.js';
+import { drawnScore } from '../drawing.js';
 
-const pulses = () => globalThis.app?.stage?.score?.react?.pulses;
+const pulses = () => drawnScore()?.react?.pulses;
 // A strong beat just happened: a moment's rise before it, and it dies away.
 export function kickAt(t, tau = 0.45) {
   const P = pulses();
@@ -39,13 +40,13 @@ export function surgeAt(t) {
 }
 // The tune, 0 centred. Smooth already.
 export function tuneAt(c) {
-  const R = globalThis.app?.stage?.score?.react;
+  const R = drawnScore()?.react;
   return R?.melody ? melodyAt(R, c ?? 0) : 0;
 }
 
 // A big moment lifts the whole sheet higher: how much energy the song has here, 1 being about ordinary. With no song it's 1.
 export function bigAt(c) {
-  const R = globalThis.app?.stage?.score?.react;
+  const R = drawnScore()?.react;
   return R?.energy || R?.env ? 0.82 + 0.45 * reactAt(R, c ?? 0).energy : 1;
 }
 

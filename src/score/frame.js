@@ -17,6 +17,7 @@ import { handSheet } from './hand-sheet.js';
 import { hearSheet, hearStart, hearEase } from './hear.js';
 import { wearOne } from './camera.js';
 import { timeSheet } from './time-sheet.js';
+import { drawing, drawingFor } from './drawing.js';
 
 export { base, fillSlot, arcU, boldRange, fineness, thetaOf, noHorizon } from './slot.js';
 
@@ -115,13 +116,19 @@ export async function planAhead(score, R, until, breathe, aspect = 16 / 9) {
     const t1 = performance.now();
     try {
       if (walk) walk.on = 0;
-      left = left.filter(({ m, stop }) => performance.now() - t1 > 8 || !planFor(m, 0, stop, phiOf, R, aspect, false, score.world));
+      left = drawingFor(score, () => left.filter(({ m, stop }) => performance.now() - t1 > 8 || !planFor(m, 0, stop, phiOf, R, aspect, false, score.world)));
     } finally { if (walk) walk.on = was; }
     if (left.length) await breathe();
   }
 }
 
+// The film's drives read the beats off the film being drawn (src/score/drawing.js), not off whatever's on the screen: a rehearsal's rig draws a film before it's up.
 export function frame(score, t, R, edits) {
+  const was = drawing.score;
+  drawing.score = score;
+  try { return frameOf(score, t, R, edits); } finally { drawing.score = was; }
+}
+function frameOf(score, t, R, edits) {
   const tReal = t, beyond = edits?.beyond;
   const tFilm = score.time ? score.time(t) : t;       // the film's own stops: it freezes while the band stops, and pays the time back
   if (beyond) t = beyond.time(tFilm, score);          // Beyond's stops: the picture's clock with a rest taken out of it
