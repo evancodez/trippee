@@ -14,7 +14,7 @@ export const EFFECTS = [
 
 // Ripples: picture units per second, and how long one lasts. Rings run for most of a screen and die away with no edge to them.
 const RING = { speed: 0.3, height: 0.024, life: 13, attack: 0.9, tau: 4.6, slots: 8, die: 0.7, rain: 0.32, step: 0.14 };
-const HAND = { size: 3, turn: 0.15, rest: 0.04, lift: 0.055, up: 1.8, down: 1.1, follow: 14 };
+const HAND = { size: 3, turn: 0.55, rest: 0.04, lift: 0.055, up: 1.8, down: 1.1, follow: 14 };
 const WARP = { r: 0.72, twistHold: 0.7, twistDrag: 0.0085, twistMax: 9, pinch: 1.9, bulge: -0.8, rise: 1.5, relax: 0.42, follow: 9 };
 
 export class Effects {
