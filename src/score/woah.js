@@ -544,6 +544,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
 
   // ---------------------------------------------------------------- the guard's swap
   const swap = (slot, id) => {
+    if (!g.includes(slot.G)) return null;      // a trick cast after this one took its gesture into its own (absorb, carve), so there's nothing here to swap: another take's rehearsal threw on it and was skipped
     const { G, N } = slot, kept = { G: keepOf(G), N: N ? keepOf(N) : null, id: slot.id, undo: slot.undo };
     // Still never the same one twice running
     const k = slots.filter(x => x !== slot).sort((a, b) => a.from - b.from), before = k.filter(x => x.from < slot.from).at(-1), after = k.find(x => x.from > slot.from);
