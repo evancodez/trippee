@@ -65,10 +65,11 @@ export function landings(score, song) {
     const flat = S => num(S, 'surf.kind') < 0.5, open = [];
     if (sameFold && field(a) && field(b)) open.push('crank');
     if (sameFold && ours(a) && ours(b)) open.push('bleed');
-    if (flat(a) && flat(b) && !wound(a) && !wound(b)) { open.push('feed'); if (D >= 2.5) open.push('fill'); }
+    // The Fill only where the drummer plays one: on the strong beats anywhere else its strips went over a tile 4 to 5 times a second and swung the whole frame (MGMT 55 and 160 s). The others are as big a change.
+    const hit = fillNear(G.t1);
+    if (flat(a) && flat(b) && !wound(a) && !wound(b)) { open.push('feed'); if (D >= 2.5 && hit) open.push('fill'); }
     if (!open.length) open.push('dive');
     if (D >= 5 && i % 6 === 4) open.push('iris');
-    const hit = fillNear(G.t1);
     const score1 = k => WEIGHT[k] / (1 + (used[k] ?? 0)) * (k === prev ? 0.001 : 1) * (hit && k === 'fill' ? 6 : 1);
     const k = open.sort((x, y) => score1(y) - score1(x))[0];
     used[k] = (used[k] ?? 0) + 1;
