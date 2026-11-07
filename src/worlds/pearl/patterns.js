@@ -130,7 +130,7 @@ export const pool = [
   own('pole.rosette', 'rosette', 'Rosette', { H: 1300, R: 200 }, { group: 'op' }),
   own('checks.cloth', 'check', 'Woven Check', { H: 1650, terrace: 300, lets: 0.5, R: 60 }, { group: 'op' }),
   own('checks.twist', 'twist', 'Turning Check', { H: 1400, terrace: 340, lets: 0.5, R: 60 }, { group: 'op' }),
-  own('riley.shift', 'shift', 'Shift', { H: 1200, lets: 0.5 }, { group: 'op' }),
+  own('riley.shift', 'shift', 'Shift', { H: 1200, lets: 0.5 }, { group: 'op', pool: false }),      // 25 ms at 3024x1964, on the film's fuller program: clicks only
   own('lines.fall', 'fall', 'Falls', { H: 1200, wedge: 500, lets: 0.8 }, { group: 'water' }),
 ];
 // A click arrives by the world's own way, each pattern by a different one, in turn: out from the middle, down, or the whole frame.

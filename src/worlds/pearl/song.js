@@ -40,6 +40,7 @@ export function hearSong(A, M) {
     drain[i] = sum;
     width[i] = wv?.length ? wv[Math.min(wv.length - 1, Math.round(t * wHz))] : 0.25;
   }
+  const whoa = whoaOf({ voiced, y }, A, M);
   // The focus racks on the phrase: every so many bars, to somewhere else.
   const bars = M?.bars?.length ? M.bars : Array.from({ length: Math.ceil(A.duration / 2) }, (_, i) => i * 2), each = 2 + ((M?.meter ?? 4) === 3 ? 2 : 0), racks = [];
   let seed = 7;
@@ -52,23 +53,23 @@ export function hearSong(A, M) {
   let last = 0;
   // By how big it is against the song's own: its biggest few get the richest.
   const ranked = bigOnes.map(a => a.a).sort((p, q) => q - p), topA = ranked[Math.min(ranked.length - 1, 2)] ?? 1, midA = ranked[Math.min(ranked.length - 1, 6)] ?? 1;
-  const pick = (a, prev, two) => { const list = a >= topA ? BIG : a >= midA ? MIDDLE : CALM; return list.find(s => s !== prev && s !== two) ?? list[0]; };
+  const pick = (a, prev, two, t) => { const list = a >= topA || (whoa && Math.abs(t - whoa.t) < 0.5) ? BIG : a >= midA ? MIDDLE : CALM; return list.find(s => s !== prev && s !== two) ?? list[0]; };
   const plan = [];
   for (const a of bigOnes) { if (a.t - last < APART) continue; while (a.t - last > LONGEST + APART) { last += LONGEST; plan.push({ t: last, a: 0.15 }); } plan.push(a); last = a.t; }
   while (end - last > LONGEST) { last += LONGEST; plan.push({ t: last, a: 0.15 }); }
   let cur = 0, prev = -1, turn = 0;
-  for (const p of plan) { const s = pick(p.a, cur, prev); prev = cur; cur = s; washes.push({ t: p.t, s, dir: (turn++ * 2.2) % 6.283, big: p.a }); }
+  for (const p of plan) { const s = pick(p.a, cur, prev, p.t); prev = cur; cur = s; washes.push({ t: p.t, s, dir: (turn++ * 2.2) % 6.283, big: p.a }); }
   // The focus pull: the frame melts in the bars before a big arrival, only the pearls still sharp, and on the arrival all of it comes into focus at once, razor from edge to edge. Then it lets go slowly.
   const pull = new Float32Array(n), MELT = 2 * (M?.bar ?? 2), SNAP = 0.55, KEEP = 5 * (M?.bar ?? 2);
-  for (const a of bigOnes.filter((x, i, l) => x.a >= 0.28).slice(0, 12)) {
+  for (const a of bigOnes.filter(x => x.a >= 0.28 || (whoa && Math.abs(x.t - whoa.t) < 0.5))) {
     for (let i = Math.max(0, Math.floor((a.t - MELT) * HZ)); i < Math.min(n, Math.ceil((a.t + KEEP) * HZ)); i++) {
       const t = i / HZ, d = t - a.t;
       const v = d < 0 ? 0.9 * smooth((d + MELT) / MELT) : 0.9 * (1 - smooth(d / SNAP)) - smooth(d / SNAP) * (1 - smooth((d - SNAP) / (KEEP - SNAP)));
-      pull[i] = Math.abs(v) * Math.min(1, a.a * 2.2) > Math.abs(pull[i]) ? v * Math.min(1, a.a * 2.2) : pull[i];
+      const size = whoa && Math.abs(a.t - whoa.t) < 0.5 ? 1 : Math.min(1, a.a * 2.2);
+      pull[i] = Math.abs(v) * size > Math.abs(pull[i]) ? v * size : pull[i];
     }
   }
-  const out = { hz: HZ, n, voiced, y, amt, drain, width, racks, washes, pull, id: A.hash ?? String(A.duration) };
-  out.whoa = whoaOf(out, A, M);
+  const out = { hz: HZ, n, voiced, y, amt, drain, width, racks, washes, pull, whoa, id: A.hash ?? String(A.duration) };
   memo.set(A, out);
   return out;
 }

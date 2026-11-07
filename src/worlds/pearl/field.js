@@ -183,7 +183,9 @@ void worldPreInk(int K){
 `;
 
 // What a family does that has no line: it's all in colour. Nothing to add to the phase yet.
-export const COLOR = `vec3 wLut(float o,int side){ float x=clamp(o/16.,0.,254.99),f=floor(x); int i=int(f); return mix(texelFetch(uWT,ivec2(i,side),0).rgb,texelFetch(uWT,ivec2(i+1,side),0).rgb,x-f); }
+export const COLOR = `const float wRows=5.;
+// Filtered in the table itself: a fetch costs about a millisecond a frame at this size, and this used to take two for every look.
+vec3 wLut(float o,int side){ return texture(uWT,vec2((clamp(o/16.,0.,254.99)+.5)/256.,(float(side)+.5)/wRows)).rgb; }
 // One side of the film, in the sheens' two rows: a new sheen washes over the frame, so a pixel's in the one or the other, and only on the wash does it take both.
 vec3 wSheen(float o,int side,float s){ if(s<=0.) return wLut(o,side); if(s>=1.) return wLut(o,side+2); return mix(wLut(o,side),wLut(o,side+2),s); }
 // The same lines a moment ago, softer each time: the reverb, drawn. Each tap is a whole other pass of the filter.
@@ -218,7 +220,7 @@ vec3 worldColor(int k0,int k1,float c){
   if(b.w!=0.){ float fine=exp(-wBlurNow*22.); if(fine>.02) o+=b.w*fine*sin(TAU*(dot(p0,vec2(.09,.995))*d.x)+G.w); }
   // The voice: what's been sung, going out from where it's sung now. Each ring is a moment of the song, and nothing's moved but the colour.
   vec4 vo=uW[27]; float light=0.;
-  if(vo.z!=0.){ float x=min(length(p0-vo.xy)*vo.w,254.),f=floor(x); int i=int(f); vec4 h=mix(texelFetch(uWT,ivec2(i,4),0),texelFetch(uWT,ivec2(i+1,4),0),x-f); o+=vo.z*h.r+uW[31].y*h.b; light=h.g; }
+  if(vo.z!=0.){ vec4 h=texture(uWT,vec2((min(length(p0-vo.xy)*vo.w,254.)+.5)/256.,4.5/wRows)); o+=vo.z*h.r+uW[31].y*h.b; light=h.g; }
   o+=wOrbO;
   // A change: Newton's rings run with the front.
   float fr=wT*(1.-wT)*4.; if(fr>0.) o+=V.y*fr*fr;
@@ -228,7 +230,7 @@ vec3 worldColor(int k0,int k1,float c){
   if(d.w!=0.&&uW[0].x<.5&&gRnd[k0/FAM]==0.&&gSum[k0/FAM]==0.){
     vec4 E=uW[30]; float w=1.,sum=0.,soft=E.z*uF[8].y;
     int kk=abs(gDu[k])<1.?k:k2;
-    for(int i=1;i<=3;i++){ w*=E.y; sum+=w*(wTap(k0,k1,th,kk,E.x*float(i),1.+soft*float(i)/px*.5)-.5); }
+    for(int i=1;i<=2;i++){ w*=E.y; sum+=w*(wTap(k0,k1,th,kk,E.x*float(i),1.+soft*float(i)/px*.5)-.5); }
     o+=d.w*sum;
   }
 #endif
@@ -239,7 +241,7 @@ vec3 worldColor(int k0,int k1,float c){
   vec3 A=c>0.?wSheen(o,0,s):vec3(0.),B=c<1.?wSheen(o+b.y,1,s):vec3(0.),col=mix(B,A,c);
   // Bloom: a soft copy of the bright side, as light. It needs no second picture, since the filter's exact however wide. By screen, so a pastel stays a pastel and doesn't go out to white.
 #ifdef WORLD_CELLS
-  if(V.z!=0.&&uW[0].x<.5&&gRnd[k0/FAM]==0.&&gSum[k0/FAM]==0.){ float g=wTap(k0,k1,th,k,0.,1.+.09*uF[8].y/px); col=1.-(1.-col)*(1.-V.z*g*g*wSheen(o+140.,0,s)); }
+  if(V.z!=0.&&uW[0].x<.5&&gRnd[k0/FAM]==0.&&gSum[k0/FAM]==0.){ float g=wTap(k0,k1,th,k,0.,1.+.09*uF[8].y/px); col=1.-(1.-col)*(1.-V.z*g*g*(c>0.?A:B)); }
 #endif
   col=1.-(1.-col)*(1.-V.w-light-.3*min(wBlurNow*2.2,.3));
   return gamma(col);

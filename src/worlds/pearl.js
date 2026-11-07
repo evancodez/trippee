@@ -27,6 +27,8 @@ export default {
   table: {
     h: 5,
     fill(tex, ctx) {
+      // Filtered: RGBA16F can be, in WebGL2, and it's one fetch to a look where it was two.
+      if (!tex._filtered && tex.gl) { const gl = tex.gl; gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tex.tex); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.activeTexture(gl.TEXTURE0); tex._filtered = true; }
       const song = ctx.tables, sh = sheenAt(song, ctx.t), key = sh.from * 16 + sh.to;
       if (tex._key !== key) { copySheen(tex, 0, SHEENS[sh.from], false); copySheen(tex, 1, SHEENS[sh.from], true); copySheen(tex, 2, SHEENS[sh.to], false); copySheen(tex, 3, SHEENS[sh.to], true); tex._key = key; }
       // What's been sung, by how long ago: r its thickness, g a little light, b the strong beats.
