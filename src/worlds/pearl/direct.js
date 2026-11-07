@@ -79,7 +79,8 @@ export function moves(score, A, M) {
       if (FOLDS.has(id) || TIMES.has(id)) {
         // Whatever comes in has to have room to get in and get out.
         if (to - from < Math.max(5.5, 2.6 * bar) || parts > 1 || (big++ % 2 && id === 'fan')) continue;
-        const made = MOVES[id].cue(FOLDS.has(id) ? { id, from, to, open: Math.min(3, (0.3 * body) / bar), close: Math.min(2.5, (0.22 * body) / bar) } : { id, from, to, beats: 'strong', calm: 1 }, { score, A, M, G, shot: null, at: x => x, bar, beat: M?.beat ?? 0.5, meter: A.meter || 4, tau: score.tau });
+        // Done a bar before the landing starts: a fold or a time trick still letting go on the landing's first frame steps.
+        const made = MOVES[id].cue(FOLDS.has(id) ? { id, from, to: to - bar, open: Math.min(3, (0.3 * body) / bar), close: Math.min(2.5, (0.22 * body) / bar) } : { id, from, to: to - bar, beats: 'strong', calm: 1 }, { score, A, M, G, shot: null, at: x => x, bar, beat: M?.beat ?? 0.5, meter: A.meter || 4, tau: score.tau });
         if (made) (G.moves ??= []).push(made);
         continue;
       }
