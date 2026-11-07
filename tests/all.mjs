@@ -107,6 +107,14 @@ const steps = {
     noteConsole(r);
     add('Flags off', r.code ? 'FAIL' : 'PASS', r.text.split('\n').find(l => /hash (PASS|FAIL)/.test(l))?.trim() || '', r.code ? r.text.split('\n').filter(l => /DIFFER|mean /.test(l)).slice(0, 6).join(' | ') : '');
   },
+  // What a song's whole film did since the last tagged baseline, which seconds and by how much. tests/hash.mjs plays no song and can't see this.
+  async filmprint() {
+    if (!existsSync(join(ROOT, 'tests/prints/v2.5.1.json'))) { add('Whole film', 'PENDING', 'no baseline: TAG=v2.5.1 SAVE=1 node tools/lab.mjs tests/filmprint.mjs --url <that tree>'); return; }
+    const r = await lab('filmprint', 'tests/filmprint.mjs', { size: '1280,720', minutes: 20 });
+    noteConsole(r);
+    const lines = r.text.split('\n').filter(l => /^PRINT /.test(l));
+    add('Whole film', r.code || failLines(r.text).length || !lines.length ? 'FAIL' : 'PASS', lines.map(l => l.replace(/^PRINT /, '').replace(/ seconds byte-identical to .*/, '')).join('; '), `which seconds, by how much: ${join(LOGS, 'filmprint.log')}`);
+  },
   async boot() {
     await plain('Boot', 'integrate', 'tests/integrate.mjs', { minutes: 10 });
     await plain('Boot', 'v2-boot', 'tests/v2.mjs', { env: { STAGE: 'boot' }, minutes: 10 });

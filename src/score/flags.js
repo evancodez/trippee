@@ -23,11 +23,11 @@ export const setFlag = (id, on) => { flags[id] = !!on; };
 export const setAllFlags = on => { for (const id in flags) flags[id] = !!on; };
 
 // How a film is directed (docs/DIRECTION.md). Off means the film is exactly the film. setAllFlags can't reach these, so a test that turns everything on is still about today's film.
-// ?direct=1 turns both on, ?peak=1 the timing alone.
-export const directing = { peak: false, sheet: false };
+// The timing is on: a change crosses at speed on the song's big moment, not coming to rest on it. ?peak=0 turns it off. ?direct=1 is the sheet too.
+export const directing = { peak: true, sheet: false };
 {
   const q = new URLSearchParams(globalThis.location?.search ?? ''), all = q.get('direct') === '1';
-  directing.peak = all || q.get('peak') === '1';
+  directing.peak = q.get('peak') !== '0';
   directing.sheet = all;
 }
 

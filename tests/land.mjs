@@ -1,8 +1,8 @@
 // The hit (docs/DIRECTION.md section 3, Timing). Is a transformation's fastest frame on its hit, and is a film with the flag off exactly the film it was?
 //
-//   SAVE=1 node tools/lab.mjs tests/land.mjs --out lab-out/a1-land                                   writes each song's fingerprint, flag off, to <out>/identity.json
-//   CHECK=1 node tools/lab.mjs tests/land.mjs --out lab-out/a1-land                                  compares against it: gestures (t0 t1 id morph xform peak), exits 1 if they differ
-//   node tools/lab.mjs tests/land.mjs --url 'http://localhost:5300/?peak=1' --out lab-out/a1-land    what land() did, song by song, with the speed of T around each hit, a pop scan and strips
+//   SAVE=1 node tools/lab.mjs tests/land.mjs --url '<url>?peak=0' --out lab-out/a1-land              writes each song's fingerprint, flag off, to <out>/identity.json
+//   CHECK=1 node tools/lab.mjs tests/land.mjs --url '<url>?peak=0' --out lab-out/a1-land             compares against it: gestures (t0 t1 id morph xform peak), exits 1 if they differ
+//   node tools/lab.mjs tests/land.mjs --out lab-out/a1-land                                          what land() did, song by song, with the speed of T around each hit, a pop scan and strips
 //   SONGS=mgmt,ppp  only these.  SEED=7  another take.  STRIPS=0  no pictures.
 //
 // Each song gets a fresh page and the film the rehearsal passed, stepped by hand with no sound. Everything here reads the score and the rehearsal's own eyes.
@@ -84,7 +84,7 @@ const strip = async ({ title, rows, bar, tw, th }) => {
 
 export default async ({ page, log, save, sleep, out }) => {
   const songs = (process.env.SONGS || 'ppp,wildflower,disclosure,mgmt').split(','), seed = +(process.env.SEED || 7), url = await page.eval('location.href');
-  const on = /[?&](peak|direct)=1/.test(url), file = join(out, 'identity.json'), prints = {};
+  const on = !/[?&]peak=0/.test(url), file = join(out, 'identity.json'), prints = {};
   let bad = 0;
   for (let k = 0; k < songs.length; k++) {
     const song = songs[k];
