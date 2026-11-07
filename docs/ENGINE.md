@@ -76,6 +76,8 @@ import { Q } from '../genome.js';
 **Every number** is named in `src/pattern/layout.js`. Read it. Families: `f0.x y z ph r1 l1 t1 d r2 l2 t2`. Poles: `p1.x y q ay`
 (q: 0 round, 1 square, -1 diamond). `round sum theta invert`. View: `scale rot tx ty`. `freq`, `wob wobF wobT`.
 
+**Folds** run before all of this, in front of the slot's surface and view (`src/gl/chunks/fold.js`, numbers `sf.*`, `fan.*`, `lf.*`, `mob.*`, `m0..7.*`; `src/score/moves/foldkit.js` writes them). A fold is continuous wherever its mirror is, so a chain of them can't tear, and one parked off the frame is nothing, so none of this can pop. A reflection in a line changes no size. They're a program bit of their own (`FOLD`), built only when something asks: `src/score/moves/folds.js` is the set, `src/pattern/families/folds.js` the same things by hand.
+
 **Warps**, applied in this fixed order after the view: `fold` (n >= 2; change n only while solid), `lens`, `swirl`, `bulge`,
 `squeeze`, `bowtie`, `bend1`, `bend2`, `ripple`, `zig`, `teeth`, `conf` (pole garden), `droste`. `sheet` runs before the view.
 Amount 0 means skipped.
