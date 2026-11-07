@@ -239,12 +239,20 @@ class Eyes {
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
   }
   // A guard asks for these many times over, at the same two sizes, and the buffers are megabytes each. So they're kept, for the rig, which is kept too.
+  // But two rehearsals can be running at once on the one rig (another take, pressed while the hand cut rehearses behind the picture), and each must have its own: sharing one, each emptied
+  // the other's half-read batch (false jumps in pairs a second apart, and a take of the same seed that came out another film), and once the hand cut finished, the take waited for the GPU
+  // on the hand cut's closed channel, for ever. So each is lent to one rehearsal (its task) until that rehearsal lets go of them (Eyes.release).
   static of(R, W, H, K, task) {
     const kept = (R.eyes ??= new Map()), key = `${W}x${H}x${K}`;
-    let e = kept.get(key);
-    if (!e) kept.set(key, e = new Eyes(R, W, H, K, task));
-    e.task = task; e.q.length = 0;
+    let list = kept.get(key);
+    if (!list) kept.set(key, list = []);
+    let e = list.find(e => e.owner === task) ?? list.find(e => !e.owner);
+    if (!e) list.push(e = new Eyes(R, W, H, K, task));
+    e.owner = task; e.task = task; e.q.length = 0;
     return e;
+  }
+  static release(R, task) {
+    for (const list of R.eyes?.values() ?? []) for (const e of list) if (e.owner === task) { e.owner = null; e.task = null; e.q.length = 0; }
   }
   // After a draw at this size. Says whether the batch is full.
   read(take) {
@@ -441,9 +449,13 @@ export { getRig, shownShot as shot, shownDrawn as drawn, Eyes, slowedTrack };   
 // stale: asked between looks. Once it says yes the rehearsal stops where it is, by throwing, because someone's made another film and this one will never be shown.
 // gentle: a film's playing in front of this one, so it takes less of each frame.
 // opening: the seconds a long arrival has just taken (stage._clearRunway). Only the film's first two gestures are looked at again, and only for flashes.
-export async function rehearse(score, until, onProgress = () => {}, { lastTry = false, stale = null, gentle = false, opening = 0, keep = null } = {}) {
+export async function rehearse(score, until, onProgress, o) {
+  const R = await getRig(), lent = {};
+  try { return await rehearseOn(R, lent, score, until, onProgress, o); }
+  finally { if (lent.task) Eyes.release(R, lent.task); }
+}
+async function rehearseOn(R, lent, score, until, onProgress = () => {}, { lastTry = false, stale = null, gentle = false, opening = 0, keep = null } = {}) {
   const t0 = performance.now();
-  const R = await getRig();
   // A world's programs on this renderer too, all of them: as with the film's, anything not built yet would be judged as a different picture. If it fails to build it draws as the film, as it would on screen.
   if (score.world) { await R.prepareWorld(score.world); await R.worldPrograms.get(score.world).whenAll; }
   if (score.world && score.gestures.some(G => G.moves?.some(m => FOLD_SET[m.id]))) await R.whenFoldReady();      // the same for a film with a fold in it
@@ -465,6 +477,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
   };
 
   const task = () => new Promise(r => { wake = r; ch.port2.postMessage(0); }), soon = waiter(task, breathe);
+  lent.task = task;
   const gestures = score.gestures, rides = [], ways = [];
   if (!opening && score.woah) await buildFor(R, score, until, breathe);
   // A jump in brightness makes a whole new film, so it's looked for first, before anything's spent on this one. And one inside a trick is the trick's: it's the trick that goes.
