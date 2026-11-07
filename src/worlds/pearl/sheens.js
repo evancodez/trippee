@@ -28,7 +28,7 @@ export const SHEENS = [
   // Pearl: nearly white, with blush and sea-foam, over dusty rose and hazy blue.
   bake({ name: 'pearl', light: [0xfff1ea, 0xffd6e2, 0xe9d3ff, 0xcfe4ff, 0xbdf2e4, 0xf7f4cf], deep: [0xc98ab2, 0xa38bd8, 0x77a3da, 0x5cb6b4, 0x8fb8c8, 0xdca0ae] }),
   // Abalone: the shell's inside. Jewel green and violet over ink-blue.
-  bake({ name: 'abalone', light: [0x7df2d6, 0x6dc6ff, 0xb19bff, 0xff9ed4, 0x9bf0ff, 0x74f0b4], deep: [0x124a66, 0x1c2f7c, 0x41208a, 0x6b1f7c, 0x123f7a, 0x0e5f60], mist: [40, 60, 110], white: [205, 245, 250] }),
+  bake({ name: 'abalone', light: [0x9aeedd, 0x7fcaff, 0xb9a4ff, 0xffa6d6, 0xa8ecff, 0x8fe6d2], deep: [0x124a66, 0x1c2f7c, 0x41208a, 0x6b1f7c, 0x123f7a, 0x0e5f60], mist: [40, 60, 110], white: [205, 245, 250] }),
   // Victorialand: ice. Cold, silver, a little lilac.
   bake({ name: 'ice', light: [0xf2f8ff, 0xd8e9ff, 0xe8e0ff, 0xcdf3f7, 0xeaf6ff], deep: [0x7f9ecb, 0x8d8fd4, 0x6caac4, 0xa2b5dc, 0x7a8fc0], mist: [160, 178, 206], white: [248, 251, 255] }),
   // Heaven: neon through rain. Rose and amber with aqua and blue behind.

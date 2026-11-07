@@ -94,6 +94,9 @@ export default {
     }
     // A ghost voice, written by the moves.
     set(44, A[OFF['spare.d']], 0, 0, 0); set(45, B[OFF['spare.d']], 0, 0, 0);
+    // The tune goes into the film here, and only a little into the lines: the sheet's own travelling tune tears a big shape's edge, and a jittery note tears it worse. Smooth it, and keep some.
+    const ML = FRAME.mel * 4, MS = FRAME.melS * 4;
+    if (F[ML] !== 0) { F[ML] *= 0.32; for (let pass = 0; pass < 2; pass++) { let a = F[MS]; for (let i = 1; i < 31; i++) { const b = F[MS + i]; F[MS + i] = 0.25 * a + 0.5 * b + 0.25 * F[MS + i + 1]; a = b; } } }
     // Lung: the contacts breathe.
     if (s) { const k = 1 + 0.1 * lung + 0.06 * pulse; for (const S of [A, B]) for (const n of ['blobs.r1', 'blobs.r2', 'blobs.r3', 'p1.q', 'p2.q']) if (S[OFF['field.kind']] === 4 && S[OFF['field.a']] < 0.5 && S[OFF[n]] > 0) S[OFF[n]] *= k; }
   },
