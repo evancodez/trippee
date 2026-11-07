@@ -23,7 +23,7 @@ const LEAD = { chill: [5, 4, 3, 2.5, 2], travel: [3, 2.5, 2, 1.25, 1], riot: [2.
 const TAIL = { chill: [3.5, 3, 2, 1.5, 1], travel: [2.5, 2, 1.25, 0.75, 0.5], riot: [2, 1.25, 1, 0.5, 0.5] };     // ...and after
 const ONE_MORE = 0, STIFF = 0.25;    // what another landing has to be worth in the composer's search, in place of its 3, and how hard it holds to the length it wants
 const LEAST_S = 3.2, MOST_BARS = 18, MOST_S = 30;     // the shortest and longest a landing can leave behind it
-const FLIGHT_LEAST = 5.6, FLIGHT_LEAD = 0.3;          // seconds: a flight in less than this flashes, where a glide doesn't. Its fastest frame on screen comes well before its middle (about 2 s in 5.6, measured on MGMT), so most of it goes after the hit: it sets off on the song's moment, this share of it before
+const GLIDE_LEAST = 4.5, FLIGHT_LEAST = 5.6, FLIGHT_LEAD = 0.3;          // seconds: a flight in less than this flashes, where a glide doesn't. Its fastest frame on screen comes well before its middle (about 2 s in 5.6, measured on MGMT), so most of it goes after the hit: it sets off on the song's moment, this share of it before
 const HOLD = 8;                     // bars a pattern can stay with nothing but its ordinary flow
 const CLASS_LEAST = 6;              // bars
 const ARC_SECONDS = 22;             // a pattern's long move is written for about this long. A shorter gesture rides the middle of it at that speed, not all of it at a run
@@ -398,6 +398,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       if (plain(G) && plain(N) && G.t1 - G.t0 < SUITE_LEAST && !glides(G.pattern, N.pattern)) { G.t1 = N.t1; G.morph = N.morph; G.kindOut = N.kindOut; if (G.arcEnd != null && !G.fixedRange) G.arcEnd = G.t1 - (G.morph || 0) + Math.min((G.morph || 0) * 0.4, 3.5) / 2; forget(G); g.splice(i + 1, 1); i--; }
     }
     const last = g.length - 1;
+    rewear(score, cast);
     earn(score, cast);
     for (let i = 0; i < last - 1; i++) {
       const G = g[i], N = g[i + 1];
@@ -411,7 +412,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       const tail = Math.min(tailOf(part, G.pattern, N.pattern), roomIn(N, cast));
       if (tail < 0.5 * bar || tail < 0.5) { home(); continue; }
       G.t1 = N.t0 = end + tail;
-      G.morph = Math.min(Math.max(G.morph + tail, flying ? FLIGHT_LEAST : 0), G.t1 - G.t0 - 0.25);
+      G.morph = Math.min(Math.max(G.morph + tail, flying ? FLIGHT_LEAST : GLIDE_LEAST), G.t1 - G.t0 - 0.25);
       G.peak = { hit: end, q: 2 };
       // A star's arcs are shares of its gesture, and its roll's on the clock, so where the gesture starts later they're rewritten to stay with it (land.js)
       if (N.fixedRange && N.arcs?.length && N.moves?.some(m => m.id === 'star' || m.id === 'coin')) { const was = end, E = N.arcEnd ?? N.t1, H0 = E - was, H1 = E - N.t0; for (const x of N.arcs) if (x.at) x.at = x.at.map(u => Math.max(0, (was + u * H0 - N.t0) / H1)); }
@@ -424,6 +425,25 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       if (!G.morph || G.xform) continue;
       const start = G.t1 - G.morph, w = lags.find(l => start > l.from && start < l.paid);
       if (w && G.t1 - w.paid >= 2.5) { G.morph = G.t1 - w.paid; forget(G); }
+    }
+  };
+
+  // A section that opened on a Countdown comes back with that same dial, further along: it's locked now, and it pounds. Otherwise the big move would have taken what makes the section that section.
+  const rewear = (score, cast) => {
+    const ctx = G => ({ score, A, M, G, shot: null, at: score.time ?? (x => x), bar, beat, meter: A.meter || 4, tau: score.tau });
+    for (const h of cast) {
+      if (h.kind !== 'countdown') continue;
+      const dial = h.G.pattern, seg = A.segments.find(x => h.at >= x.t0 - bar && h.at < x.t1);
+      for (const G of score.gestures) {
+        if (!seg || G === h.G || G.t0 <= h.at || G.part?.way !== 'riot' || G.part.w.key !== seg.label || (G.part.seg.visit || 0) === (seg.visit || 0) || G.xform?.id === 'iris') continue;
+        const id = MOVES.ratchet.needs(base(dial), { pattern: dial }) ? 'ratchet' : 'wring', end = G.t1 - (G.morph || 0);
+        const m = MOVES[id].cue({ id, beats: 'half', from: G.t0, to: end, ...(id === 'wring' ? { amp: 0.8 } : {}) }, ctx({ ...G, pattern: dial }));
+        if (!m) continue;
+        G.pattern = dial; G.flow = dial.flow; G.moves = [m]; G.hero = id; G.part.riot = id; G.arcs = []; forget(G);
+        const was = score.gestures[score.gestures.indexOf(G) - 1];
+        if (was) forget(was);
+        G.calm ??= 0.12;
+      }
     }
   };
 
@@ -452,6 +472,6 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
 
   return {
     register: name, registerScore: reg.score, least: own ? own.morph[0] + 4 : Math.max(LEAST_S, 1.8 * bar), most: Math.min(MOST_S, MOST_BARS * bar), oneMore: ONE_MORE, stiff: STIFF, bar,
-    want: t => barsWanted(t) * bar, isLoud: t => classAt(t) === 'loud' || classOfLabel((A.segments.find(x => t >= x.t0 && t < x.t1) ?? A.segments.at(-1)).label) === 'loud', shrinkArcs, dropWorth: (dE, i) => (Math.abs(dE) >= DROP ? DROP_WORTH : 0) + (jumpAt.get(i) ?? 0), levelAt, classAt, get climaxAt() { return climaxAt; }, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
+    want: t => barsWanted(t) * bar, firstOfMany: t => { const s = A.segments.find(x => t >= x.t0 && t < x.t1); return !!s && !(s.visit || 0) && A.segments.some(x => x.label === s.label && x.visit > 0); }, isLoud: t => classAt(t) === 'loud' || classOfLabel((A.segments.find(x => t >= x.t0 && t < x.t1) ?? A.segments.at(-1)).label) === 'loud', shrinkArcs, dropWorth: (dE, i) => (Math.abs(dE) >= DROP ? DROP_WORTH : 0) + (jumpAt.get(i) ?? 0), levelAt, classAt, get climaxAt() { return climaxAt; }, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
   };
 }

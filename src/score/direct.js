@@ -256,7 +256,8 @@ export function direct(score, A, M) {
       if (P) { let on = 0, n = 0; for (let x = t0; x < t1; x += bar) { n++; if (P.isLoud(x)) on++; } if (on > 0.2 * n) continue; }      // a chorus is a run of quick changes
       // It leaves room for the Countdown to come back
       const inTheWay = comeback.some(b => t0 < b + PAST_T && t1 > b - 24);
-      places.push({ t0, t1, s: Math.min(kinds, 6) / 6 + Math.min(here.length / len * 4, 1) + Math.min(len, 55) / 55 + 0.6 * rand() - (inTheWay ? 1.5 : 0) });
+      // ...and with pace it keeps off a section's first visit, or what it wears wouldn't be there to come back to
+      places.push({ t0, t1, s: Math.min(kinds, 6) / 6 + Math.min(here.length / len * 4, 1) + Math.min(len, 55) / 55 + 0.6 * rand() - (inTheWay ? 1.5 : 0) - (P && (P.firstOfMany(t0 + 1) || P.firstOfMany(t1 - 1)) ? 2 : 0) });
     }
     places.sort((x, y) => y.s - x.s);
     const bodies = STAR_BODIES.map(lib).filter(p => p && p.pool !== false);
