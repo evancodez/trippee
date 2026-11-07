@@ -86,10 +86,10 @@ const keepOf = G => { const o = {}; for (const k of KEEP) o[k] = G[k]; return o;
 const putBack = (G, o) => { for (const k of KEEP) { if (o[k] === undefined) delete G[k]; else G[k] = o[k]; } forget(G); };
 
 export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctxOf }) {
-  // ---- modes lane (worlds5): a mode's own casting wishes, W.woah in src/worlds/<id>.js: { tricks, never, fond: { id: bonus }, gap: [s, s], rewind }. woah: 'film' (the mirror) is cast exactly as the film is.
+  // ---- modes lane (worlds5): a mode's own casting wishes, W.woah in src/worlds/<id>.js: { tricks, never, fond: { id: bonus }, gap: [s, s], least, runOn, rewind, fits(id, G, slot) } (docs/MODES.md). Every line it touches says 'modes lane'. woah: 'film' (the mirror) is cast exactly as the film is.
   if (world?.woah === 'film') world = null;
   const wish = world && typeof world.woah === 'object' ? world.woah : null;
-  const leastOf = id => (wish?.least != null ? Math.min(LEAST[id], wish.least) : LEAST[id]);      // a mode's stays are shorter than a film's, and it never runs one into the next: its patterns change as often as they did
+  const leastOf = id => (wish?.least != null ? Math.min(LEAST[id], wish.least) : LEAST[id]);      // a mode's stays are shorter than a film's, and one runs on over at most runOn more (1), so its patterns still change often
   // ---- end modes lane
   const P = film.pace, g = film.gestures, lib = id => (film.library ?? film.patterns ?? []).find(p => p.id === id);
   if (!M || M.neutral || g.length < 5 || !film.tau) return null;
