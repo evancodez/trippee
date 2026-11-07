@@ -1,6 +1,7 @@
 // Every pattern by family, as real thumbnails. They're drawn by a second small renderer on a canvas nobody sees, one pattern
 // at a time between frames, so the main picture never hitches. The tile under the pointer plays.
-import { Renderer } from '../gl/renderer.js';
+import { Renderer, FOLD } from '../gl/renderer.js';
+import { OFF } from '../pattern/layout.js';
 import { frame } from '../score/frame.js';
 
 const TW = 264, TH = 148;
@@ -122,7 +123,10 @@ export class Library {
     this.pumping = !!t;
     if (!t) return;
     if (!t.done) {
-      try { this.drawTile(t, 13); t.done = true; } catch (e) { console.warn('thumbnail failed', t.p.id, e); }
+      try {
+        this.drawTile(t, 13); t.done = true;
+        if (this.R.slotA[OFF['sf.on']] > 0.5 && !(this.R.variant & FOLD)) { t.done = false; this.queue.push(t); }      // what a fold's drawn with isn't built yet: it's drawn plain for now, and again once it is
+      } catch (e) { console.warn('thumbnail failed', t.p.id, e); }
     }
     this.lastDraw = performance.now();
     // one per pause; never two in a row, whatever the frame rate
