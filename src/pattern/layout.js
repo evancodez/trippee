@@ -65,6 +65,16 @@ add('spaceK', ['space.kind', 'space.amp', 'space.f', 'space.ph']);
 add('spaceC', ['space.pitch', 'space.yaw', 'space.roll', 'space.dist']);
 add('spaceO', ['space.x', 'space.y', 'space.z', 'space.a']);
 add('spaceE', ['space.bowl', 'space.q', 'space.pix', 'space.w']);
+// Space folding: mirrors in front of the sheet. src/gl/chunks/fold.js says what each is. Only a program built with FOLD reads them, and only while sf.on is 1.
+add('sf', ['sf.on', 'sf.par', 'sf.reps', 'sf.n']);                          // on; every reflection inverts the sheet; times round the chain; mirrors in it
+add('sfD', ['sf.S', 'sf.turn', 'sf.rx', 'sf.ry']);                          // feedback: the picture of itself's size, its turn, the screen's half width and height. S 0 off
+add('sfD2', ['sf.dx', 'sf.dy', 'sf.tau', 'sf.d_']);                         // its centre, how far the camera has flown in levels
+add('sfM', ['mob.ax', 'mob.ay', 'mob.bx', 'mob.by']);                       // a Mobius map: a, b, c, d complex, all zero off
+add('sfM2', ['mob.cx', 'mob.cy', 'mob.dx', 'mob.dy']);
+add('sfF', ['fan.x', 'fan.y', 'fan.al', 'fan.rot']);                        // mirrors through a centre, every al radians, and how they've turned. al 0 off
+add('sfL', ['lf.a', 'lf.b', 'lf.off', 'lf.tw']);                            // the radius folds between ln r = a and b. Equal: off. How far the circles have flown, the twist
+add('sfL2', ['lf.x', 'lf.y', 'lf._1', 'lf._2']);                            // the circles' centre
+for (let i = 0; i < 8; i++) add(`sfm${i}`, [`m${i}.a`, `m${i}.x`, `m${i}.y`, `m${i}.c`]);     // a chain of mirrors: a|z|^2 - 2 (x,y).z + c = 0
 
 export const SLOT_VEC4 = V.length;
 export const SLOT_FLOATS = SLOT_VEC4 * 4;

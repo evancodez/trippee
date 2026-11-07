@@ -8,10 +8,11 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
 // The first four are what a film needs to run; the rest build behind it.
 export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8, SPACE = 16;     // SPACE: the sheet in space, src/gl/chunks/space.js
+export const FOLD = 64;      // mirrors in front of the sheet (chunks/fold.js). 16 and 32 are a world's own. Nothing's built for these until something asks: wantFold, by a film with one in it at compose, or by the first frame that draws one.
 const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
 // Nothing waits for these: they build once everything else has. The hand on a bent sheet is built the first time it's asked for.
 const SPACE_LATER = [SPACE, SPACE | FLIGHT, SPACE | PLATES, SPACE | PLATES | FLIGHT];
-export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
+export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & FOLD ? '#define FOLD\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -32,6 +33,7 @@ export class Renderer {
   constructor(canvas, { bare = false } = {}) {
     this.canvas = canvas;
     this.order = bare ? [...ORDER.slice(0, 4), SPACE, SPACE | FLIGHT] : ORDER;
+    this.foldAsked = false;
     this.bare = bare;
     const gl = this.gl = canvas.getContext('webgl2', {
       antialias: false, alpha: false, depth: false, stencil: false,
@@ -58,11 +60,12 @@ export class Renderer {
     gl.disable(gl.BLEND);
 
     this.vs = compile(gl, gl.VERTEX_SHADER, VERT);
-    this.progs = new Array(32).fill(null);
+    this.progs = new Array(128).fill(null);
     this.variant = 0;
     this._start(0);
     this._whenReady = new Promise(res => { this._resolveReady = res; });
     this._whenAll = new Promise(res => { this._resolveAll = res; });
+    this._whenFold = new Promise(res => { this._resolveFold = res; });
     this._poll();
   }
 
@@ -71,6 +74,18 @@ export class Renderer {
 
   whenReady() { return this._whenReady; }
   whenAllReady() { return this._whenAll; }
+  // Every program a fold can be drawn with. For tests, and for a rehearsal that has one to look at.
+  whenFoldReady() { this.wantFold(); return this._whenFold; }
+  // The ones a fold's likely to want, or just this one. It's a program's first draw that's the stall, so they're warmed one at a time with the picture carrying on, as at the start.
+  wantFold(v = null) {
+    if (v == null) this.foldAsked = true;
+    const add = v != null ? [v] : ORDER.slice(0, this.bare ? 4 : 8).map(n => n | FOLD);       // the hand's only if it's ever drawn over one
+    const more = add.filter(n => !this.order.includes(n));
+    if (!more.length) return;
+    this.order = [...this.order, ...more];
+    if (!this._pending && !this._warming) this._next();
+  }
+  _next() { const next = this.order.find(n => !this.progs[n]); if (next !== undefined) { this._start(next); this._poll(); } else this._warmAll(); }
 
   _start(v) {
     const gl = this.gl, fs = compile(gl, gl.FRAGMENT_SHADER, sourceOf(v));
@@ -111,16 +126,21 @@ export class Renderer {
   // A program's first draw is when the GPU really builds it, up to 440 ms measured, and that would be a stall in the middle of the film the first time a flight or colour needs it.
   // So each draws one pixel now, one at a time with the picture carrying on between them, to the canvas and to the smaller target, which the GPU may build separately.
   _warmAll() {
-    const list = this.progs.filter(Boolean);
-    if (!list.length) { this._resolveAll(); return; }
+    // ...then the ones nothing's waiting for, the same way.
+    const list = this.progs.filter((p, v) => p && !(this._warm ??= new Set()).has(v) && this._warm.add(v));
+    this._warming = true;
+    const done = () => {
+      this._warming = false;
+      this._resolveAll();
+      if (this.parallel && !this.bare && !this.spaceAsked) { this.spaceAsked = true; this.order = [...this.order, ...SPACE_LATER]; }
+      if (this.order.some(n => !this.progs[n])) { this._next(); return; }
+      if (this.foldAsked) this._resolveFold();
+    };
+    if (!list.length) { done(); return; }
     const gl = this.gl, c = this.canvas;
     let i = 0;
     const one = () => {
-      if (i >= list.length) {
-        this._resolveAll();
-        if (this.parallel && !this.bare && !this.spaceAsked) { this.spaceAsked = true; this.order = [...this.order, ...SPACE_LATER]; if (!this._pending) { this._start(SPACE); this._poll(); } }
-        return;
-      }
+      if (i >= list.length) { done(); return; }
       const low = this._lowTarget(0.5);
       gl.useProgram(list[i++]);
       gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
@@ -137,7 +157,7 @@ export class Renderer {
   _variantOf(F) {
     const v = (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0);
     const space = !this.wp && (F[FRAME.dive * 4 + 3] > 5.5 || this.slotA[OFF['space.kind']] > 0.5 || (this.slotB[OFF['space.kind']] > 0.5 && (F[FRAME.compose * 4 + 1] > 0.5 || F[FRAME.dive * 4 + 3] > 0.5)));      // a world has its own programs, and its own bits
-    return v | (space ? SPACE : 0) | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0);
+    return v | (space ? SPACE : 0) | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0) | (this.slotA[OFF['sf.on']] > 0.5 || this.slotB[OFF['sf.on']] > 0.5 ? FOLD : 0);
   }
 
   // Does this slot wear anything only the fuller programs have?
@@ -151,9 +171,11 @@ export class Renderer {
   _programFor(F) {
     if (this.wp) return this.wp.program(F);
     const v = this._variantOf(F);
+    if (v & FOLD && !this.progs[v]) this.wantFold(v);
     // Something the sheet in space isn't built with up front (it's on a pattern that also slips, say) is built when it's first asked for, and meanwhile it goes without.
     if (!this.progs[v] && (!this.parallel || v & SPACE) && !this._pending) { this._start(v); this._poll(); }
-    const got = this.progs[v] ? v : v & SPACE ? [v & ~EXTRA, v & (FLIGHT | SPACE), v & (FLIGHT | EXTRA), v & FLIGHT].find(n => this.progs[n]) ?? (v & FLIGHT) : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
+    const fold = this.progs[v & (FLIGHT | EXTRA | FOLD)] ? v & (FLIGHT | EXTRA | FOLD) : v & (FLIGHT | FOLD);      // one still building, a fold goes without whatever else it can before it goes without the fold
+    const got = this.progs[v] ? v : v & SPACE ? [v & ~EXTRA, v & (FLIGHT | SPACE), v & (FLIGHT | EXTRA), v & FLIGHT].find(n => this.progs[n]) ?? (v & FLIGHT) : this.progs[fold] ? fold : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
     this.variant = got;
     return this.progs[got];
   }

@@ -241,6 +241,9 @@ void main(){
   }
 #endif
 #endif
+#ifdef FOLD
+  if(gFoldE>0.){ c=mix(c,1.-c,gFoldE); c2=mix(c2,1.-c2,gFoldE); cP=mix(cP,1.-cP,gFoldE); }      // the edge of a room that's the negative of the next: its true coverage
+#endif
 #ifdef HAND
   // The hand is the same pattern in negative, so it has a hard outline all the way round on anything, wherever the lines happen to fall
   if(hInk>0.){ c=mix(c,1.-c,hInk); c2=mix(c2,1.-c2,hInk); cP=mix(cP,1.-cP,hInk); }
