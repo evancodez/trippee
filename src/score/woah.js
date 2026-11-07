@@ -40,6 +40,7 @@ const CHANGES = ['flood', 'drop', 'tube', 'pleat', 'hall', 'span'];
 const OFF_CAST = new Set(['span', 'hallway', 'snakes']);      // snakes: its grey tones were 10 to 24 s of grey noise each time it was cast (MGMT 162-172, and 88-112 with a flat grey frame at 100 s)
 const STRETCHES = ['forever', 'limit', 'screen', 'pearls', 'fan', 'crumple', 'roll', 'slit', 'ghost', 'fringe', 'snakes', 'ouchi', 'echo', 'slice', 'swell', 'terraces', 'pleats', 'ride', 'hallway', 'rewind'];
 const LINES_ONLY = new Set(['crumple', 'limit']), MARCH = new Set(['ratchet', 'wring', 'scissor', 'bellows']);
+const G_KEEP = new Set(['ball', 'star', 'coin', 'countdown']);      // modes lane: a mode's moves that never give way
 const OVER_RELAY = new Set(['forever', 'limit', 'screen', 'pearls', 'fan', 'roll', 'swell', 'terraces', 'pleats']);      // it doesn't care what's on the sheet, and a Relay's steps can go on under it
 
 // How well each suits a place. All 0 to about 1. These started from what the lanes guessed, and were gone over on sheets of real frames.
@@ -85,6 +86,11 @@ const keepOf = G => { const o = {}; for (const k of KEEP) o[k] = G[k]; return o;
 const putBack = (G, o) => { for (const k of KEEP) { if (o[k] === undefined) delete G[k]; else G[k] = o[k]; } forget(G); };
 
 export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctxOf }) {
+  // ---- modes lane (worlds5): a mode's own casting wishes, W.woah in src/worlds/<id>.js: { tricks, never, fond: { id: bonus }, gap: [s, s], least, runOn, rewind, fits(id, G, slot) } (docs/MODES.md). Every line it touches says 'modes lane'. woah: 'film' (the mirror) is cast exactly as the film is.
+  if (world?.woah === 'film') world = null;
+  const wish = world && typeof world.woah === 'object' ? world.woah : null;
+  const leastOf = id => (wish?.least != null ? Math.min(LEAST[id], wish.least) : LEAST[id]);      // a mode's stays are shorter than a film's, and one runs on over at most runOn more (1), so its patterns still change often
+  // ---- end modes lane
   const P = film.pace, g = film.gestures, lib = id => (film.library ?? film.patterns ?? []).find(p => p.id === id);
   if (!M || M.neutral || g.length < 5 || !film.tau) return null;
   const rand = rng(((seed | 0) * 2741 + songHash + 17) >>> 0), bar = Math.max(M.bar, 0.8), fps = A.fps, tEnd = g.at(-1).t0;
@@ -93,11 +99,11 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const note = (t, what, why) => refused.push({ t: +(+t).toFixed(2), what, why });
 
   // ---------------------------------------------------------------- the take
-  const TRICKS = (world ? STRETCHES.filter(id => SET[id] !== 'space' && id !== 'rewind') : [...STRETCHES, ...CHANGES]).filter(id => !directing.woahOnly || directing.woahOnly.includes(id));
+  const TRICKS = (world ? STRETCHES.filter(id => SET[id] !== 'space' && (id !== 'rewind' || wish?.rewind)) : [...STRETCHES, ...CHANGES]).filter(id => !directing.woahOnly || directing.woahOnly.includes(id)).filter(id => !wish || ((!wish.tricks || wish.tricks.includes(id) || id === 'rewind') && !wish.never?.includes(id)));      // modes lane: a mode's tricks
   const lean = { space: 0.2 + 1.5 * rand(), folds: 0.2 + 1.5 * rand(), time: 0.2 + 1.5 * rand() };
-  const fond = Object.fromEntries(TRICKS.map(id => [id, 2.4 * (rand() - 0.5)]));
+  const fond = Object.fromEntries(TRICKS.map(id => [id, 2.4 * (rand() - 0.5) + (wish?.fond?.[id] ?? 0)]));      // modes lane: and what it's fond of
   const chill = P?.register === 'chill';
-  const gaps = world ? GAP.world : chill ? GAP.chill : GAP.energetic, pace = 0.75 + 0.35 * rand();      // this take is a little busier, or a little less so
+  const gaps = world ? (wish?.gap ?? GAP.world) : chill ? GAP.chill : GAP.energetic, pace = 0.75 + 0.35 * rand();      // this take is a little busier, or a little less so
 
   // ---------------------------------------------------------------- reading the song
   const series = k => A[k] ?? null;
@@ -160,15 +166,16 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const relayOf = G => !!G.moves?.some(m => m.id === 'relay');
   // What marches on the strong beats can go on marching under a mirror or on a hill
   const marches = G => !!G.moves?.some(m => MARCH.has(m.id));
-  const nothingElse = G => !G.moves?.some(m => !m.woah && m.id !== 'relay' && !MARCH.has(m.id));
+  const yields = m => !!wish && !m.woah && m.from != null && m.to != null && m.id !== 'ramp' && !G_KEEP.has(m.id);      // modes lane: in a mode, the mode's own moves on a stretch give way to a trick there
+  const nothingElse = G => !G.moves?.some(m => !m.woah && m.id !== 'relay' && !MARCH.has(m.id) && !yields(m));
   // A body that can wear a stretch: nothing on it but perhaps a Relay, which can go on under it
   const wearable = G => (!G.hero || MARCH.has(G.hero) || G.pattern.family === 'riley') && nothingElse(G);
-  const absorbable = G => !G.hero && !G.moves?.length && !G.pattern.drive && G.k != null && G.xform?.id !== 'iris';
+  const absorbable = G => !G.hero && (!G.moves?.length || (!!wish && G.moves.every(yields))) && (!G.pattern.drive || !!wish) && G.k != null && G.xform?.id !== 'iris';      // modes lane: in a mode, one stay can run on over the next
   const bodyOf = G => [G.t0, G.t1 - (G.morph || 0)];
   // What it could reach, taking in the plain gestures after it
   const reach = (i, want) => {
     let j = i, end = bodyOf(g[i])[1];
-    while (end - g[i].t0 < want && j + 1 < g.length - 1 && absorbable(g[j + 1]) && g[j].xform?.id !== 'iris') { j++; end = bodyOf(g[j])[1]; }
+    while (end - g[i].t0 < want && j + 1 < g.length - 1 && absorbable(g[j + 1]) && g[j].xform?.id !== 'iris' && (!wish || j < i + (wish.runOn ?? 1))) { j++; end = bodyOf(g[j])[1]; }
     return { j, end };
   };
   // Its body runs on over those. What they were is what it can't get back: a guard's swap keeps this and changes what's worn.
@@ -301,7 +308,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if (!mv) return false;
     if (OWN[id] && !world) return false;
     if (LINES_ONLY.has(id) && (crossed(G) || relayOf(G))) return false;      // on a check they're only a busier check, and a Relay is a check as often as not
-    if ((relayOf(G) || marches(G) || G.pattern.drive) && !OVER_RELAY.has(id)) return false;
+    if ((relayOf(G) || marches(G) || (G.pattern.drive && !wish)) && !OVER_RELAY.has(id)) return false;      // modes lane: every pattern a mode has drives itself on its own clock, and the time tricks read that as they read a sheet (tests/world-cast.mjs, STAGE=sheet)
     if ((id === 'slit' || id === 'echo') && !flatSheet(s)) return false;
     // A tube or a hall goes off to a point, and whatever's fine to start with is grey by there
     if ((id === 'ride' || id === 'hallway') && (relayOf(G) || fineness(s) > 4.5)) return false;
@@ -309,6 +316,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if (SET[id] === 'space' && id !== 'slice' && !flatSheet(s)) return false;
     if (mv.needs && !mv.needs(s, G)) return false;
     if (world && !flatSheet(s) && SET[id] === 'time') return false;
+    if (wish?.fits && !wish.fits(id, G, s)) return false;      // modes lane: what a mode says its own sheets can wear
     return true;
   };
   const canCarve = G => !world && !!film.remake && G.k != null && !G.moves?.some(m => m.woah) && !marches(G) && !G.hero;
@@ -340,6 +348,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if (!m) return null;
     m.woahId = id;
     const before = keepOf(on);
+    if (wish && on.moves) on.moves = on.moves.filter(x => !yields(x) || x.to < from - 1 || x.from > to + 1);      // modes lane
     holdRelay(on, from, to);
     addMove(on, m);
     return { on, before };
@@ -441,7 +450,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
           for (const id of STRETCHES) {
             if (!TRICKS.includes(id) || id === lastId || id === 'rewind' || !canWear(id, G)) continue;
             const { j, end } = reach(i, from - a0 + (world ? LEAST[id] + 2 : WANT[id])), to = Math.min(end, from + MOST);
-            if (to - from < LEAST[id] || !clear(from, to)) continue;
+            if (to - from < leastOf(id) || !clear(from, to)) continue;
             const f = featuresOf(from, to, G.peak?.hit ?? G.t1), seg = segAt((from + to) / 2), rel = relationOf(id, seg);
             if (SUIT[id](f) < 0.2 && !rel.bonus) continue;
             out.push({ id, kind: 'stretch', i, j, from, to, hit: G.peak?.hit ?? G.t1, f, rel, v: scoreOf(id, f, seg, from, mid, rel) });
@@ -450,7 +459,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
       }
       // A rewind, on the last bars of a build
       if (!i) continue;
-      if (!world && TRICKS.includes('rewind') && lastId !== 'rewind' && !G.xform && !G.hero && G.morph && !g[i + 1]?.hero) {
+      if ((!world || wish?.rewind) && TRICKS.includes('rewind') && lastId !== 'rewind' && !G.xform && !G.hero && G.morph && !g[i + 1]?.hero) {
         const hit = G.peak?.hit ?? G.t1, a = hit - 3 * bar - 6 * bar;
         if (a >= lo && a <= hi && hit > G.t0 + 7 * bar && clear(hit - 3 * bar, hit + bar)) {
           const f = featuresOf(hit - 6 * bar, hit, hit), rel = relationOf('rewind', segAt(hit - bar));

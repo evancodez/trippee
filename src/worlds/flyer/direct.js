@@ -5,9 +5,11 @@ import { hitsFor } from '../../score/moves/surge.js';
 import { rampTrack } from '../../score/moves/ramp.js';
 import { MOVES } from '../../score/moves/index.js';
 import { base } from '../../score/slot.js';
+import { directing } from '../../score/flags.js';
 import './moves.js';
 
-const SHARE = { target: 0.2, icon: 0.24, pop: 0.1, plate: 0.13, op: 0.22, film: 0.11 };
+// More of the big readable shapes (targets and icons: skull, fist, bolt, star) and less of the all-over op and film patterns, so there's a shape to read most of the time under the toner and the dots.
+const SHARE = { target: 0.22, icon: 0.3, pop: 0.1, plate: 0.13, op: 0.17, film: 0.08 };
 const rng = seed => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216; };
 
 export function cast(score, A, M, song) {
@@ -63,10 +65,11 @@ export function landings(score, song) {
     const flat = S => num(S, 'surf.kind') < 0.5, open = [];
     if (sameFold && field(a) && field(b)) open.push('crank');
     if (sameFold && ours(a) && ours(b)) open.push('bleed');
-    if (flat(a) && flat(b) && !wound(a) && !wound(b)) { open.push('feed'); if (D >= 2.5) open.push('fill'); }
+    // The Fill only where the drummer plays one: on the strong beats anywhere else its strips went over a tile 4 to 5 times a second and swung the whole frame (MGMT 55 and 160 s). The others are as big a change.
+    const hit = fillNear(G.t1);
+    if (flat(a) && flat(b) && !wound(a) && !wound(b)) { open.push('feed'); if (D >= 2.5 && hit) open.push('fill'); }
     if (!open.length) open.push('dive');
     if (D >= 5 && i % 6 === 4) open.push('iris');
-    const hit = fillNear(G.t1);
     const score1 = k => WEIGHT[k] / (1 + (used[k] ?? 0)) * (k === prev ? 0.001 : 1) * (hit && k === 'fill' ? 6 : 1);
     const k = open.sort((x, y) => score1(y) - score1(x))[0];
     used[k] = (used[k] ?? 0) + 1;
@@ -78,9 +81,11 @@ export function landings(score, song) {
   return used;
 }
 
+// The film's tricks, which src/score/woah.js casts by the music (W.woah in flyer.js) when it's on, and not one after another here.
+const CAST = new Set(['crumple', 'fan', 'slit', 'echo', 'forever']);
 // What it does while it's there. A long stay has to earn it: one thing after another, each a dozen seconds or so.
 export function moves(score, A, M) {
-  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['windmill', 'separate', 'upstroke', 'crumple', 'headbang', 'crank', 'lead', 'wring', 'fan', 'slit', 'bellows', 'separate', 'rotator', 'ratchet', 'scissor', 'echo', 'ramp', 'forever'];
+  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['windmill', 'separate', 'upstroke', 'crumple', 'headbang', 'crank', 'flyer.lead', 'wring', 'fan', 'slit', 'bellows', 'separate', 'rotator', 'ratchet', 'scissor', 'echo', 'ramp', 'forever'];
   let at = 0;
   const fits = (id, G) => {
     const p = G.pattern, S = base(p), num = n => S[OFF[n]], flat = num('surf.kind') < 0.5, field = num('field.kind') === 4 && num('field.k0') !== 0 && num('star._1') === 0, plain = (p.g?.fams?.length ?? 1) < 2;
@@ -91,7 +96,7 @@ export function moves(score, A, M) {
     if (id === 'wring') return flat;
     if (id === 'ramp' || id === 'separate') return true;
     if (id === 'crank') return field && num('field.ph') > 0;
-    if (id === 'lead' || id === 'rotator') return field && !num('blobs.beta') && countPoles(p) > 1;
+    if (id === 'flyer.lead' || id === 'rotator') return field && !num('blobs.beta') && countPoles(p) > 1;
     if (id === 'windmill' || id === 'headbang') return flat;
     if (id === 'crumple' || id === 'fan' || id === 'forever') return flat && !p.stencil && p.group !== 'film';
     if (id === 'slit' || id === 'echo') return flat && !p.stencil;
@@ -104,7 +109,7 @@ export function moves(score, A, M) {
     for (let part = 0; part < parts; part++) {
       const from = start + (body * part) / parts, to = start + (body * (part + 1)) / parts;
       let id = null;
-      for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (fits(c, G) && !G.moves?.some(m => m.id === c) && !(c === 'ramp' && part)) { id = c; at = (at + n + 1) % rotation.length; break; } }
+      for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (directing.woah && CAST.has(c)) continue; if (fits(c, G) && !G.moves?.some(m => m.id === c) && !(c === 'ramp' && part)) { id = c; at = (at + n + 1) % rotation.length; break; } }
       if (!id) continue;
       const half = ['windmill', 'upstroke', 'headbang', 'wring', 'ratchet', 'bellows', 'scissor', 'separate'].includes(id);
       let hits = hitsFor(half ? 'half' : 'bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });

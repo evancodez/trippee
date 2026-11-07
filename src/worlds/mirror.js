@@ -4,6 +4,7 @@
 export default {
   id: 'mirror', name: 'mirror', chips: [[0, 0, 0], [255, 255, 255]],
   pool: [], borrow: [], ink: null, table: null, pass: null, needs: [],
+  woah: 'film',      // cast exactly as the film is (src/score/woah.js): a world that changes nothing changes nothing there either
   glsl: { color: 'vec3 worldColor(int k0,int k1,float c){ return film(c); }\n' },
 };
 

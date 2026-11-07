@@ -1,6 +1,7 @@
 // Flyer: rock'n'roll. docs/MODES.md, section 3. A gig poster run off on a bad photocopier and a one-drum press: toner and fluorescent ink on coloured stock, plates out of register, fat dots, and a stencil cut with a knife.
 // Nothing here's lit and nothing fades: a pixel's got ink on it or it hasn't, and every in-between is dots. The kick pushes the cone and knocks the plates out of register. How far gone the guitars are is how square every edge is, and an edge is the shape of the sound itself.
 import { OFF } from '../pattern/layout.js';
+import { fineness } from '../score/slot.js';
 import { pool, FLOW, ratchet } from './flyer/patterns.js';
 import { FIELD, COLOR, T_HOOK } from './flyer/field.js';
 import { INKS, chips, writeSchedules } from './flyer/inks.js';
@@ -149,6 +150,11 @@ export default {
     else if (from && to) { const u = x < 0.5 ? 1 - ease(x / 0.45) : ease((x - 0.55) / 0.45); writeStencil(a, x < 0.5 ? from : to, t, pop, u, hopS, hopF); writeStencil(b, null, t, pop, 0, 0, 1); }
     else { writeStencil(a, here, t, pop, 1, hopS, hopF); writeStencil(b, null, t, pop, 0, 0, 1); }
   },
+  // src/score/woah.js casts these, by the music: the screen, crumple, the fan, ghost hands on the strong beats, a roll on the biggest hit. Loud songs more often.
+  // The ones that go small (the screen's corridor, limit's tiles, forever's rings) only on a bold sheet: on fine dots and checks they were a busy middle (MGMT 151-156 and 217-221 s).
+  // Not the fan: its shards in toner and day-glo swung the whole frame's red twice at MGMT 66 s (judged on fd1fd53). Crumple, the ghost hands and the roll are as big.
+  woah: { tricks: ['screen', 'crumple', 'ghost', 'roll', 'forever', 'limit'], fond: { crumple: 1.1, ghost: 0.9, roll: 0.9, screen: 0.4 }, gap: [24, 40], least: 5.5,
+    fits: (id, G, S) => S[OFF['surf.kind']] < 0.5 && !G.pattern.stencil && (G.pattern.group !== 'film' || id === 'ghost' || id === 'screen' || id === 'roll') && !((id === 'screen' || id === 'limit' || id === 'forever') && fineness(S) > 2.45) },
   pace: { bars: [8, 6, 4, 3, 2], morph: [3.2, 6.5], most: 15 },
   motion: { len: [10, 16], morph: [4.5, 7], xforms: { crank, bleed, feed, fill }, xform: 'crank', keep: ['crank', 'bleed', 'feed', 'fill'], front: true },
   hear: { pulse: 1.25, melody: 0.8, tone: 0.3, harmony: 0.5, lung: 0.5, threshold: 0.3 },

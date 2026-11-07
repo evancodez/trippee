@@ -19,6 +19,7 @@ export const DEFS = `float wSky[2]=float[2](1.,1.);
 float wHaze[2]=float[2](1.,1.);       // how much of its own contrast a far hill keeps: the air's in the way
 float wAlong[2]=float[2](0.,0.);     // how far along its line this pixel is. A hill says, as each goes by at its own speed. Anything else goes by the sheet
 bool wHasAlong[2]=bool[2](false,false);
+float wCrestS[2]=float[2](1e3,1e3),wCrestG[2]=float[2](0.,0.);      // a hill: how far this pixel is above or below the nearest crest, and how steep the light is just under it. field.js's worldPhase filters the crest by these
 `;
 
 // The lake: below the waterline everything's the sheet above it, a little flattened, with ripples that come closer together going out.

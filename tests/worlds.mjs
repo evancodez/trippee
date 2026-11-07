@@ -453,7 +453,9 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
       };
       // The plan comes in over a few frames, with no time passing: only its looks are waited for, so where it starts doesn't depend on how long they took.
       const ready = async () => { const h = stage.score.handover; for (let i = 0; i < 400 && !h.plan; i++) { T.step(0); await new Promise(r => setTimeout(r, 4)); } h.e = 0; h.e0 = 0; return h; };
-      const at = async (h, x) => { h.e = h.e0 + x * h.D; T.step(0); return { sha: await W_.sha(), px: (T.capture(), W_.px()), v: R.variant, x: app.lastFrame.T }; };
+      // The frame again as coverage, in the world's own program: its geometry and nothing of its inks
+      const cov = async () => { const wp = R.wp; if (!wp) return null; wp.block[0] = 1; R.draw(); wp.block[0] = 0; return W_.hex(await crypto.subtle.digest('SHA-256', W_.px().d)); };
+      const at = async (h, x) => { h.e = h.e0 + x * h.D; T.step(0); const sha = await W_.sha(), px = (T.capture(), W_.px()); return { sha, px, v: R.variant, x: app.lastFrame.T, cov: await cov() }; };
       const XS = [.46, .4999, .5, .5001, .54];
       // The film's own flight, the same two patterns from the same place
       const filmRun = async pat => {
@@ -472,20 +474,23 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
         if (ok !== true) return { error: 'setWorld gave ' + ok };
         const h = await ready(), out = {}, vs = {};
         const f0 = await at(h, 0);
-        for (const x of XS) { const f = await at(h, x); out[x] = f.sha; vs[x] = f.v; }
+        const covs = {};
+        for (const x of XS) { const f = await at(h, x); out[x] = f.sha; vs[x] = f.v; covs[x] = f.cov; }
         const last = await at(h, .9999);
         h.e = h.e0 + h.D; T.step(0);     // the frame it ends on, and then the plain path
         const ended = !stage.score.handover?.change;
         T.step(0);
         const after = (T.capture(), W_.px()), landed = R.variant;
         const first = W_.diff(before, f0.px, 8), end = W_.diff(last.px, after, 8);
-        return { out, vs, first, end, ended, landed, worldNow: stage.world?.id ?? null, wp: R.wp?.W?.id ?? null };
+        return { out, vs, covs, first, end, ended, landed, worldNow: stage.world?.id ?? null, wp: R.wp?.W?.id ?? null };
       };
       const vega = byId['checks.vega'];
       const film = await filmRun(vega);
       const a = await worldRun(null, 'numbers', vega);
       // A world's own field through the middle of a change: neither the film's program nor the other world's can draw it, so it lets go first, and at the middle no program can tell.
       const filmF = await filmRun(fieldPat), fld = await worldRun(null, O, fieldPat);
+      // From the film there's no program change at the middle: the world's program draws all of it, and its inks start arriving straight away. What has to hold is that its geometry is the film's there, which the mirror's coverage is
+      const toMirror = await worldRun(null, 'mirror', vega), toMirrorF = await worldRun(null, 'mirror', fieldPat);
       const fieldLanded = (T.capture(), W_.px());
       stage.world = null; stage.score = stage.score;
       T.load('lines.river'); app.t = 13;
@@ -519,17 +524,18 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
           g.length = 0; g.push({ t0: t, t1: t + 3600, arcEnd: t + 44, period: 44, pattern: pat, morph: 0 });
           stage.morphFrom(snap, t, dur, { noGlide: true });
         } else await stage.setWorld(to, { pattern: pat, dur });
-        const chan = { luma: [], red: [], rc: [], whole: { luma: [], red: [], rc: [] } }, steps = [];
-        let prev = null, biggest = 0, biggestAt = 0, disc = 0;
+        const chan = { luma: [], red: [], rc: [], whole: { luma: [], red: [], rc: [] } }, steps = [], xs = [], shots = [];
+        let prev = null, biggest = 0, biggestAt = 0, disc = 0, w2 = null; const early = [];
         const seen = new Int32Array(W_S * H_S), stack = new Int32Array(W_S * H_S), dist = new Float32Array(W_S * H_S);
         const n = Math.round((dur + 1) * 30);
         for (let k = 0; k < n; k++) {
           T.step(1 / 30);
           g2.drawImage(T.canvas, 0, 0, W_S, H_S);
           const d = g2.getImageData(0, 0, W_S, H_S).data, c = channels(d, W_S, H_S);
+          if (k < 24) { let ch = 0; for (let i = 0; i < d.length; i += 16) ch += Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]); const h = stage.score.handover; early.push(`${k}:${(ch / (d.length / 16)).toFixed(0)}${h?.plan ? 'p' : ''}${h?.change ? 'c' : ''}${app.R.wp ? 'w' : ''}`); }
           chan.luma.push(c.luma); chan.red.push(c.red); chan.rc.push(c.rc);
           for (const name of ['luma', 'red', 'rc']) chan.whole[name].push(c.whole[name]);
-          if (prev) { let step = 0; for (let i = 0; i < d.length; i += 4) step += Math.abs(d[i] - prev[i]) + Math.abs(d[i + 1] - prev[i + 1]) + Math.abs(d[i + 2] - prev[i + 2]); steps.push(step / (3 * W_S * H_S)); }
+          if (prev) { let step = 0; for (let i = 0; i < d.length; i += 4) step += Math.abs(d[i] - prev[i]) + Math.abs(d[i + 1] - prev[i + 1]) + Math.abs(d[i + 2] - prev[i + 2]); steps.push(step / (3 * W_S * H_S)); xs.push(+(app.lastFrame?.x ?? -1).toFixed(3)); shots.push(cv.toDataURL('image/png')); if (shots.length > 2) shots.shift(); if (steps.at(-1) >= Math.max(...steps)) w2 = { at: k, x: xs.at(-1), kind: app.lastFrame?.kind ?? null, frames: [...shots] }; }
           // The biggest joined area of one colour, with room for how big a disc: flat.mjs's measure, in colour. The picture's mid values, an edge or lines too fine to tell, join nothing.
           seen.fill(0);
           for (let i = 0; i < W_S * H_S; i++) {
@@ -558,30 +564,39 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
           if (k % 16 === 15) await new Promise(r => setTimeout(r));
         }
         const sorted = [...steps].sort((x, y) => x - y);
-        return { chan, fps: 30, stepMax: +sorted[sorted.length - 1].toFixed(2), stepMed: +sorted[sorted.length >> 1].toFixed(2), flat: +(biggest / (W_S * H_S)).toFixed(3), disc: +disc.toFixed(3), flatAt: biggestAt };
+        return { chan, fps: 30, stepMax: +sorted[sorted.length - 1].toFixed(2), stepMed: +sorted[sorted.length >> 1].toFixed(2), flat: +(biggest / (W_S * H_S)).toFixed(3), disc: +disc.toFixed(3), flatAt: biggestAt, stepAt: w2, early: early.join(' ') };
       };
       const watchA = await watch(null, 'numbers', vega), controlA = await watch(null, null, vega, true);
       const watchB = await watch(N, null, byId['lattice.master']), controlB = await watch(null, null, byId['lattice.master'], true);
       reset(null);
-      return { film, a, b, c, sheet, seekOK, watchA, watchB, controlA, controlB, filmF, fld };
+      return { film, a, b, c, sheet, seekOK, watchA, watchB, controlA, controlB, filmF, fld, toMirror, toMirrorF };
     }, makeChannels.toString());
     const dump = o => JSON.stringify({ first: o.first, end: o.end, ended: o.ended, landed: o.landed, world: o.worldNow, wp: o.wp, vs: o.vs });
     log('film into numbers', dump(r.a)); log('numbers into film', dump(r.b)); log('numbers into mirror', dump(r.c));
     if (r.a.error || r.b.error || r.c.error) log('errors', r.a.error, r.b.error, r.c.error);
-    for (const [name, o] of [['film into numbers', r.a], ['numbers into film', r.b], ['numbers into mirror', r.c]]) {
+    {
+      const diff = Object.keys(r.film).filter(x => r.film[x] !== r.toMirror.out?.[x]);
+      check(log, `film into mirror: from x .46 to .54 the frame is the film's flight, byte for byte`, !diff.length && !r.toMirror.error, diff.length ? `differs at ${diff.join(' ')}` : `programs ${Object.values(r.toMirror.vs).join(' ')}`);
+      const cd = Object.keys(r.film).filter(x => !r.a.covs?.[x] || r.a.covs[x] !== r.toMirror.covs?.[x]);
+      check(log, `film into numbers: from x .46 to .54 its geometry is the film's flight, byte for byte (its coverage is the mirror's: only its inks differ, and they arrive from the start)`, !cd.length, cd.length ? `differs at ${cd.join(' ')}` : `programs ${Object.values(r.a.vs).join(' ')}`);
+    }
+    for (const [name, o] of [['numbers into film', r.b], ['numbers into mirror', r.c]]) {
       const diff = Object.keys(r.film).filter(x => r.film[x] !== o.out?.[x]);
       check(log, `${name}: from x .46 to .54 the frame is the film's flight, byte for byte, across the program change`, !diff.length, diff.length ? `differs at ${diff.join(' ')}` : `programs ${Object.values(o.vs).join(' ')}`);
       check(log, `${name}: lands on the world's plain program`, o.ended && o.landed === (o.worldNow ? o.landed : 0) && (o.worldNow ? o.landed >= 16 : o.landed < 16));
     }
+    check(log, `film into numbers: lands on the world's plain program`, r.a.ended && r.a.landed >= 16);
     {
-      const diff = Object.keys(r.filmF).filter(x => r.filmF[x] !== r.fld.out?.[x]);
-      check(log, `a world's own field is out of the way across the program change, byte for byte`, !diff.length && !r.fld.error, diff.length ? `differs at ${diff.join(' ')}` : `programs ${Object.values(r.fld.vs).join(' ')}, landed v${r.fld.landed}, ${r.fld.error ?? ''}`);
+      const diff = Object.keys(r.filmF).filter(x => !r.fld.covs?.[x] || r.fld.covs[x] !== r.toMirrorF.covs?.[x]);
+      check(log, `a world's own field is out of the way from x .46 to .54, byte for byte (its coverage is the mirror's)`, !diff.length && !r.fld.error, diff.length ? `differs at ${diff.join(' ')}` : `programs ${Object.values(r.fld.vs).join(' ')}, landed v${r.fld.landed}, ${r.fld.error ?? ''}`);
     }
     r.sheet.forEach(s => save(`change-x${s.x.toFixed(2)}.png`, s.url));
     log('seek mid-change', JSON.stringify(r.seekOK));
     check(log, 'a seek mid-change carries on and lands', r.seekOK.midA === 1 && r.seekOK.midB === 1 && r.seekOK.world === 'numbers' && !r.seekOK.change && r.seekOK.landed >= 16);
     for (const [name, w, c] of [['film into numbers', r.watchA, r.controlA], ['numbers into film', r.watchB, r.controlB]]) {
       const fl = flashThree(w, WORLD_FLASH), flC = flashThree(c, WORLD_FLASH);
+      log(name, 'first frames, chroma (p plan, c change, w world program):', w.early);
+      if (w.stepAt) { log(name, 'biggest step at frame', w.stepAt.at, 'x', w.stepAt.x, w.stepAt.kind); w.stepAt.frames.forEach((u, i) => save(`step-${name.replace(/ /g, '-')}-${i}.png`, u)); }
       log(name, JSON.stringify({ luma: fl.luma, red: fl.red, rc: fl.rc, step: [w.stepMax, w.stepMed], flat: w.flat, disc: w.disc, flatAt: w.flatAt }), '| the film\'s own flight:', JSON.stringify({ luma: flC.luma, red: flC.red, rc: flC.rc, step: [c.stepMax, c.stepMed], flat: c.flat, disc: c.disc, flatAt: c.flatAt }));
       const worse = n => fl[n].tile > Math.max(1, flC[n].tile) || fl[n].whole > flC[n].whole;
       check(log, `${name}: no whole-frame flash in any channel`, fl.luma.whole === 0 && fl.red.whole === 0 && fl.rc.whole === 0, JSON.stringify(fl.over));
@@ -668,8 +683,9 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
       // What the reader sees: the same grid?
       const grids = [];
       for (const id of ['lines.river', 'checks.vega', 'lattice.master', 'waves.silk', 'body.planet', 'dots.inflate', 'rooms.room', 'pole.garden']) {
-        const read = W => { put(W); T.still(id, .5); reader.now(); return { g: reader.grid.slice(), white: reader.white, tv: reader.tv, th: reader.th }; };
-        const a = read(null), b = read(mirror), c = read(tint);
+        // The sound's own program for what this frame draws, built before it's read: until then it reads the world's own colour program, which is close and for this colour wrong way up. Which one it got was a race (grid .989 to .992 against .99, run to run).
+        const read = async W => { put(W); T.still(id, .5); if (W && R.wp && window.COVER_LATE !== true) { await R.wp.coverProgram(R.wp.variantOf(R.frame)); T.still(id, .5); } reader.now(); return { g: reader.grid.slice(), white: reader.white, tv: reader.tv, th: reader.th }; };
+        const a = await read(null), b = await read(mirror), c = await read(tint);
         const agree = (x, y) => { let n = 0; for (let i = 0; i < x.g.length; i++) if ((x.g[i] > 127) === (y.g[i] > 127)) n++; return +(n / x.g.length).toFixed(3); };
         grids.push({ id, mirror: agree(a, b), numbers: agree(a, c), white: [+a.white.toFixed(3), +b.white.toFixed(3), +c.white.toFixed(3)], tv: [+a.tv.toFixed(2), +b.tv.toFixed(2)], th: [+a.th.toFixed(2), +b.th.toFixed(2)] });
       }

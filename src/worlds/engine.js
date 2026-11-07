@@ -301,9 +301,11 @@ function quietForeign(S, share) {
 }
 
 function writeWorld(st, score, R, edits) {
-  const h = score.handover, ch = h?.change && handoverOn(h, st.t) ? h.change : null;
+  // A change whose flight is still waiting on its plan is at its start: the world it's leaving, or the film. It was the world it's going to, at full ink, for the frames until the plan came (about 0.4 s), and then black and white: a pop every time anyone went into a mode.
+  const h = score.handover, live = !!h?.change && (handoverOn(h, st.t) || !h.plan), waiting = live && !h.plan, ch = live ? h.change : null;
   // From the film there's nothing to drain first: the inks start arriving straight away, over the whole flight, not after half of it in black and white.
-  const x = st.plan ? st.x : 0, fresh = !!ch && !ch.from, leaving = !!ch && !fresh && x < 0.5, W = ch ? (leaving ? ch.from : ch.to) : score.world;
+  // Until then a world's plain program would draw its inks in full (only a flight's program brings them in), so from the film it's the film.
+  const x = !waiting && st.plan ? st.x : 0, fresh = !!ch && !ch.from, leaving = !!ch && !fresh && x < 0.5, W = ch ? (waiting && fresh ? null : leaving ? ch.from : ch.to) : score.world;
   if (!W) { if (R.wp) { R.wp = null; R.world = null; } return; }
   const wp = R.worldPrograms?.get(W);
   if (!wp?.ready || wp.failed) { R.wp = null; R.world = null; return; }
@@ -321,7 +323,7 @@ function writeWorld(st, score, R, edits) {
     quietForeign(A, leaving ? out : 0); quietForeign(B, leaving ? 0 : inn);
   } else { E[2] = 1; E[6] = 0; }
   E[3] = STAGGER;
-  E[7] = st.x;
+  E[7] = waiting ? 0 : st.x;
   E[14] = geo;
   const ink = W.ink;
   if (ink) {

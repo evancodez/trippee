@@ -32,7 +32,7 @@ const own = {
   // Separate: the plates drift apart over the stay, and slam home on its last hit. It's all in the colour stage (src/worlds/flyer.js): nothing here moves the sheet.
   separate: { write() {} },
   // Lead: one cone takes the frame and passes it on.
-  lead: { write(out, { t, m }) {
+  'flyer.lead': { write(out, { t, m }) {
     const s = surged(evalTrack(clockOf(m), t)), a = ampAt(m, t) * (m.amp ?? 0.5), on = POLES.filter(p => out[p[2]] > 0);
     on.forEach((p, i) => { out[p[2]] *= Math.exp(a * Math.cos(Math.PI * (s / 2 - (2 * i) / on.length))); });
   } },

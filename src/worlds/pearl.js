@@ -68,9 +68,10 @@ export default {
     const [fy, ang] = song ? focusAt(song, t) : focusAt({}, t), v = spot[2], mel = s ? s.melSlow : 0;
     // The strong beats open it: on each one, for a moment, more of the frame is sharp. And a big arrival is a pull (song.js).
     const pull = song ? voiceAt(song.pull, t) : 0, melt = Math.max(pull, 0), snap = Math.max(-pull, 0);
-    const fw = 0.1 + 0.55 * e * e + 0.05 * lung + 0.13 * pulse + 1.9 * snap;
+    // Bolder than it was (the palest, softest look in the app): a wider band in focus even when it's quiet, and less melt per unit away from it, so more of the frame has an edge.
+    const fw = 0.4 + 0.7 * e * e + 0.05 * lung + 0.13 * pulse + 1.9 * snap;
     set(24, 0.3 * Math.sin(t * 0.09), fy + 0.12 * mel, Math.cos(ang), Math.sin(ang));
-    set(25, fw, (0.6 - 0.32 * e) * (1 + 1.1 * melt) * (1 - 0.8 * snap), (0.008 + 0.05 * v * (1 - e)) * (1 - snap) + 0.1 * melt, 40 + 130 * (song ? Math.min(1, voiceAt(song.width, t) * 2) : 0.2));
+    set(25, fw, (0.24 - 0.13 * e) * (1 + 1.1 * melt) * (1 - 0.8 * snap), (0.008 + 0.05 * v * (1 - e)) * (1 - snap) + 0.1 * melt, 40 + 130 * (song ? Math.min(1, voiceAt(song.width, t) * 2) : 0.2));
     // The film: down tilts with the harmony's pull, and the pool goes by on the music's own time.
     const lean = 0.8 * tens + 0.5 * Math.sin(t * 0.05), dr = song ? voiceAt(song.drain, t) : t * 40;
     set(26, Math.sin(lean), -Math.cos(lean), dr * 0.0042, t * (0.5 + e));
@@ -79,11 +80,15 @@ export default {
     let thin = 820 - 1300 * Math.pow(e, 1.2) + 480 * Math.sin(dr / 480), whoa = 0, bump = 620;
     const w = song?.whoa;
     if (w) { const q = smooth((t - (w.t - 11)) / 9) * (1 - smooth((t - w.t) / 7)); whoa = q; thin -= 520 * q; }
-    set(28, thin, bump, 0.12 + 0.08 * (1 - e) + 0.05 * lung, 0.03 * lung + 0.02 * tone);
+    set(28, thin, bump, 0.07 + 0.07 * (1 - e) + 0.04 * lung, 0.02 * lung + 0.015 * tone);      // bloom and the haze over all of it, both by screen: less of each when it's loud, so a sheen's deep side stays deep
     const sh = sheenAt(song, t), dx = Math.cos(sh.dir - 1.57), dy = Math.sin(sh.dir - 1.57), width = 1.3;
     set(29, -2.2 + sh.x * (4.4 + width), width, dx, dy);
     set(30, 0.11 + 0.1 * lung, 0.66 + 0.1 * (1 - e), 0.018 + 0.012 * lung, 0);
-    set(31, kind === 'breath' ? 0.16 : 0.2, 80 + 190 * e, 0, 0);
+    // z: how much deeper the dark side of every line is than its sheen says. A little when it's quiet, so it stays pearly, and a lot on a loud passage, where the edges want to be bold.
+    // By how loud the last few seconds have been, not this moment: energy rises and falls with each beat, and the whole frame's dark side going with it was a whole-frame flash (MGMT 10.5, 13, 18.8 s).
+    let eS = 0.45;
+    if (s) { eS = 0; for (let j = 0; j < 8; j++) eS += clamp01(ctx.at(ctx.c - 0.5 * j)?.energy ?? 0.45) / 8; }
+    set(31, kind === 'breath' ? 0.16 : 0.2, 80 + 190 * e, 0.22 + 0.45 * eS * eS, 0);
     // The pearls: the voice, and its echoes along the same path, each a beat or two behind.
     for (let i = 0; i < ORBS; i++) {
       voiceSpot(song, t - i * ORB_LAG, spot);
@@ -99,6 +104,9 @@ export default {
     if (s) { const k = 1 + 0.1 * lung + 0.06 * pulse; for (const S of [A, B]) for (const n of ['blobs.r1', 'blobs.r2', 'blobs.r3', 'p1.q', 'p2.q']) if (S[OFF['field.kind']] === 4 && S[OFF['field.a']] < 0.5 && S[OFF[n]] > 0) S[OFF[n]] *= k; }
   },
   camera: { pool: { quiet: ['float', 'sink', 'tideway', 'veil'], mid: ['float', 'tideway', 'sink', 'plate', 'wander'], loud: ['rise', 'sink', 'sweep', 'dolly'] } },      // src/score/camera.js. Weightless: it hardly turns, and it goes up and down as much as along.
+  // src/score/woah.js casts these, by the music: pearls, echo, ghost, fringe, and the softer folds. Never on a surface, or one already folded.
+  woah: { tricks: ['pearls', 'echo', 'ghost', 'fringe', 'forever', 'fan', 'slit'], fond: { pearls: 1.2, echo: 1, ghost: 0.8, fringe: 0.8 }, gap: [28, 46], least: 6,
+    fits: (id, G, S) => S[OFF['surf.kind']] < 0.5 && S[OFF['fold.n']] < 2 && ((id !== 'echo' && id !== 'ghost') || (G.pattern.g.fams?.length ?? 1) === 1) },
   pace: { bars: [8, 7, 6, 5, 4], morph: [4.5, 6.5], most: 15 },
   motion: { len: [12, 20], morph: [6, 9], xforms: { rack, drain, breath }, xform: 'rack', keep: ['rack', 'drain', 'breath'], front: true },
   hear: { pulse: 0.8, melody: 1.2, tone: 0.8, harmony: 0.7, lung: 1 },

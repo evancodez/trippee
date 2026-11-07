@@ -2,7 +2,7 @@
 // A whole way of seeing: colour is time since an edge passed, through film stock, in the light of one low sun. A song is one evening, its voice is the sun, its reverb is how long the light lingers, and the last few seconds of it are written along every line.
 import { OFF, FRAME, RIPPLES } from '../pattern/layout.js';
 import { pool } from './dusk/patterns.js';
-import { FIELD } from './dusk/field.js';
+import { FIELD, PHASE } from './dusk/field.js';
 import { DEFS, WARP, COLOR } from './dusk/light.js';
 import { writeStock, lampsAt, gammaAt, sunAt, chips } from './dusk/stocks.js';
 import { hearDusk, whoaOf, read, holdAt, eclipseAt } from './dusk/song.js';
@@ -39,7 +39,7 @@ function waterOf(G, t) {
 export default {
   id: 'dusk', name: 'Dusk', chips, pool, borrow: [],
   needs: ['trem', 'air', 'sustain'],
-  glsl: { defs: DEFS, field: FIELD, warp: WARP, color: COLOR },
+  glsl: { defs: DEFS, field: FIELD, phase: PHASE, warp: WARP, color: COLOR },
   camera: false,
   fuller: S => S[OFF['field.kind']] === 4 && S[OFF['field.a']] === 12,
   tables: (A, M) => hearDusk(A, M),
@@ -154,6 +154,9 @@ export default {
       }
     }
   },
+  // src/score/woah.js casts these, by the music. Slow ones: the slit's scan, echo, fringe, a calm rewind, the pearls and the screen. Nothing that throws the land about: a land's field isn't continuous, and in a mirror its crests come out as lace, so it has only the time tricks. Echo is quiet in this light (MGMT 125 and 207 s barely show it), so it's not a favourite.
+  woah: { tricks: ['slit', 'echo', 'fringe', 'pearls', 'screen', 'ghost', 'rewind'], rewind: true, fond: { slit: 1.1, ghost: 0.8, fringe: 1, rewind: 1, echo: 0 }, gap: [30, 48], least: 6,
+    fits: (id, G) => !((G.pattern.group === 'land' || G.pattern.lake != null || G.pattern.g?.rot) && (id === 'pearls' || id === 'screen' || id === 'fan' || id === 'forever' || id === 'limit' || id === 'crumple')) },
   pace: { bars: [8, 7, 5, 4, 3], morph: [6, 9], most: 17 },
   motion: { len: [14, 24], morph: [7, 11], xforms: KINDS, xform: 'line', keep: ['line', 'fall', 'flare', 'settle'], front: true },
   hear: { pulse: 0.6, melody: 0.9, tone: 0.5, harmony: 0.6, lung: 0.8, threshold: 0, depth: 0.4 },
