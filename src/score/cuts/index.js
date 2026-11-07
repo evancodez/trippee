@@ -8,7 +8,7 @@ const CUTS = {
 // Another cut of a song, instead of the one above, with ?cut=<name> in the address.
 const OTHER = {
   restless: { b348c58fdc8d0af2d7ecbe0b9d646db9: () => import('./mgmt-restless.js') },          // MGMT, the restless end
-  time: { b348c58fdc8d0af2d7ecbe0b9d646db9: () => import('./mgmt-time.js') },                  // MGMT, with every trick in moves/time.js where it suits. A demo, not a film
+  time: { b348c58fdc8d0af2d7ecbe0b9d646db9: () => import('./mgmt-time.js'), f9ee57f6abe35539eae4fdecc1fdd65f: () => import('./ppp-time.js') },      // MGMT and PPP, with the tricks in moves/time.js. Demos, not films
 };
 const asked = new URLSearchParams(globalThis.location?.search ?? '').get('cut');
 const pick = hash => OTHER[asked]?.[hash] ?? CUTS[hash];
