@@ -289,7 +289,7 @@ function writeHear(st, score, edits, tReal, hx) {
   let amt = h * (edits?.reactAmt ?? 1) * hx;
   if (score.songFades != null) amt *= 1 - smoother((st.t - score.songFades) / 3);
   if (!(amt > 0)) return;
-  const W = score.world?.hear, calm = G.calm ? lerp(1, Math.max(G.calm, 0.6), smoother((st.t - G.t0) / 1.5) * smoother((G.t1 - st.t) / 1.5)) : 1;
+  const W = score.world?.hear, calm = G.calm ? lerp(1, Math.max(G.calm, 0.6), smoother((st.t - (G.calmWin?.[0] ?? G.t0)) / 1.5) * smoother(((G.calmWin?.[1] ?? G.t1) - st.t) / 1.5)) : 1;
   const lane = score.pulseLane ? 0.5 + 0.5 * score.pulseLane(st.t) : 1;
   const mP = (edits?.reactPulse ?? 1) * amt * (W?.pulse ?? 1) * calm * lane, mM = (edits?.reactMelody ?? 1) * amt * (W?.melody ?? 1), mT = (edits?.reactTone ?? 1) * amt * (W?.tone ?? 1);
   const mH = (0.75 * (edits?.reactPulse ?? 1) + 0.25 * (edits?.reactMelody ?? 1)) * amt * calm * (W?.pulse ?? 1);
