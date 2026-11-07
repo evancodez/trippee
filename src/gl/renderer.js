@@ -92,8 +92,8 @@ export class Renderer {
     if (this._soonAsked) return;
     this._soonAsked = true;
     const go = () => { if (!this._soonAsked) return; this._soonAsked = false; if (!this._pending && !this._warming) this._next(); };
-    requestAnimationFrame(() => setTimeout(go));
-    setTimeout(go, 100);      // a hidden page has no frames
+    setTimeout(() => requestAnimationFrame(() => setTimeout(go)), 250);      // a moment later: what asked is usually followed by more long work (a rehearsal starting), and a build beginning on top of that was one long frame
+    setTimeout(go, 400);      // a hidden page has no frames
   }
   // These programs, built and warmed behind the picture. A film says what it's going to draw with while it rehearses, so that nothing's first asked for on screen.
   whenBuilt(list) {

@@ -123,6 +123,12 @@ export class Governor {
         this.holdUntil = now + RISE * 1000;
       }
     }
+    // Given up, it goes back to full size the way it does after a hold: a tier at a time. All at once, from half size, a fine sheet sharpened in one frame, which is a pop
+    if (this.gaveUp && this.R.drawScale < TIERS[0] && performance.now() >= (this.holdUntil ?? 0)) {
+      const i = TIERS.findIndex(x => x <= this.R.drawScale + 1e-6);
+      this.R.drawScale = TIERS[Math.max(i - 1, 0)];
+      this.holdUntil = performance.now() + RISE * 1000;
+    }
     if (this.gaveUp || performance.now() < this.quietUntil) return;
     if (dt <= 0 || dt > 0.25) { this._reset(); return; }  // a hidden tab, a stall: says nothing about pixels
     if (this.settle > 0) { this.settle -= dt; return; }
@@ -162,7 +168,11 @@ export class Governor {
       return;
     }
     // At the bottom and still slow. Did all this help at all?
-    if (this.fps < s.fpsAtFull + 3) { this.gaveUp = true; this._set(0, 'gave up: not the pixels'); }
+    if (this.fps < s.fpsAtFull + 3) {
+      this.gaveUp = true; s.tier = 0; this.holdUntil = performance.now() + RISE * 1000;
+      this.history.push({ at: +(performance.now() / 1000).toFixed(1), v: this.v, tier: 0, scale: TIERS[0], fps: +this.fps.toFixed(1), why: 'gave up: not the pixels' });
+      this._reset();
+    }
     else this._reset();
   }
 }
