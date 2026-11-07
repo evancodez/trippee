@@ -15,6 +15,7 @@ import { xformOf } from './xform/index.js';
 import { songSheet, openFamilies, melOf } from './song-sheet.js';
 import { handSheet } from './hand-sheet.js';
 import { hearSheet, hearStart } from './hear.js';
+import { wearOne } from './camera.js';
 
 export { base, fillSlot, arcU, boldRange, fineness, thetaOf, noHorizon } from './slot.js';
 
@@ -124,6 +125,7 @@ export function frame(score, t, R, edits) {
 
   // Which transformation is under way, if any: from `from` (at its own time) into `to`, over x from 0 to 1.
   let m = morphAt(score, G, N, t), shown = G, xf = null;
+  if (score.camera) { wearOne(score, G); if (m) wearOne(score, m.to); }      // a gesture made after the film was, by a pick
   if (m) {
     const { from, to, tf, t0, D, phiFrom } = m;
     const stop = Math.min(D * 0.4, 3.5), dtf = tf - t;

@@ -26,6 +26,7 @@ export const setAllFlags = on => { for (const id in flags) flags[id] = !!on; };
 // The timing is on: a change crosses at speed on the song's big moment, not coming to rest on it. ?peak=0 turns it off. ?direct=1 is the sheet too.
 export const directing = { peak: true, sheet: false };
 directing.pace = new URLSearchParams(globalThis.location?.search ?? '').get('pace') !== '0';      // src/score/pace.js: how often a film changes, and with what. On unless ?pace=0
+directing.cam = new URLSearchParams(globalThis.location?.search ?? '').get('cam') !== '0';      // src/score/camera.js: a camera that travels. On unless ?cam=0
 {
   const q = new URLSearchParams(globalThis.location?.search ?? ''), all = q.get('direct') === '1';
   directing.peak = q.get('peak') !== '0';

@@ -11,6 +11,7 @@
 import { rng, clamp, lerp, smoother, evalTrack } from './curves.js';
 import { buildReact, surgedBeats, makeWalk } from './react.js';
 import { buildHear, hearRates, flowLagAt, HEAR_FLOOR } from './hear.js';
+import { wearCamera } from './camera.js';
 import { buildTime } from './time.js';
 import { direct } from './direct.js';
 import { applyCut } from './cut.js';
@@ -823,6 +824,7 @@ export function compose(A, seed = 1, opts = {}) {
   if (hearing.on && !opts.cut && !W) hearRates(film, film.hear);      // a hand cut's flow is as it was cut
   if (walk && ears.morph) film.walkMorph = (x, t, D) => x + WALK_MORPH * smoother(x / 0.2) * smoother((1 - x) / 0.2) * walk(t) / D;
   film.ears = ears;
+  if (directing.cam && W?.camera !== false) wearCamera(film, A, react.M, ((seed | 0) * 7919 + songHash) >>> 0);      // src/score/camera.js. ?cam=0 is the film without it
   // Hearing 2: the tune lifts and sinks the whole sheet, one way everywhere, so it goes across the lines. Out from the middle pushes opposite sides opposite ways, and that reads as a swell, not a note going up.
   for (const G of film.gestures) G.melHeard = (f => (Math.abs(f.x || 0) > Math.abs(f.y || 0) * 2 ? 2 : 1))((G.pattern.g.fams || [])[0] || {});
   return film;

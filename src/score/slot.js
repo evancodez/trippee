@@ -25,7 +25,7 @@ export function boldRange(G) {
   const horizon = (G.arcEnd ?? G.t1) - G.t0;
   for (let i = 0; i <= n; i++) {
     G.freezeU = i / n;
-    fillSlot(limR, G, G.t0 + horizon * i / n, G.pattern, { phi: 0 });
+    fillSlot(limR, G, G.t0 + horizon * i / n, G.pattern, { phi: 0, noCam: true });
     ks.push(fineness(limR));
   }
   G.freezeU = null;
@@ -97,6 +97,7 @@ export function fillSlot(out, G, t, pat, opts = {}) {
     out[OFF.scale] *= Math.exp(c.K * left - c.pre);
     if (c.w) out[OFF.rot] += c.w * c.tau * left;
   }
+  if (G.cam && !opts.noCam) G.cam(out, t, G);      // src/score/camera.js. In front of everything the gesture does for itself, behind a knob held by hand
   if (G.over) for (const p in G.over) out[pathOff(p)] = G.over[p];
 }
 
