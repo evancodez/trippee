@@ -145,7 +145,7 @@ export default async ({ page, log, sleep }) => {
       app.onFrame.push(() => { if (!window.__sk) { prev = null; return; } const f = __grab(); if (prev) __sk.push(__diff(prev, f)); prev = f; });
     });
     for (const rule of ['old', 'now']) for (const what of ['countdown', 'iris']) {
-      await page.eval(`app.song.rebuild({ seed: app.song.score.seed })`);
+      await page.eval(`app.song.rebuild({ seed: app.song.score.seed }), true`);      // not the film itself as the answer: sent back by value it's the whole film with its camera's tables, and the page's renderer died building it
       await sleep(8000);
       if (rule === 'old') await page.eval('app.stage._clearRunway = window.__oldRunway'); else await page.eval('delete app.stage._clearRunway');
       const info = await page.eval(what => { const g = app.song.score.gestures, H = what === 'iris' ? g.find(G => G.xform?.id === 'iris') : g.filter(G => G.hero === 'countdown').at(-1); return H ? { t0: H.t0, due: what === 'iris' ? H.t1 - H.morph + 2 : H.t0 + 2, id: H.pattern.id, how: what } : null; }, what);
