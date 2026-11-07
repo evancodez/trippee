@@ -31,9 +31,10 @@ const ampAt = (c, m, up = 4) => (c.hand ? smoother((c.t - c.begin) / up) : (m._a
 //   map     sweep: a rolling shutter across the frame. target: the middle is now and the rim is the past. wave: a wave of delay sweeps across. bands + rings cut it into pieces that fall out of step
 //   D       seconds of delay, end to end. A lane. A big moment takes it to nothing, so everything falls into register on the hit, and it winds up again after
 //   turn    radians the sheet turns on each strong beat, surging. spin: radians a second on top. push: natural logs it pushes and comes back on each one
+const flat = slot => slot[OFF['surf.kind']] < 0.5;       // turning the frame about on a floor would show its horizon
 const slit = {
   id: 'slit',
-  needs() { return true; },
+  needs: flat,
   cue: cueTime,
   write(out, c) {
     const m = c.m, s = surged(evalTrack(clockOf(m), c.t));
@@ -56,6 +57,7 @@ function sheetSlit(want, m, c, amp) {
   want.cx = m.cx ?? 0; want.cy = (m.cy ?? 0) + (want.map === 'target' ? 0.25 * mel : 0);
   if (m.wave) { want.wave = m.wave; want.wavePh = (m.waveV ?? 1.2) * t; }
   if (m.reach) want.reach = m.reach;
+  if (m.arms) { want.arms = m.arms; want.wind = m.wind ?? 1; want.wavePh = (m.waveV ?? 0.15) * t; }
 }
 
 // ---------------------------------------------------------------- Ghost
@@ -122,11 +124,11 @@ function sheetGhost(want, m, c, s) {
   if (c.fade <= 0) return;
   const { k, y } = transit(s, m.width ?? WHOLE);
   if (y <= 0 || y >= 1) return;       // in register: it isn't there, and it costs nothing
-  const poses = m.poses ?? POSES, pose = poses[((k % poses.length) + poses.length) % poses.length], side = k % 2 ? -1 : 1, g = want.ghost = { capsules: handCapsules(pose) };
+  const poses = m.poses ?? POSES, pose0 = poses[((k % poses.length) + poses.length) % poses.length], { mel } = heard(c.score, c.tReal), pose = { ...pose0, y: pose0.y + 0.16 * mel }, side = k % 2 ? -1 : 1, g = want.ghost = { capsules: handCapsules(pose) };      // the tune lifts it
   // A big moment gets both hands, right up to the frame.
   if (heardAt(c, Math.round(k), m) > 0.45) { g.capsules = [...handCapsules({ x: -0.9, y: -0.12, turn: 0.22, size: 2.7, spread: 1.4 }), ...handCapsules({ x: 0.9, y: -0.12, turn: -0.22, size: 2.7, spread: 1.4, flip: -1 })]; }
   // Turning: inside the figure the sheet swings away and comes back, so any sheet at all shows it, and at both ends it's exactly as it was. Sliding: what's inside moves one whole cycle.
-  if (m.how === 'slide') { g.slide = y * (m.dir ?? 1) * (m.cycles ?? 1); g.shares = m.shares ?? firstOpen(c.st.A); }
+  if (m.how === 'slide' || c.st.A[OFF['surf.kind']] > 0.5) { g.slide = y * (m.dir ?? 1) * (m.cycles ?? 1); g.shares = m.shares ?? firstOpen(c.st.A); }
   else { const w = Math.sin(Math.PI * y); g.turn = (m.turn ?? 0.7) * side * w; g.zoom = (m.zoom ?? 0.25) * w; g.about = g.capsules.length > 20 ? [0, 0] : [pose.x, pose.y]; }
 }
 
@@ -242,7 +244,7 @@ const snakes = {
   sheet(want, m, c) {
     const a = ampAt(c, m, 5) * c.fade, pair = openPair(c.st.A);
     if (a <= 0.001 || !pair || c.st.kind) return;
-    want.snakes = { amt: a, dark: m.dark, light: m.light, way: wayAt(m, c), along: m.along ?? pair[1], across: m.across ?? pair[0] };
+    want.snakes = { amt: a, dark: m.dark, light: (m.light ?? 0.5) + 0.12 * heard(c.score, c.tReal).mel, way: wayAt(m, c), along: m.along ?? pair[1], across: m.across ?? pair[0] };      // the tune lifts the light tone
   },
 };
 
@@ -263,7 +265,9 @@ const ouchi = {
     if (c.st.kind) return;
     const s = beatsAt(c, m), turn = ouchiTurn(s, m.on ?? 8, m.off ?? 4, m.width ?? 1.6), q = turn / (Math.PI / 2), near = Math.abs(q - 2 * Math.round(q / 2));
     if (near < 1e-3) return;      // a whole half turn: it isn't there
-    want.ghost = { capsules: [[m.cx ?? 0, m.cy ?? 0, m.cx ?? 0, m.cy ?? 0, m.R ?? 0.62]], turn: turn, zoom: 0, about: [m.cx ?? 0, m.cy ?? 0] };
+    // The disc goes with the tune. What's in it doesn't go anywhere: it turned about the sheet's own middle, so only its edge moves, and that's a disc sliding over something it isn't sliding over
+    const { mel } = heard(c.score, c.tReal), cy = 0.22 * mel;
+    want.ghost = { capsules: [[0, cy, 0, cy, m.R ?? 0.62]], turn, zoom: 0, about: [0, 0] };
   },
 };
 
@@ -272,13 +276,13 @@ const ouchi = {
 //   { id: 'echo', lag: .35, turn0: .2, turn: .4, beats: 'strong', amp: [[t, x], ...] }   turn0: the small turn. turn: how far the sheet surges on each strong beat. amp: the echo comes up from nothing by thinning, never fading.
 const echo = {
   id: 'echo',
-  needs() { return true; },
+  needs: flat,
   cue: cueTime,
   write(out, c) { writeEchoMove(out, c.m, surged(evalTrack(clockOf(c.m), c.t))); },
   sheet(want, m, c) {
     const a = ampAt(c, m, 5) * c.fade;
     if (a <= 0.001) return;
-    want.echo = { lag: m.lag ?? 0.35, turn: (m.turn0 ?? 0.2) * a, amt: a >= 1 ? 1 : a };
+    want.echo = { lag: m.lag ?? 0.35, turn: (m.turn0 ?? 0.2) * a * (1 + 0.35 * heard(c.score, c.tReal).mel), amt: a >= 1 ? 1 : a };     // the tune opens and closes the rosette
   },
 };
 function writeEchoMove(out, m, s) { out[OFF.rot] += (m.turn ?? 0.4) * s; }

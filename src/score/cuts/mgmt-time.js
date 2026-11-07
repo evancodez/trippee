@@ -6,7 +6,7 @@ export default {
     { at: 0, id: 'time.fringe',                                                          // the slow intro: bands, and a face comes up in them, singing when the voice comes in
       moves: [{ id: 'fringe', beats: 'strong', lead: 2, coast: 2, amp: [[6, 0], [22, 1], [40, 1], [46, 0]] }], gear: [[0, 32]] },
     { at: 47.51, from: 39.83, via: 'shock', id: 'time.target',                           // the rim is the past. It winds up to the whip at 64.31, which puts everything back in register, and it melts again
-      moves: [{ id: 'slit', map: 'target', D: [[47.51, 0], [62, 3.2], [70, 2.4], [72, 3.2]], turn: 0.55, push: 0.22, beats: 'strong' }], gear: [[47.51, 16]] },
+      moves: [{ id: 'slit', map: 'target', D: [[47.51, 0], [62, 3.2], [64.31, 0.3], [67, 3.2]], turn: 0.55, push: 0.22, beats: 'strong' }], gear: [[47.51, 16]] },
     { at: 77.75, from: 70.07, via: 'fall', a: 1, id: 'time.waterfall',                   // the chorus: dead steady, and the rest at 92.5 stops it dead. What moves then is in your eye
       moves: [{ id: 'waterfall', times: { stop: 92.5, go: 96.3 } }] },
     { at: 98.87, from: 96.3, via: 'plain', id: 'time.ghost', moves: [{ id: 'ghost', beats: 'strong', turn: 0.8 }] },   // a hand on each strong beat, and at no other time

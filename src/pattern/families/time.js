@@ -25,8 +25,6 @@ const backAndForth = t => {
 export default [
   // A rolling shutter. A board of spokes and rings turns, and each row of the frame sees it a little later than the one above, as a phone's camera sees a propeller.
   slit('shutter', 'Rolling Shutter', { fams: [logring(10 / (2 * Math.PI)), spokes(12)] }, { map: 'sweep', D: 1.6, turn: 0.5, spin: 0.12, ang: Math.PI / 2 }),
-  // A plain board with the same shutter, which is the most surprising thing to see bend.
-  slit('flag', 'Time Flag', { fams: [plane(2.4, 0), plane(2.4, 90)] }, { map: 'sweep', D: 1.4, turn: 0.45, spin: 0.2, ang: 0.5 }),
   // The middle of the frame is now and the rim is a few seconds ago: every beat leaves the middle and runs out.
   slit('target', 'Now in the Middle', { fams: [plane(2.2, 45), plane(2.2, -45)] }, { map: 'target', D: 2.4, turn: 0.55, push: 0.25 }),
   // The same in rings, each its own moment. They fall out of step and a big moment puts them back.
@@ -35,6 +33,10 @@ export default [
   slit('venetian', 'Late Bands', { fams: [spokes(10), logring(1.6)] }, { map: 'sweep', D: 2.4, bands: 9, turn: 0.6, spin: 0.1, ang: Math.PI / 2 }),
   // A wave of delay crosses the sheet.
   slit('wave', 'Delay Wave', { fams: [plane(2.4, 30), plane(2.4, 120)] }, { map: 'wave', D: 1.6, wave: 3, waveV: 1.4, turn: 0.4, spin: 0.15, ang: 0.4 }),
+
+  // A spiral of time, with a seam where the past meets the future; and cells, two moments of the sheet interleaved.
+  slit('spiral', 'Time Spiral', { fams: [plane(2.2, 0), plane(2.2, 90)] }, { map: 'spiral', D: 3, arms: 1, wind: 0.9, turn: 0.5, push: 0.2 }),
+  slit('cells', 'Two Moments', { fams: [plane(3.2, 0), plane(3.2, 90)] }, { map: 'cells', D: 2, wave: 1.1, turn: 0.55, spin: 0.1, ang: 0.3 }),
 
   // A hand that exists only while it moves. At rest there's only the sheet.
   item('ghost', 'Ghost Hand', { fams: [plane(5.5, 0)] }, { time: { id: 'ghost' } }),

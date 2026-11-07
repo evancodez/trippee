@@ -3,9 +3,9 @@
 //
 // A slit-scan with no frames kept: a frame is a pure function of t, so "the picture a moment ago" is only some numbers. The table holds how the camera and each family's phase differ at 64 moments, from what they are
 // now. Each pixel picks its own moment and reads the table, so it's looking at the sheet as it was then, or as it's going to be. The lines stay exact: it all goes in before the gradient.
-//   uT[0]  x: the map (0 off, 1 sweep, 2 target, 3 wave), y: how many bands it's cut into (0 none), z: the wave's phase, w: unused
+//   uT[0]  x: the map (0 off, 1 sweep, 2 target, 3 wave, 4 spiral, 5 cells), y: how many bands it's cut into (0 none), z: the wave's phase, w: unused
 //   uT[1]  x, y: its centre; z, w: its direction
-//   uT[2]  x: its reach, in picture units; y: the wave's frequency
+//   uT[2]  x: its reach, in picture units; y: the wave's or the cells' frequency; z: the cells' turn
 //   uT[3]  x: Ghost: how far what's inside the figure has slid, in cycles; y: how many capsules; z: how far the sheet inside it has turned; w: how far it's zoomed. uT[9] x, y: about where
 //   uT[4]  how much of that slide each family takes
 //   uT[5]  x: Fringe: cycles of phase at height 1; y: how many bumps; z: the figure's turn; w: its size
@@ -43,7 +43,9 @@ vec2 timeWarp(vec2 p0,vec2 p){
   vec4 m=uT[1]; vec2 d=p0-m.xy; float e;
   if(a.x<1.5) e=.5+.5*dot(d,m.zw)/uT[2].x;
   else if(a.x<2.5) e=length(d)/uT[2].x;
-  else e=.5+.5*sin(dot(d,m.zw)*uT[2].y-a.z);
+  else if(a.x<3.5) e=.5+.5*sin(dot(d,m.zw)*uT[2].y-a.z);
+  else if(a.x<4.5){ e=fract(atan(d.y,d.x)/TAU*m.w+m.z*log(length(d)+.001)-a.z); if(fwidth(e)>.5) gBreak=true; }      // a spiral of time, with a seam where the past meets the future
+  else { vec2 q=floor(rot(uT[2].z)*d*uT[2].y); e=mod(q.x+q.y,2.); if(dFdx(e)!=0.||dFdy(e)!=0.) gBreak=true; }        // cells, two moments interleaved
   if(a.y>0.){ float q=floor(e*a.y); if(dFdx(q)!=0.||dFdy(q)!=0.) gBreak=true; e=(q+.5)/a.y; }       // one pixel across a cut isn't a real gradient
   e=clamp(e,0.,1.)*${(T_N - 1).toFixed(1)};
   int k=int(min(e,${(T_N - 2).toFixed(1)})); float f=e-float(k);

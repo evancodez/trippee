@@ -1,7 +1,7 @@
 // What a frame's time program is told. frame() calls this once a frame: a gesture wearing nothing from moves/time.js costs one look at G.moves and R.timeOn stays false.
 // The table is the sheet at 64 other moments, as a difference from now: fillSlot and the song's camera at each, so it's as pure as the rest of the frame, and no frame is kept anywhere.
 //   A move or a hand-picked pattern says what it wants through sheet(want, m, c), c being { t, tReal, st, score, edits, G, aspect }:
-//     want.map 'sweep' | 'target' | 'wave', want.bands, want.D (seconds of delay end to end, negative for the future), want.now (where along the map no delay is, 0..1), want.cx, cy, ang, reach, wave (frequency), wavePh
+//     want.map 'sweep' | 'target' | 'wave' | 'spiral' | 'cells', want.bands, want.D (seconds of delay end to end, negative for the future), want.now (where along the map no delay is, 0..1), want.cx, cy, ang, reach, wave (frequency), wavePh
 //     want.ghost { slide, shares, capsules: [[ax, ay, bx, by, r]] }, want.fringe { amp, shares, turn, size, bumps: [[x, y, rx, ry, a]] }, want.snakes { amt, dark, light, way, along, across }
 import { OFF, SLOT_FLOATS, FRAME, FAMILIES } from '../pattern/layout.js';
 import { fillSlot } from './slot.js';
@@ -13,8 +13,8 @@ import { T_N, T_B, T_C, T_R, T_G, T_ALL, CAPS, BUMPS } from '../gl/chunks/time.j
 const now = new Float32Array(SLOT_FLOATS), tmp = new Float32Array(SLOT_FLOATS), T = new Float32Array(T_ALL * 4);
 const Fh = new Float32Array(FRAME.hear * 4 + 40), Hm = FRAME.hear * 4;
 const PH = Array.from({ length: FAMILIES }, (_, i) => OFF[`f${i}.ph`]);
-const MAPS = { sweep: 1, target: 2, wave: 3 };
-const MOSTLY = { sweep: 0.5, target: 0, wave: 0.5 };
+const MAPS = { sweep: 1, target: 2, wave: 3, spiral: 4, cells: 5 };
+const MOSTLY = { sweep: 0.5, target: 0, wave: 0.5, spiral: 0, cells: 0.5 };
 
 // The song's camera as a similarity: what takes where it is now to where it was at that moment.
 function hearRel(out, st, score, edits, tk, tRealK, c0) {
@@ -70,7 +70,8 @@ export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
   if (want.map) {
     T[0] = MAPS[want.map]; T[1] = want.bands ?? 0; T[2] = want.wavePh ?? 0;
     const a = want.ang ?? 0, ca = Math.cos(a), sa = Math.sin(a);
-    T[4] = want.cx ?? 0; T[5] = want.cy ?? 0; T[6] = ca; T[7] = sa;
+    T[4] = want.cx ?? 0; T[5] = want.cy ?? 0; T[6] = want.map === 'spiral' ? want.wind ?? 1 : ca; T[7] = want.map === 'spiral' ? want.arms ?? 1 : sa;
+    if (want.map === 'cells') T[10] = a;
     T[8] = want.reach ?? (want.map === 'target' ? Math.hypot(aspect, 1) : Math.abs(aspect * ca) + Math.abs(sa)); T[9] = want.wave ?? 2;
     table(want, st, score, edits, tReal, phiOf, walkT, G, t);
   }
