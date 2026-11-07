@@ -10,6 +10,7 @@
 import { rng, clamp, lerp } from './curves.js';
 import { directing } from './flags.js';
 import { MOVES } from './moves/index.js';
+import { flightOver } from './moves/sky.js';      // space8
 import { rewindClock } from './moves/time.js';
 import { canShock } from './xform/shock.js';
 import { base, fineness } from './slot.js';
@@ -80,6 +81,20 @@ const WANT = { forever: 18, limit: 18, echo: 14, screen: 18, pearls: 16, fan: 18
 // Strata (src/score/moves/space.js) is only cast with ?strata=1, and then it's put on the stays that build into a landing: the panes part as far as the build has come and lock back into register on its hit.
 const STRATA = { lead: 2, tail: 0.25, morph: 4.2, top: 0.36, build: 0.25, fond: 1.6 };      // bars of plain sheet before it comes loose, bars of it whole after it locks, the least seconds the change after that takes, how far apart the panes go (frame units), the least build it goes on, and how much a take with it on wants it
 const MOST = 26;
+// ---- space8: the sheet as a world (src/score/moves/sky.js): the dome, the planet and the canyon. On unless ?sky=0, and then the film is exactly the film. They throw their own dice (skyRand below), so the
+// take's other choices fall as they did, and only where one of these wins, or the guard swaps one in, does anything change.
+const SKY_IDS = ['dome', 'planet', 'canyon'], SKY_SET = new Set([...SKY_IDS, 'skim']), SKY_FOND = 1.2;      // SKY_FOND: how much a take wants them, being new. Skim is in the library and a cut can call it, but it isn't cast: its ceiling is still too busy
+Object.assign(SET, { dome: 'space', planet: 'space', canyon: 'space', skim: 'space' });
+Object.assign(ANSWER, { dome: ['planet', 'ride'], planet: ['dome', 'hall'], canyon: ['skim', 'terraces'], skim: ['canyon', 'ride'] });
+Object.assign(SUIT, {
+  dome: f => 0.1 + 0.55 * f.build + 0.3 * f.loud + 0.2 * f.climb,      // its loop goes over on a hit, and something has to have built to it
+  planet: f => 0.15 + 0.45 * f.bridge + 0.3 * f.big + 0.3 * near(f.lv, 2, 2) + 0.15 * (1 - f.voiced),      // slow and big: somewhere the song opens out
+  canyon: f => 0.1 + 0.4 * f.loud + 0.35 * f.groove + 0.25 * f.climb,      // flying, with the steps on the beat
+  skim: f => 0.15 + 0.45 * f.climb + 0.35 * f.loud + 0.15 * f.groove,      // flying fast, low, into something
+});
+Object.assign(LEAST, { dome: 14, planet: 16, canyon: 12, skim: 12 });
+Object.assign(WANT, { dome: 22, planet: 24, canyon: 20, skim: 20 });
+// ---- end space8
 
 const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
 const forget = G => { if (G) { delete G.plan; delete G.planFor; delete G.planning; } };
@@ -103,10 +118,11 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const note = (t, what, why) => refused.push({ t: +(+t).toFixed(2), what, why });
 
   // ---------------------------------------------------------------- the take
-  const STR = directing.strata && !world ? [...STRETCHES, 'strata'] : STRETCHES;      // strata: with ?strata=1 only, so a film without it draws exactly as it did
+  const STR = [...(directing.strata && !world ? [...STRETCHES, 'strata'] : STRETCHES), ...(directing.sky && !world ? SKY_IDS : [])];      // strata: with ?strata=1 only, so a film without it draws exactly as it did. space8: the sheet as a world unless ?sky=0
+  const skyRand = rng(((seed | 0) * 7919 + songHash + 31) >>> 0), dice = id => (SKY_SET.has(id) ? skyRand : rand)();      // space8: the sheet as a world throws its own dice, so nobody else's fall differently
   const TRICKS = (world ? STR.filter(id => SET[id] !== 'space' && (id !== 'rewind' || wish?.rewind)) : [...STR, ...CHANGES]).filter(id => !directing.woahOnly || directing.woahOnly.includes(id)).filter(id => !wish || ((!wish.tricks || wish.tricks.includes(id) || id === 'rewind') && !wish.never?.includes(id)));      // modes lane: a mode's tricks
   const lean = { space: 0.2 + 1.5 * rand(), folds: 0.2 + 1.5 * rand(), time: 0.2 + 1.5 * rand() };
-  const fond = Object.fromEntries(TRICKS.map(id => [id, 2.4 * (rand() - 0.5) + (wish?.fond?.[id] ?? 0) + (id === 'strata' ? STRATA.fond : 0)]));      // modes lane: and what it's fond of
+  const fond = Object.fromEntries(TRICKS.map(id => [id, 2.4 * (dice(id) - 0.5) + (wish?.fond?.[id] ?? 0) + (id === 'strata' ? STRATA.fond : 0) + (SKY_SET.has(id) ? SKY_FOND : 0)]));      // space8: SKY_FOND      // modes lane: and what it's fond of
   const chill = P?.register === 'chill';
   const gaps = world ? (wish?.gap ?? GAP.world) : chill ? GAP.chill : GAP.energetic, pace = 0.75 + 0.35 * rand();      // this take is a little busier, or a little less so
 
@@ -364,12 +380,26 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const OWN = { slice: 'space.crystal', fringe: 'time.fringe', ouchi: 'time.ouchi' };
   // ...and those that can have one, if what's there can't take them. A Relay can't: a time trick reads the sheet's phases, and it's changing all of them.
   const OWN_IF = { ghost: ['time.ghostcheck', 'time.ghost'], snakes: ['time.snakes'], echo: ['time.echo'], slit: ['time.shutter', 'time.target', 'time.rings', 'time.venetian', 'time.wave', 'time.spiral', 'time.cells'], swell: ['space.swell'], terraces: ['space.terraces'], pleats: ['space.pleats'], ride: ['space.ride'], hallway: ['space.hall'], strata: ['space.strata'], crumple: ['folds.crumple', 'folds.crumplerings'], limit: ['folds.limit'] };
+  // ---- space8: the sheet as a world. The dome looks up into its sky with the most of it on the strongest landing inside it that a build goes into, or failing that on its strongest moment, if there's room
+  Object.assign(OWN_IF, { dome: ['space.dome'], planet: ['space.planet'], canyon: ['space.canyon'], skim: ['space.skim'] });
+  Object.assign(MAKE, {
+    dome: (G, from, to, s) => {
+      const lead = Math.min(7, 0.3 * (to - from)), coast = Math.min(7, 0.3 * (to - from)), half = clamp(2 * bar, 3, 4.5), lo = from + lead + half, hi = to - coast - half;
+      let at = hi > lo ? strataLanding(lo - Math.max(6.5, 4.5 * bar), hi)?.t : null;
+      if (at == null || at < lo) at = moments.filter(x => x.sign > 0 && x.t >= lo && x.t <= hi).sort((p, q) => q.s - p.s)[0]?.t ?? null;
+      return { id: 'dome', from, to, lead, coast, K: 0.4 + 0.06 * s, ...flightOver('dome', base(G.pattern)), ...(at != null ? { loop: { a: at - half, b: at + half } } : {}) };
+    },
+    planet: (G, from, to, s) => ({ id: 'planet', from, to, lead: Math.min(9, 0.32 * (to - from)), coast: Math.min(8, 0.3 * (to - from)), yaw: 1.2 * (skyRand() - 0.5), spin: (skyRand() < 0.5 ? -1 : 1) * (0.04 + 0.03 * skyRand()) }),
+    canyon: (G, from, to, s) => ({ id: 'canyon', from, to, lead: Math.min(7, 0.3 * (to - from)), coast: Math.min(7, 0.3 * (to - from)), ...flightOver('canyon', base(G.pattern)) }),
+    skim: (G, from, to, s) => ({ id: 'skim', from, to, lead: Math.min(7, 0.3 * (to - from)), coast: Math.min(7, 0.3 * (to - from)), ...flightOver('skim', base(G.pattern)) }),
+  });
+  // ---- end space8
   const ownFor = (id, G) => {
     if (world) return null;
     if (OWN[id]) return lib(OWN[id]);
     const list = OWN_IF[id];
     if (!list || directFits(id, G)) return null;
-    return lib(list[Math.floor(rand() * list.length)]);
+    return lib(list[Math.floor(dice(id) * list.length)]);      // space8: dice
   };
   // Can this sheet wear it as it stands?
   const directFits = (id, G) => {
@@ -381,6 +411,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if ((id === 'slit' || id === 'echo') && !flatSheet(s)) return false;
     // A tube or a hall goes off to a point, and whatever's fine to start with is grey by there
     if ((id === 'ride' || id === 'hallway') && (relayOf(G) || fineness(s) > 4.5)) return false;
+    if (SKY_SET.has(id) && fineness(s) > 4.5) return false;      // space8: a ball closes up to a point and a canyon goes a long way off, and what's fine to start with is grey by there
     // A sheet in space on a floor that's already gone off to its own horizon is hairlines to the horizon
     if (SET[id] === 'space' && id !== 'slice' && !flatSheet(s)) return false;
     if (mv.needs && !mv.needs(s, G)) return false;
@@ -474,7 +505,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if (recent.includes(id)) v -= 1.2;
     if (set === lastSet) v -= 0.5;
     v -= 0.03 * Math.abs(entry - mid);
-    return v + 0.35 * rand();
+    return v + 0.35 * dice(id);      // space8: dice, as fond
   };
 
   const place = (c, alts) => {

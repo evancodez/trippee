@@ -124,6 +124,8 @@ function bearingOf(G) {
     if (m.id === 'coin') { B.tip = 0.35; B.pan = Math.min(B.pan, 0.4); B.spin = 0.4; B.zoom = Math.min(B.zoom, 0.5); }
     if (m.id === 'slip') { B.tip = Math.min(B.tip, 0.7); B.pan = Math.min(B.pan, 0.5); }
   }
+  // space8: the sheet as a world (src/score/moves/sky.js) has a camera of its own, worn or picked from the library. Tipped on top of it, the far side of a ball went past the tipped sheet's horizon, and turned, a canyon's checks ran across its steps
+  if (G.pattern.sky || G.moves?.some(m => m.id === 'dome' || m.id === 'planet' || m.id === 'canyon' || m.id === 'skim')) { B.tip = 0; B.spin = 0; B.pan = Math.min(B.pan, 0.4); B.zoom = Math.min(B.zoom, 0.5); B.layers = false; }
   // A shot in a cut that draws its own size: nothing can draw back to keep the lines in hand, so it doesn't go far from what it was framed on.
   if (!B.free && locksOf(G).scale) B.pan = Math.min(B.pan, 0.3);
   return B;

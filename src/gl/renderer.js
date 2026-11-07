@@ -10,10 +10,12 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8, SPACE = 16;     // SPACE: the sheet in space, src/gl/chunks/space.js
 export const FOLD = 64;      // mirrors in front of the sheet (chunks/fold.js). 16 and 32 are a world's own. Nothing's built for these until something asks: wantFold, by a film with one in it at compose, or by the first frame that draws one.
 export const TIME = 1024;      // src/gl/chunks/time.js: only ever built when something first asks for it. 16 and 32 are a world's own, and a world's variants go up in 64s (src/worlds/engine.js).
+export const SKY = 2048;      // space8: the sheet as a world, src/gl/chunks/sky.js: space.kind 9 and up. Its own bit, so a ride doesn't pay for it and it doesn't pay for a ride
+const spaceBit = k => (k > 8.5 ? SKY : k > 0.5 ? SPACE : 0);      // space8
 const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
 // Nothing waits for these: they build once everything else has. The hand on a bent sheet is built the first time it's asked for.
-const SPACE_LATER = [SPACE, SPACE | FLIGHT, SPACE | PLATES, SPACE | PLATES | FLIGHT];
-export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & FOLD ? '#define FOLD\n' : ''}${v & TIME ? '#define TIME\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
+const SPACE_LATER = [SPACE, SPACE | FLIGHT, SPACE | PLATES, SPACE | PLATES | FLIGHT, SKY, SKY | FLIGHT];      // space8: and the sheet as a world
+export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & SKY ? '#define SKY\n' : ''}${v & FOLD ? '#define FOLD\n' : ''}${v & TIME ? '#define TIME\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -95,7 +97,7 @@ export class Renderer {
   // into a fold flew its first frames without its mirrors and popped when the program came (folds.pearlscheck, 107 /255 on the first frame of its flight).
   ahead(a, b, space = false) {
     if (this.wp || this.bare) return;
-    const keep = this.variant & (HAND | PLATES), bits = s => (s[OFF['sf.on']] > 0.5 ? FOLD : 0) | (this._extra(s) ? EXTRA : 0) | (s[OFF['space.kind']] > 0.5 ? SPACE : 0);
+    const keep = this.variant & (HAND | PLATES), bits = s => (s[OFF['sf.on']] > 0.5 ? FOLD : 0) | (this._extra(s) ? EXTRA : 0) | spaceBit(s[OFF['space.kind']]);      // space8
     const fly = bits(a) | bits(b) | FLIGHT | keep | (space ? SPACE : 0);
     const want = [fly, bits(b) | keep, ...(this.timeOn ? [fly | TIME] : [])].filter(v => !this.progs[v]);      // leaving a time trick, it fades out over the first half of the flight (time.venetian into dials.diamonds: 123 /255 when that program came, mid-flight)
     if (want.length) this.whenBuilt(want);
@@ -200,7 +202,8 @@ export class Renderer {
   _variantOf(F) {
     const v = (F[FRAME.hand * 4 + 3] > 0.001 ? HAND : 0) | (F[FRAME.plate * 4 + 1] !== 0 ? PLATES : 0) | (F[FRAME.dive * 4 + 3] > 0.5 ? FLIGHT : 0);
     const space = !this.wp && (F[FRAME.dive * 4 + 3] > 5.5 || this.slotA[OFF['space.kind']] > 0.5 || (this.slotB[OFF['space.kind']] > 0.5 && (F[FRAME.compose * 4 + 1] > 0.5 || F[FRAME.dive * 4 + 3] > 0.5)));      // a world has its own programs, and its own bits
-    return v | (space ? SPACE : 0) | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0) | (this.slotA[OFF['sf.on']] > 0.5 || this.slotB[OFF['sf.on']] > 0.5 ? FOLD : 0);
+    const sheets = space ? (F[FRAME.dive * 4 + 3] > 5.5 ? SPACE : 0) | spaceBit(this.slotA[OFF['space.kind']]) | (F[FRAME.compose * 4 + 1] > 0.5 || F[FRAME.dive * 4 + 3] > 0.5 ? spaceBit(this.slotB[OFF['space.kind']]) : 0) : 0;      // space8: which of the two
+    return v | sheets | (this._extra(this.slotA) || this._extra(this.slotB) ? EXTRA : 0) | (this.slotA[OFF['sf.on']] > 0.5 || this.slotB[OFF['sf.on']] > 0.5 ? FOLD : 0);
   }
 
   // Does this slot wear anything only the fuller programs have?
@@ -220,9 +223,9 @@ export class Renderer {
     }      // one still building, the frame goes without it. What asks comes up from nothing
     if (v & FOLD && !this.progs[v]) this.wantFold(v, true);
     // Something the sheet in space isn't built with up front (it's on a pattern that also slips, say) is built when it's first asked for, and meanwhile it goes without.
-    if (!this.progs[v] && (!this.parallel || v & SPACE) && !this._pending) { this._start(v); this._poll(); }
+    if (!this.progs[v] && (!this.parallel || v & (SPACE | SKY)) && !this._pending) { this._start(v); this._poll(); }      // space8: SKY
     const fold = this.progs[v & (FLIGHT | EXTRA | FOLD)] ? v & (FLIGHT | EXTRA | FOLD) : v & (FLIGHT | FOLD);      // one still building, a fold goes without whatever else it can before it goes without the fold
-    const got = this.progs[v] ? v : v & SPACE ? [v & ~EXTRA, v & (FLIGHT | SPACE), v & (FLIGHT | EXTRA), v & FLIGHT].find(n => this.progs[n]) ?? (v & FLIGHT) : this.progs[fold] ? fold : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
+    const got = this.progs[v] ? v : v & (SPACE | SKY) ? [v & ~EXTRA, v & (FLIGHT | SPACE | SKY), v & (FLIGHT | EXTRA), v & FLIGHT].find(n => this.progs[n]) ?? (v & FLIGHT) : this.progs[fold] ? fold : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
     this.variant = got;
     return this.progs[got];
   }

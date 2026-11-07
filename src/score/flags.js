@@ -30,6 +30,7 @@ directing.pace = new URLSearchParams(globalThis.location?.search ?? '').get('pac
 directing.woah = new URLSearchParams(globalThis.location?.search ?? '').get('woah') !== '0';      // src/score/woah.js: a film goes through the tricks, by the music. On unless ?woah=0
 directing.woahOnly = new URLSearchParams(globalThis.location?.search ?? '').get('woahOnly')?.split(',') ?? null;      // ?woahOnly=forever,slit: only those, for looking at them
 directing.cam = new URLSearchParams(globalThis.location?.search ?? '').get('cam') !== '0';      // src/score/camera.js: a camera that travels. On unless ?cam=0
+directing.sky = new URLSearchParams(globalThis.location?.search ?? '').get('sky') !== '0';      // space8: src/score/moves/sky.js: a film can wear the dome, the planet and the canyon. On unless ?sky=0, and then the film is exactly the film
 directing.strata = new URLSearchParams(globalThis.location?.search ?? '').get('strata') === '1';      // src/score/moves/space.js: a sheet's sets of lines lift off to heights of their own on a build and lock back on its landing. Off unless ?strata=1, so the film is exactly the film
 {
   const q = new URLSearchParams(globalThis.location?.search ?? ''), all = q.get('direct') === '1';

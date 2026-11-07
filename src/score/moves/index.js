@@ -16,10 +16,11 @@ import confocal from './confocal.js';
 import mirror from './mirror.js';
 import riot from './riot.js';
 import space from './space.js';
+import sky from './sky.js';      // space8: the sheet as a world
 import folds from './folds.js';
 import time from './time.js';
 
-export const MOVES = { slip, star, coin, snap, cue, moire, vertigo, confocal, mirror, relay, ramp, ...riot, ...space, ...folds, ...time };
+export const MOVES = { slip, star, coin, snap, cue, moire, vertigo, confocal, mirror, relay, ramp, ...riot, ...space, ...sky, ...folds, ...time };
 
 export function runMoves(out, ctx) {
   for (const m of ctx.G.moves) {

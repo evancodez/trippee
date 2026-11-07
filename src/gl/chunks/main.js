@@ -191,6 +191,9 @@ void main(){
 #ifdef SPACE
   { bool spE; p=spaceMain(p,spE); if(spE) gBreak=true; }
 #endif
+#ifdef SKY
+  { bool skE; p=skyMain(p,skE); if(skE) gBreak=true; }
+#endif
   float ma=prepare(0,0,p);
   int k1=FAM;
   if(uF[0].y>.5){

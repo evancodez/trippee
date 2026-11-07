@@ -18,6 +18,9 @@ float prepare(int K,int b,vec2 p){
 #if defined(SPACE)&&defined(FLIGHT)
   bool spEdge,spBrk=gBreak; p=spaceOne(b,p,spEdge); gBreak=gBreak||spEdge;      // a flight has one prepare, in a loop. The plain path has three, so there it's done once, in main()
 #endif
+#if defined(SKY)&&defined(FLIGHT)
+  bool skEdge,skBrk=gBreak; p=skyOne(b,p,skEdge); gBreak=gBreak||skEdge;      // the sheet as a world (chunks/sky.js), the same way
+#endif
   p=moveCarry(b,p);
   float cover=1.,parity=1.,slipY=0.;
 #ifdef FOLD
@@ -149,7 +152,11 @@ float prepare(int K,int b,vec2 p){
 #ifdef SPACE
   // Strata (chunks/space.js, kind 8): how far apart this slot's panes are, times the slope of the view ray, through the view into the sheet's own units. Only on a sheet the view moves as a whole. Any other kind: nothing
   vec4 stK=uG[b+I_spaceK];
+#ifdef SKY
+  vec2 stV=rot(-v.y)*gStS*((stK.x>7.5&&stK.x<8.5&&!lensView?stK.y:0.)/max(v.x,1e-5));      // the kinds past strata are chunks/sky.js's, and their amp isn't a height
+#else
   vec2 stV=rot(-v.y)*gStS*((stK.x>7.5&&!lensView?stK.y:0.)/max(v.x,1e-5));
+#endif
 #endif
   for(int i=0;i<FAM;i++){
     vec4 fa=uG[b+3*i],fb=uG[b+3*i+1],fc=uG[b+3*i+2];
@@ -187,6 +194,9 @@ float prepare(int K,int b,vec2 p){
 #ifdef SPACE
     gGn[k]=max(gGn[k],.003);        // a wall in space: one family's phase stands still all the way up it, and a filter that narrow is only rounding
 #endif
+#if defined(SKY)&&!defined(SPACE)
+    gGn[k]=max(gGn[k],.003);        // and on a canyon's wall
+#endif
     gDu[k]=abs(fb.w)<.85?clamp(fb.w+gTune*DS[i]*tuneShare,-.85,.85):fb.w;   // a closed family stays closed
 #ifdef WORLD_PHASE
     worldPhase(K,i,X);
@@ -195,12 +205,20 @@ float prepare(int K,int b,vec2 p){
 #ifdef WORLD_COVER
   for(int i=K*FAM;i<(K+1)*FAM;i++){ gGn[i]*=uW[1].x; gGr[i]*=uW[1].x; }      // the sound's small coverage draw filters as if drawn full size, as the film's picture it would otherwise have read down from
 #endif
+#if defined(SKY)&&defined(FLIGHT)
+  gBreak=skBrk;
+#endif
 #if defined(SPACE)&&defined(FLIGHT)
   gBreak=spBrk;
 #endif
 #ifdef SPACE
   // Far off, lines too fine to draw close up to solid, or they'd be a grey smudge at the end of every tunnel. Strata's sheet stays flat, so it has no far off.
   if((uG[b+I_spaceK].x>.5&&uG[b+I_spaceK].x<7.5)||uF[F_DIVE].w>5.5) for(int i=K*FAM;i<(K+1)*FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.16,.42,gGn[i]);
+#endif
+#ifdef SKY
+  // The same on a world: at the point a ball closes up into, and wherever it's seen edge on.
+  // And sooner than a ride does: what a ball closes up into is crowded on one side, and its edge and the canyon's far end are seen edge on, and they'd shimmer
+  if(uG[b+I_spaceK].x>8.5) for(int i=K*FAM;i<(K+1)*FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.08,.22,gGn[i]);
 #endif
   gRnd[K]=uG[b+I_shape].x; gSum[K]=uG[b+I_shape].y;
   return cover;
