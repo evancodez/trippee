@@ -410,7 +410,8 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       // What has to be home on time, a landing on a rest or into a Countdown, gets all of its time before it
       const home = () => { if (flying && G.morph < FLIGHT_LEAST) { G.morph = Math.min(FLIGHT_LEAST, 0.8 * (G.t1 - G.t0)); forget(G); } G.peak = { hit: end, q: 0 }; };
       // A big move has its own timing, all the way to its end: a landing that moved under it would pop
-      if (atRest || G.moves?.some(m => ['star', 'coin', 'slip'].includes(m.id)) || lags.some(x => end < x.b && end + bar > x.from)) { home(); continue; }
+      // ...and a coin is already turning when it's landed on: its clock can't start later than it was written to (PPP 132.38 s, a frame's step of 100 against 42).
+      if (atRest || G.moves?.some(m => ['star', 'coin', 'slip'].includes(m.id)) || N.moves?.some(m => m.id === 'coin') || lags.some(x => end < x.b && end + bar > x.from)) { home(); continue; }
       const tail = Math.min(tailOf(part, G.pattern, N.pattern), roomIn(N, cast));
       if (tail < 0.5 * bar || tail < 0.5) { home(); continue; }
       G.t1 = N.t0 = end + tail;

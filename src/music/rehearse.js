@@ -645,8 +645,9 @@ async function guardHeard(R, score, until, colour, ctx) {
   }
   // What's still flashing with the layer nearly gone is the film's own. Giving way there has done nothing but leave a dead second, so the layer has it back.
   if (left) {
-    const stuck = stretches(seen.over(0, seen.n, colour), fps).filter(w => !fine.has(w.b.toFixed(1)));
-    const keep = dips.filter(d => !stuck.some(w => d.b > w.a && d.a < w.b));
+    const stuck = [];
+    for (const w of stretches(seen.over(0, seen.n, colour), fps)) if (!fine.has(w.b.toFixed(1))) stuck.push(...(colour ? [w.b - 0.5] : (await lookClose(R, score, w.a, w.b, ctx, () => {}, edits)).at));
+    const keep = dips.filter(d => !stuck.some(t => d.b > t - 1.3 && d.a < t + 0.2));
     if (keep.length < dips.length) { H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
   }
   return dips;
