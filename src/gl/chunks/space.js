@@ -60,8 +60,15 @@ vec3 spRelief(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,float L,out float side,out bool
       float f=X.z-max(spA(k,o,e,X),L)-e.x*dot(dc,dc);
       if(f<0.){ t=m; fn=f; } else { prev=m; fp=f; }
     }
+    // Square columns have flat tops and flat walls, so this is exact: it comes in through one wall, and comes down on the top.
+    if(e.z>0.&&rd.z<0.){
+      vec3 Y=ro+rd*t; vec2 cell=floor(Y.xy/e.z),R=mix(vec2(1e-6),rd.xy,step(1e-6,abs(rd.xy)));
+      vec2 te=((cell+step(rd.xy,vec2(0.)))*e.z-ro.xy)/R;
+      float h=max(spA(k,o,e,Y),L);
+      t=max(max(te.x,te.y),(ro.z-h)/-rd.z);
+    }
     // What's left is a straight line on any smooth stretch, and this lands exactly on it, so a flat sheet comes out exactly flat. Across a wall it stays between the two.
-    t=prev+(t-prev)*clamp(fp/max(fp-fn,1e-6),0.,1.);
+    else t=prev+(t-prev)*clamp(fp/max(fp-fn,1e-6),0.,1.);
   }
   vec3 X=ro+rd*t;
   float hA=spA(k,o,e,X);
@@ -73,11 +80,11 @@ vec3 spRelief(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,float L,out float side,out bool
     else side=0.;
   }
   float w=fwidth(t)/max(t,.05);
-  edge=w>.06;
+  edge=w>.06||(e.y>0.&&abs(X.z-hA)>.01);      // a silhouette, or a stepped wall: the one pixel across isn't a real gradient, and a wall's is only what bisecting left
   return X;
 }
 // Pleats: a sheet in sawtooth folds, its folds running along e.w. Each cell has a face of share a rising to its ridge and a face falling back. These are planes, so it's all exact.
-//   amp  ridge height, in cell widths.   f  cells a unit.   ph, a  where the walk has got to, and how wide it is: the share of the first face in each cell comes from these
+//   amp  ridge height, in cell widths.   f  cells a unit.   ph, o.a  where the walk has got to, and how wide it is: the share of the first face in each cell comes from these. e.y, e.x: a wave of share going across, its size and phase
 vec3 spPleat(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out float side,out float fS,out bool edge){
   vec3 rd,ro=spRay(p,c,o,rd);
   float an=e.w,n=max(k.z,1e-3); vec2 U=vec2(cos(an),sin(an)),V=vec2(-U.y,U.x);
@@ -88,7 +95,7 @@ vec3 spPleat(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out float side,out float fS,out 
   float hz=0.,hS=s0,hA=1.,hI=float(i1); bool onA=true;
   int i=i0;
   for(int g=0;g<9;g++){
-    float ci=float(i),si=ci/n,sh=clamp((k.w-(ci+.5)/n)/max(o.w,1e-3),.001,.999),H=Hm*clamp(4.*sh*(1.-sh),0.,1.);
+    float ci=float(i),si=ci/n,sh=clamp(((ci+.5)/n-k.w)/max(o.w,1e-3)+e.y*sin(TAU*.5*(ci+.5)/n+e.x),.001,.999),H=Hm*clamp(4.*sh*(1.-sh),0.,1.);
     float sr=si+sh/n,g1=H*n/sh,g2=H*n/(1.-sh);
     float z1=g1*(s0-si)/(1.+g1*m),s1=s0-m*z1;
     float z2=(H-g2*(s0-sr))/(1.-g2*m),s2=s0-m*z2;
@@ -113,31 +120,35 @@ vec3 spPleat(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out float side,out float fS,out 
   r.xy+=U*fS/n;
   return r;
 }
-// A tube: the sheet rolled up towards the camera, along y. Lays no stretch on it: across it's the arc, along it's the axis. amp: 1/its radius, so 0 is flat. f, ph: its bends, ahead. e.w: lines going round it as they go along it
-vec3 spTube(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out bool edge,out float along){
-  vec3 rd,ro=spRay(p,c,o,rd);
-  float K=k.y,bA=o.w,bW=k.z,bP=k.w;
-  float y0=ro.y,c0=sin(bW*y0+bP),c1=cos(bW*.61*y0+1.1*bP);
-  #define SP_F(X) (.5*K*(pow(X.x-bA*(sin(bW*X.y+bP)-c0),2.)+pow(X.z-.6*bA*(cos(bW*.61*X.y+1.1*bP)-c1),2.))-(X.z-.6*bA*(cos(bW*.61*X.y+1.1*bP)-c1)))
-  float t=0.,prev=0.,st=.06*max(c.w,.3),fp=1.,fn=1.;
+// A tube: the sheet rolled up towards the camera, along y, with no stretch on it: across it's the arc, along it's the axis. amp: 1/its radius, so 0 is flat. f, ph: its bends, ahead of the camera. o.a: how far they go.
+// e.x, e.y: a neck at B.w, how far in it comes and how long it is. e.w: the lines going round it as they go along it. The camera turns on the spot, because the axis is where it wants to be.
+float spTF(vec3 X,vec4 k,vec4 o,vec4 e,float Yn,vec2 c0){
+  float G=e.x>0.?e.x*exp(-pow((X.y-Yn)/max(e.y,1e-3),2.)):0.,K=k.y/(1.-G),sh=k.y>1e-4?1./k.y-1./K:0.;
+  vec2 b=vec2(o.w*(sin(k.z*X.y+k.w)-c0.x),.6*o.w*(cos(k.z*.61*X.y+1.1*k.w)-c0.y));
+  float x=X.x-b.x,z=X.z-b.y-sh;
+  return .5*K*(x*x+z*z)-z;
+}
+vec3 spTube(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,float Yn,out bool edge){
+  vec3 rd=normalize(vec3(p,-max(c.w,.05))),ro=vec3(0.,0.,c.w)+o.xyz;
+  rd.xy=rot(c.z)*rd.xy; rd.yz=rot(c.x)*rd.yz; rd.xy=rot(c.y)*rd.xy;
+  vec2 c0=vec2(sin(k.z*ro.y+k.w),cos(k.z*.61*ro.y+1.1*k.w));
+  float t=0.,prev=0.,st=.06*max(c.w,.3),fp=-1.,fn=1.;
   bool got=false;
   for(int i=0;i<26;i++){
-    t+=st; vec3 X=ro+rd*t; float f=SP_F(X);
+    t+=st; float f=spTF(ro+rd*t,k,o,e,Yn,c0);
     if(f>0.){ got=true; fn=f; break; }
     prev=t; fp=f; st*=1.17;
   }
   if(got){
-    for(int i=0;i<6;i++){ float m=.5*(prev+t); vec3 X=ro+rd*m; float f=SP_F(X); if(f>0.){ t=m; fn=f; } else { prev=m; fp=f; } }
+    for(int i=0;i<6;i++){ float m=.5*(prev+t),f=spTF(ro+rd*m,k,o,e,Yn,c0); if(f>0.){ t=m; fn=f; } else { prev=m; fp=f; } }
     t=prev+(t-prev)*clamp(-fp/max(fn-fp,1e-6),0.,1.);
   }
   vec3 X=ro+rd*t;
-  float bx=bA*(sin(bW*X.y+bP)-c0),bz=.6*bA*(cos(bW*.61*X.y+1.1*bP)-c1);
-  vec2 q=vec2(X.x-bx,X.z-bz);
+  float G=e.x>0.?e.x*exp(-pow((X.y-Yn)/max(e.y,1e-3),2.)):0.,K=k.y/(1.-G),sh=k.y>1e-4?1./k.y-1./K:0.;
+  vec2 q=vec2(X.x-o.w*(sin(k.z*X.y+k.w)-c0.x),X.z-.6*o.w*(cos(k.z*.61*X.y+1.1*k.w)-c0.y)-sh);
   float th=K>1e-4?atan(K*q.x,1.-K*q.y):0.;
-  float u=K>1e-4?th/K:q.x;
   edge=abs(dFdx(th))>2.||abs(dFdy(th))>2.;
-  along=X.y;
-  return vec3(u+e.w*X.y,X.y,0.);
+  return vec3((k.y>1e-4?th/k.y:q.x)+e.w*X.y,X.y,0.);
 }
 // One sheet: a stretch of a song. Runs before everything else in prepare().
 vec2 spaceOne(int b,vec2 p,out bool edge){
@@ -147,14 +158,14 @@ vec2 spaceOne(int b,vec2 p,out bool edge){
   vec4 c=uG[b+I_spaceC],o=uG[b+I_spaceO],e=uG[b+I_spaceE];
   if(k.x<3.5){ float s; return spRelief(p,k,c,o,e,SP_GONE,s,edge).xy; }
   if(k.x<4.5){ float s,f; vec3 r=spPleat(p,k,c,o,e,s,f,edge); return r.xy+vec2(cos(e.w),sin(e.w))*((s>.5?.5+.5*f:.5*f)-f)/k.z; }      // one sheet: each face is half a cell of it, and at a share of half with no height it's exactly flat
-  float al; return spTube(p,k,c,o,e,edge,al).xy;
+  return spTube(p,k,c,o,e,0.,edge).xy;
 }
 // Two sheets: a transformation. pA and pB are where it lands on each, side is how much of it is B.
 void spaceTwo(vec2 p,out vec2 pA,out vec2 pB,out float side,out bool edge){
   vec4 k=uF[F_SPACE],c=uF[F_SPACE+1],o=uF[F_SPACE+2],e=uF[F_SPACE+3],B=uF[F_SPACE+4];
   if(k.x<3.5){ vec3 X=spRelief(p,k,c,o,e,B.x,side,edge); pA=X.xy; pB=X.xy-B.yz; }
   else if(k.x<4.5){ float f; vec3 r=spPleat(p,k,c,o,e,side,f,edge); pA=r.xy; pB=r.xy; }
-  else { float al; vec3 X=spTube(p,k,c,o,e,edge,al); pA=X.xy; pB=X.xy-B.yz; side=aaOf(al-B.w); }
+  else { vec3 X=spTube(p,k,c,o,e,B.w,edge); pA=X.xy; pB=X.xy-B.yz; side=aaOf(X.y-B.w); }
 }
 #endif
 `;

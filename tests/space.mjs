@@ -36,6 +36,7 @@ export default async ({ page, save, log }) => {
     }, { a, b, D, via: E.VIA, o: JSON.parse(E.O || '{}') });
     log(JSON.stringify(info));
     const ts = Array.from({ length: N }, (_, i) => 1 + D * (i / (N - 1)));
+    if (E.AT) { for (const t of E.AT.split(',')) save(`${name}.${t}.png`, await page.eval(`app.t=${+t};trippee.step(0);trippee.capture()`)); return; }
     await sheet(`${name}.sheet.jpg`, ts);
   } else {
     const id = E.LOAD, S = +(E.S || 30);
@@ -44,6 +45,7 @@ export default async ({ page, save, log }) => {
       T.load(id, { arcs: !over });
       if (over) app.stage.score.gestures[0].over = over;
     }, { id, over: E.OVER ? JSON.parse(E.OVER) : null });
+    if (E.AT) { for (const t of E.AT.split(',')) save(`${E.NAME || id}.${t}.png`, await page.eval(`app.t=${+t};trippee.step(0);trippee.capture()`)); return; }
     const ts = Array.from({ length: N }, (_, i) => S * (i / (N - 1)));
     await sheet(`${E.NAME || id}.sheet.jpg`, ts);
   }

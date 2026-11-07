@@ -29,7 +29,7 @@ export class Renderer {
   // bare: it'll never be asked for the hand or colour, so those aren't built at all
   constructor(canvas, { bare = false } = {}) {
     this.canvas = canvas;
-    this.order = bare ? ORDER.slice(0, 4) : ORDER;
+    this.order = bare ? [...ORDER.slice(0, 4), SPACE] : ORDER;
     this.bare = bare;
     const gl = this.gl = canvas.getContext('webgl2', {
       antialias: false, alpha: false, depth: false, stencil: false,

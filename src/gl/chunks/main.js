@@ -135,9 +135,6 @@ void main(){
 #endif
   // Going round the edge of the tube the lines get too fine to draw, and they close up to solid, or they'd be a thin grey ring.
   if(rolled) for(int i=0;i<FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.16,.42,gGn[i]);
-#ifdef SPACE
-  if(dv.w>5.5) for(int i=0;i<2*FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.16,.42,gGn[i]);
-#endif
   // The outer one first, each time: what it shows at this pixel decides how far the inner one has opened here. Then one threshold does for both sides of an edge.
   // In order: outer, inner, the same two on colour's second plate, and the hand's lifted sheet.
   for(int n=0;n<5;n++){
