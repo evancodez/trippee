@@ -47,7 +47,7 @@ const MENU = {
   travel: { loud: [['relay', 'riot'], ['riot', 'relay'], ['relay', 'riot', 'relay']], mid: [['relay', 'suite'], ['suite', 'relay'], ['still', 'relay'], ['suite', 'still']], quiet: [['suite', 'still'], ['still', 'suite'], ['suite']] },
   chill: { loud: [['relay', 'still'], ['still', 'relay']], mid: [['still', 'suite'], ['suite', 'relay'], ['relay', 'still']], quiet: [['still', 'suite'], ['suite', 'still']] },
 };
-const RELAYS = ['tour', 'star', 'whirl', 'saw', 'weave', 'floor', 'rooms'];       // not dipole: its rings go by as hairlines
+const RELAYS = ['tour', 'whirl', 'saw', 'weave', 'floor', 'rooms'];       // not dipole: its rings go by as hairlines. Not star: the frame's brightness swings 102 to 172 in a second, a whole-frame flash (Disclosure 185 s), and nothing the guard does clears it
 const RIOTS = ['ratchet', 'wring', 'scissor', 'bellows'];
 const STILLS = ['still.confocal', 'still.mirror', 'still.mirror6', 'still.floor', 'still.mirror3', 'still.ball'];     // not the Moire Wheel or the Chevrons, whose lines read as hairlines until something's asked them to be big
 
