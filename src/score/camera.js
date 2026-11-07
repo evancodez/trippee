@@ -116,7 +116,10 @@ function bearingOf(G) {
   }
   // Moves that keep their own appointments. A Countdown's dial, a star's sheet, a coin: the view can go along, but they don't take well to being tipped or carried off.
   for (const m of G.moves ?? []) {
-    if (m.id === 'star') { B.tip = 0; B.pan = 0; B.zoom = Math.min(B.zoom, 0.4); B.spin = 0.5; }
+    // A star's mirrors stay where they are on the screen whatever the sheet does under them, so the view turning or going nearer isn't seen as a camera at all: it only changes which shapes the
+    // mirrors make. And whatever's big in one chamber is big in every one of them, so they swap black for white together. Turned round and pushed in to nearly twice the sheet's size on PPP's
+    // star (45.7-63.4 s), its chambers made big solid stars and the whole frame flashed three times a second on the beat. So the star turns its own ball, and the view only ever draws back.
+    if (m.id === 'star') { B.tip = 0; B.pan = 0; B.zoom = Math.min(B.zoom, 0.4); B.spin = 0; B.closest = 0; }
     if (m.id === 'coin') { B.tip = 0.35; B.pan = Math.min(B.pan, 0.4); B.spin = 0.4; B.zoom = Math.min(B.zoom, 0.5); }
     if (m.id === 'slip') { B.tip = Math.min(B.tip, 0.7); B.pan = Math.min(B.pan, 0.5); }
   }
@@ -428,7 +431,9 @@ function buildRoute(cam, G, prev) {
     }
     const lo = Math.log(Math.max(k, 1e-3) / SIZE.bold), hi = Math.log(Math.max(k, 1e-3) / SIZE.big), loFar = Math.log(Math.max(k * far, 1e-3) / SIZE.boldFar), floor = Math.max(lo, loFar);
     // Lines finer than it likes to begin with get a little larger, and stay about what they were rather than be blown up: it's what that pattern is.
-    z[i] = B.self ? alt : between(alt, floor, Math.max(hi, floor + 0.3));
+    // A sheet that can't be gone nearer (B.closest) isn't, even to keep its lines bold: a star draws its lines at its own size on the ball, which isn't what its numbers say.
+    const top = Math.max(hi, floor + 0.3), c = B.closest ?? Infinity;
+    z[i] = B.self ? alt : between(alt, Math.min(floor, c), Math.min(top, c));
   }
   const held = smooth3(z, HZ * 0.18);
   z.set(B.self ? z : held);
