@@ -19,7 +19,8 @@ function partners(a, b) {
   return { pair, flip: [false, false, false, false], offset, close, open, ratio: 1 };
 }
 const glideEnter = st => { st.theta = lerp(st.thA, st.thB, st.T); st.solid = lerp(st.sa, st.sb, st.T); st.moveA = true; st.moveB = true; };
-const flat = s => s[OFF['surf.kind']] < 0.5 && s[OFF['droste.lnS']] === 0;
+// Flat, or flat and leaning: the camera tips a sheet by putting it on a plane, and a plane's as good as flat to these. A wrapped surface has seams, and a droste has generations.
+const flat = s => s[OFF['droste.lnS']] === 0 && (s[OFF['surf.kind']] < 0.5 || (s[OFF['surf.kind']] === 1 && s[OFF['surf.map']] === 0 && Math.abs(s[OFF['q.xx']]) + Math.abs(s[OFF['q.yy']]) + Math.abs(s[OFF['q.zz']]) < 1e-4));
 const easeX = x => x * x * (3 - 2 * x);
 
 const WIDE = 0.6;

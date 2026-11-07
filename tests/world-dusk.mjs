@@ -141,6 +141,28 @@ async function stages({ page, log, save, sleep }) {
     }
     log(`clicks: ${good}/${ids.length} landed`);
   }
+  if (want.includes('frames')) {
+    // Frames of the film at given moments, big enough to look at: SONG=... AT=t,t,t COLS=4
+    const songPath = process.env.SONG || 'media/mgmt.mp3';
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+    await sleep(400);
+    await dropSong(page, songPath, { resolvePath: resolve, sleep });
+    await enterWorld(page, 'dusk', log);
+    const ats = (process.env.AT || '').split(',').map(Number);
+    const r = await page.eval(async (ats, cols) => {
+      app.manual = true;
+      const g = app.stage.score.gestures, w = 480, h = 270, rows = Math.ceil(ats.length / cols), cv = document.createElement('canvas'); cv.width = w * cols; cv.height = h * rows;
+      const c = cv.getContext('2d'); c.font = '13px monospace';
+      for (let k = 0; k < ats.length; k++) {
+        const t = ats[k]; trippee.seek(t - 2); for (let i = 0; i < 40; i++) { trippee.seek(t - 2 + i * 0.05); if (app.lastFrame.N && !g.find(G => G.t1 > t - 1)?.plan) await new Promise(r => setTimeout(r, 4)); }
+        trippee.seek(t); const f = app.lastFrame, x = (k % cols) * w, y = Math.floor(k / cols) * h; c.drawImage(trippee.canvas, x, y, w, h);
+        c.fillStyle = '#000'; c.fillRect(x, y, 240, 16); c.fillStyle = '#fff'; c.fillText(`${t} ${f.G.pattern.id.slice(5)} ${f.kind ?? ''}`, x + 3, y + 12);
+      }
+      return { sheet: cv.toDataURL('image/jpeg', 0.9), g0: g.map(G => `${G.pattern.id.slice(5)} ${G.t0.toFixed(1)}-${G.t1.toFixed(1)} m${(G.morph ?? 0).toFixed(1)} ${G.xform?.id ?? '-'} ${(G.moves ?? []).map(m => m.id).join('+')}${G.water ? ' water' : ''}`), T: { eclipse: app.stage.score.tables?.eclipse, whoas: app.stage.score.tables?.whoas } };
+    }, ats, +(process.env.COLS || 4));
+    save(process.env.NAME || 'frames.jpg', r.sheet);
+    log(r.g0.join('\n')); log(JSON.stringify(r.T));
+  }
   if (want.includes('steps')) {
     // Frames just either side of moments in the film, and the difference between them: AT=t,t,... SONG=...
     const songPath = process.env.SONG || 'media/mgmt.mp3';

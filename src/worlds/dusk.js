@@ -4,8 +4,8 @@ import { OFF } from '../pattern/layout.js';
 import { pool } from './dusk/patterns.js';
 import { FIELD } from './dusk/field.js';
 import { DEFS, WARP, COLOR } from './dusk/light.js';
-import { writeStock, chips } from './dusk/stocks.js';
-import { hearDusk, whoaOf, read, holdAt } from './dusk/song.js';
+import { writeStock, lampsAt, gammaAt, chips } from './dusk/stocks.js';
+import { hearDusk, whoaOf, read, holdAt, eclipseAt } from './dusk/song.js';
 import { KINDS } from './dusk/across.js';
 import { cast, landings, moves } from './dusk/direct.js';
 import { wearDuskCamera } from './dusk/camera.js';
@@ -95,6 +95,19 @@ export default {
     // The evening.
     const day = song ? read(song, song.day, t) : (t * 0.022) % 8;
     writeStock(E, 24, day);
+    // Lamps and windows, as the evening reaches them. They're on the land and the road and in the houses, and not in a pattern that isn't anywhere.
+    const lampShare = p => (p ? (p.lamps ?? 0) * (p.group === 'land' || p.group === 'road' ? 1 : 0) : 0), litShare = p => (p?.lit ? 1 : 0), L0 = lampsAt(day);
+    E[23] = L0 * (lampShare(G?.pattern) + ((N ? lampShare(N.pattern) : lampShare(G?.pattern)) - lampShare(G?.pattern)) * Tx);
+    const Ub = U.b, lit = litShare(G?.pattern) + ((N ? litShare(N.pattern) : litShare(G?.pattern)) - litShare(G?.pattern)) * Tx;
+    Ub[0] = lit * (0.22 + 0.7 * L0 + 0.08 * Math.sin(t * 0.3));
+    // The eclipse: everything looks at it. It's the one time the sun's somewhere it didn't choose.
+    const ec = song ? eclipseAt(song, t) : null;
+    Ub[1] = 0; Ub[2] = 0; Ub[3] = gammaAt(day);
+    if (ec) {
+      const out = 1 - Math.min(1, Math.abs(ec.x) * 1.05), k = smooth(out * 1.4);
+      Ub[1] = ec.dark; Ub[2] = ec.x * E[2] * 2.2 * 1.1;
+      E[0] += (0.1 - E[0]) * k; E[1] += (0.42 - E[1]) * k; E[2] += (0.34 - E[2]) * k; E[3] += (1 - E[3]) * k; E[21] += (1 - E[21]) * k;
+    }
     for (let i = 3; i < 32; i += 4) E[24 + i] = 1;
     // The strip chart: a cycle's tail is the last CHART_S seconds, newest at the edge.
     for (let i = 0; i < CHART; i++) E[56 + i] = song ? read(song, song.level, t - (i / (CHART - 1)) * CHART_S) : 0.5 + 0.3 * Math.sin(t * 1.1 - i * 0.6);

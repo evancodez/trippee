@@ -18,7 +18,7 @@ float wLand(int b,vec2 X,vec4 f,vec4 f2,vec4 sp){
   for(int i=0;i<7;i++){
     float R=y0+amp*D*wShape((X.x/s+sp.y)*fr+sp.w*(I*1.73+.4),sp.x);
     if(i==0) R0=R;
-    if(X.y<=R){ best=I; bd=(R-X.y)/D; }
+    if(X.y<=R){ best=I; bd=(R-X.y)/D; wAlong[b==0?0:1]=X.x/s+sp.y; wHasAlong[b==0?0:1]=true; }
     y0-=D; D*=q; s*=q; I+=1.;
   }
   wSky[b==0?0:1]=best<0.?1.:.25*exp(-.6*best);

@@ -5,7 +5,7 @@ import { byId } from '../../pattern/library.js';
 const LINES = 2.2;
 const KIND = { land: 1, sea: 2, wires: 3, road: 4, cloister: 5, rings: 6, moon: 7, tremolo: 8, curtain: 9, blinds: 10, furrows: 11, dapple: 12 };
 const FIELD = ['spin', 'scale', '_1', '_2'];
-function field({ id, name, group, kind, a = 0, f2 = [0, 0, 0, 0], sp = [0, 0, 0, 0], arcs = [], over = {}, fams = [], sun = null, lake = null, path = 0, flow = 0, train = 0, slide = 0, cam = 'sheet', turn = 0, ph = 0.25, drive = null, poles = null }) {
+function field({ id, name, group, kind, a = 0, f2 = [0, 0, 0, 0], sp = [0, 0, 0, 0], arcs = [], over = {}, fams = [], sun = null, lake = null, path = 0, flow = 0, train = 0, slide = 0, cam = 'sheet', turn = 0, ph = 0.25, drive = null, poles = null, lit = 0, lamps = 1 }) {
   const P = poles ? [...poles, ...Array(5).fill([0, 0, 0, 0])].slice(0, 5) : null;
   const g = {
     fams: [{ y: LINES, ph }, ...fams],
@@ -16,7 +16,7 @@ function field({ id, name, group, kind, a = 0, f2 = [0, 0, 0, 0], sp = [0, 0, 0,
     ...over,
   };
   return {
-    id, name, family: 'dusk', group, fine: true, lambda: 0.05, g, arcs, sun, lake, path, cam, turn,
+    id, name, family: 'dusk', group, fine: true, lambda: 0.05, g, arcs, sun, lake, path, cam, turn, lit, lamps,
     flow: { 'f1.ph': 0.3 },
     // Lines go by on the film's clock: flow in cycles of the pattern's phase, train in how far along the sheet it's got. So they go with the music, and stop when it stops.
     drive(out, ctx) {
@@ -44,13 +44,13 @@ export const pool = [
   land({ id: 'dusk.lake', name: 'Still Water', amp: 0.8, hz: 0.5, q: 1.4, D: 0.11, fr: 1.4, seed: 3.3, train: 0.3, lake: -0.05, path: 0.0, arcs: [crane(0.02, 0.09)] }),
   land({ id: 'dusk.mackerel', name: 'Mackerel Sky', sharp: -1, amp: 0.55, hz: 0.8, q: 1.26, D: 0.2, fr: 7, seed: 5.1, train: 0.3, over: { rot: 3.1416 }, arcs: [push(1.05, 1.18)], cam: 'train' }),
   field({ id: 'dusk.sea', name: 'Long Swell', group: 'land', kind: 'sea', a: 0.05, f2: [0.14, 0, 0.1, 1.3], sp: [0, 0, 1.25, 0], flow: 0.5, train: 0.8, path: 0.55, sun: [0.15, 0.32, 0.24], arcs: [crane(-0.04, 0.05), push(1, 1.12)] }),
-  field({ id: 'dusk.lowsun', name: 'Low Sun', group: 'land', kind: 'rings', f2: [0.1, 0.26, 0.2, 2.3], flow: 0.45, lake: -0.28, path: 0.2, sun: [0.1, 0.26, 0.3], cam: 'anchor', arcs: [pan(-0.12, 0.1), push(1, 1.14)] }),
+  field({ id: 'dusk.lowsun', name: 'Low Sun', group: 'land', kind: 'rings', lamps: 0, f2: [0.1, 0.26, 0.2, 2.3], flow: 0.45, lake: -0.28, path: 0.2, sun: [0.1, 0.26, 0.3], cam: 'anchor', arcs: [pan(-0.12, 0.1), push(1, 1.14)] }),
   // ---------------------------------------------------------------- the road: going somewhere, or away
   field({ id: 'dusk.wires', name: 'Wires', group: 'road', kind: 'wires', a: 0.42, f2: [0, 0, 0, 1.75], sp: [0, 0, 0.42, 0], train: 0.2, cam: 'train', flow: 0, arcs: [crane(0, 0.3), push(1, 1.1)] }),
   field({ id: 'dusk.road', name: 'Slip Road', group: 'road', kind: 'road', a: 0.34, f2: [1.1, 0.3, 0.4, 0], sp: [2, 0, 1.6, 0], flow: 0.5, sun: [1.1, 0.34, 0.22], cam: 'anchor', arcs: [pan(0.04, -0.1), push(1, 1.18)], drive(out, { OFF, phi }) { out[OFF['spare.b']] += 0.5 * phi; } }),
-  field({ id: 'dusk.furrows', name: 'Furrows', group: 'road', kind: 'furrows', f2: [0.32, 0, 0.26, 0.95], sp: [0, 0, -0.25, 0], flow: 0.6, sun: [-0.25, 0.36, 0.26], cam: 'anchor', arcs: [pan(-0.1, 0.1), crane(0, 0.06)] }),
-  { ...field({ id: 'dusk.rays', name: 'Long Rays', group: 'road', kind: 'rings', sun: [-0.5, -0.38, 0.32], flow: 0, cam: 'anchor', arcs: [pan(0, 0), push(1, 1.14)], f2: [0, 0, 1, 1] }) },
-  field({ id: 'dusk.drive', name: 'Night Drive', group: 'road', kind: 'rings', f2: [0.55, 0.12, 0.08, 1.9], flow: 0.55, sun: [0.55, 0.12, 0.13], cam: 'anchor', arcs: [pan(-0.1, 0.12), push(1.1, 1.3)] }),
+  field({ id: 'dusk.furrows', name: 'Furrows', group: 'road', kind: 'furrows', lamps: 0, f2: [0.32, 0, 0.26, 0.95], sp: [0, 0, -0.25, 0], flow: 0.6, sun: [-0.25, 0.36, 0.26], cam: 'anchor', arcs: [pan(-0.1, 0.1), crane(0, 0.06)] }),
+  { ...field({ id: 'dusk.rays', name: 'Long Rays', group: 'road', kind: 'rings', lamps: 0, sun: [-0.5, -0.38, 0.32], flow: 0, cam: 'anchor', arcs: [pan(0, 0), push(1, 1.14)], f2: [0, 0, 1, 1] }) },
+  field({ id: 'dusk.drive', name: 'Night Drive', group: 'road', kind: 'rings', lamps: 0, f2: [0.55, 0.12, 0.08, 1.9], flow: 0.55, sun: [0.55, 0.12, 0.13], cam: 'anchor', arcs: [pan(-0.1, 0.12), push(1.1, 1.3)] }),
   // ---------------------------------------------------------------- strings: the guitar itself, and the room it's in
   field({ id: 'dusk.strings', name: 'Six Strings', group: 'strings', kind: 'none', cam: 'sheet', ph: 0.25, flow: 0.25, arcs: [pan(-0.2, 0.2), crane(-0.1, 0.1), push(1.05, 1.2)], over: { squeeze: { a: 0.8, x0: 0, b: 0.25, ang: 1.5708 } } }),
   field({ id: 'dusk.tremolo', name: 'Tremolo', group: 'strings', kind: 'tremolo', a: 0.56, f2: [0, 0, 0.82, 3.2], sp: [0, 0, 1.15, 0], arcs: [push(1, 1.14)], drive(out, { OFF, phi }) { out[OFF['spare.b']] += 2.2 * phi; } }),
@@ -61,7 +61,7 @@ export const pool = [
   field({ id: 'dusk.curtain', name: 'Curtain', group: 'room', kind: 'curtain', a: 0.3, f2: [0, 0, 0, 1.25], sp: [0.42, 0, 2.1, 0], flow: 0.08, cam: 'sheet', arcs: [push(1, 1.1), crane(-0.05, 0.05)], drive(out, { OFF, phi }) { out[OFF['spare.b']] += 0.8 * phi; } }),
   field({ id: 'dusk.dapple', name: 'Dapples', group: 'room', kind: 'dapple', f2: [0, 3, 0, 1.55], flow: 0.4, cam: 'sheet', poles: [[-0.9, 0.3, 0.55], [0.7, 0.45, 0.42], [0.15, -0.5, 0.5], [-1.5, -0.6, 0.34], [1.45, -0.42, 0.36]], arcs: [pan(-0.1, 0.1), push(1, 1.12)], drive(out, { OFF, phi }) { const w = phi * 0.5; for (const [x, y, i] of [['blobs.x1', 'blobs.y1', 0], ['blobs.x2', 'blobs.y2', 1], ['blobs.x3', 'blobs.y3', 2], ['p1.x', 'p1.y', 3], ['p2.x', 'p2.y', 4]]) { out[OFF[x]] += 0.16 * Math.cos(w * (i % 2 ? 1 : -1) * (1 + 0.2 * i) + i * 1.7); out[OFF[y]] += 0.16 * Math.sin(w * (i % 2 ? 1 : -1) * (1 + 0.2 * i) + i * 1.7); } } }),
   field({ id: 'dusk.moon', name: 'New Moon', group: 'room', kind: 'moon', f2: [0.1, 0.14, 0.08, 2.1], sp: [0.42, 0.34, 0.26, 0.4], flow: 0.42, sun: [-1.6, 1.3, 0.1], cam: 'anchor', arcs: [pan(-0.08, 0.08), push(1, 1.2)] }),
-  field({ id: 'dusk.windows', name: 'Lit Windows', group: 'room', kind: 'none', flow: 0.1, cam: 'sheet', fams: [{ x: 1.25, ph: 0.25 }], over: { freq: 0.72 }, arcs: [pan(-0.2, 0.2), crane(0.1, -0.1), push(1, 1.14)], drive(out, { OFF, phi }) { out[OFF['f1.ph']] += 0.2 * phi; } }),
+  field({ id: 'dusk.windows', name: 'Lit Windows', group: 'room', kind: 'none', flow: 0.1, lit: 1, lamps: 0, cam: 'sheet', fams: [{ x: 1.25, ph: 0.25 }], over: { freq: 0.72 }, arcs: [pan(-0.2, 0.2), crane(0.1, -0.1), push(1, 1.14)], drive(out, { OFF, phi }) { out[OFF['f1.ph']] += 0.2 * phi; } }),
 ];
 // Long Rays and Six Strings have nothing for the field to do.
 const rays = pool.find(p => p.id === 'dusk.rays');
