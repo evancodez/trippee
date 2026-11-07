@@ -879,12 +879,20 @@ async function guardWoah(R, score, seen, flash, ctx) {
   const at = t => flash.left.some(x => x >= t.a && x <= t.b);
   const slots = W.slots.map(slot => ({ slot, a: slot.from - 1, b: slot.to + 1 })).filter(at);
   let all = 0;
+  // The small look over a range, the same way of counting for two tricks in one place: the whole frame first, then the most a tile flashes in any one second, since it's the worst second
+  // that the limit's about, then how much there is of it all.
+  const peak = (series, fa, fb) => { const sw = []; let dir = 0, pivot = series(fa); for (let i = fa; i < fb; i++) { const v = series(i); if (dir >= 0 && v > pivot) { pivot = v; dir = 1; } if (dir <= 0 && v < pivot) { pivot = v; dir = -1; } if (dir === 1 && pivot - v >= JUDGE_SWING) { sw.push(i); dir = -1; pivot = v; } else if (dir === -1 && v - pivot >= JUDGE_SWING) { sw.push(i); dir = 1; pivot = v; } } let most = 0; for (let s = 0, e = 0; s < sw.length; s++) { while (e < sw.length && sw[e] - sw[s] < fps) e++; most = Math.max(most, Math.floor((e - s) / 2)); } return most; };
+  const coarse = ([fa, fb]) => { const wh = []; seen.overIn(i => seen.mean[i], FLASH_WHOLE, FILM_SWING_WHOLE, wh, fa, fb); let tile = 0; for (let k = 0; k < 16; k++) tile = Math.max(tile, peak(i => seen.tiles[i * 16 + k], fa, fb)); return [wh.length, tile, seen.over(fa, fb).length]; };
+  const less = (x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
   for (const { slot, a, b } of slots) {
-    let best = await realIn(frames(a, b)), cur = slot.id, tries = 0;
+    const whole = frames(a, b);
+    let best = await realIn(whole), cur = slot.id, tries = 0;
     if (!best.whole && best.at.length < SWAP_FOR) continue;       // a tile a little over isn't worth another trick, and it's reported as it is
-    // Only around what's wrong: what it's swapped for has the rest of its time looked at with everything else, by guardHeard
+    // Around what's wrong first, which is quick. What wins there plays for all of the slot, though, and a trick that's clean where the last one flashed can flash somewhere else in it (PPP's fan, kept
+    // for being clean where the pearls flashed at 255 s, flashed a tile six times a second at 271 s): so it's kept only if the small look finds less over all of the slot too.
     const range = frames(Math.max(a, Math.min(...best.at) - 3.2), Math.min(b, Math.max(...best.at) + 1.5));
     best = await realIn(range);
+    let all0 = coarse(whole);
     const first = cur;
     for (const alt of W.altsFor(slot)) {
       if (!worse(best) || tries >= SWAP_TRIES + (best.whole ? 2 : 0) || all >= SWAP_ALL) break;
@@ -892,11 +900,16 @@ async function guardWoah(R, score, seen, flash, ctx) {
       const undo = W.swap(slot, alt);
       if (!undo) continue;
       tries++; all++;
-      const kept = seen.keep(range);
+      const kept = seen.keep(whole);
       await scan(range);
       const now = await realIn(range);
-      if (worse(now) < worse(best)) { best = now; cur = alt; }
-      else { undo(); seen.back(range, kept); }
+      if (worse(now) < worse(best)) {
+        if (range[0] > whole[0]) await scan([whole[0], range[0]]);
+        if (range[1] < whole[1]) await scan([range[1], whole[1]]);
+        const over = coarse(whole);
+        if (less(over, all0) < 0) { best = now; all0 = over; cur = alt; continue; }
+      }
+      undo(); seen.back(whole, kept);
     }
     // Never taken off: a slot cast as nothing is a hole in the film, and what's least bad of what could go there stays, and is reported
     if (cur !== first) { swaps.push({ t: +slot.from.toFixed(2), was: first, now: cur, left: best.at.length }); refused.push({ t: +slot.from.toFixed(2), what: `${first} became ${cur}`, why: best.at.length ? `it flashed, and this flashes less (${best.at.length} left)` : 'it flashed, and this does not' }); }
@@ -1023,14 +1036,15 @@ async function guardFilm(R, score, seen, ctx) {
   const todo = [], swapped = new Set();
   // What might be the whole frame first, then the rest while there's anything left to look with: it's the whole frame that has no allowance
   const wholeFrames = []; seen.overIn(i => seen.mean[i], FLASH_WHOLE, FILM_SWING_WHOLE, wholeFrames);
-  const flagged = stretches(seen.over(), fps).map(w => ({ ...w, wholeAt: wholeFrames.some(i => i / fps >= w.a && i / fps <= w.b) })).sort((x, y) => y.wholeAt - x.wholeAt || x.a - y.a);
+  // ...and worst first after that, by how much the small look found there: when the looks run short, it's the least of it that's left
+  const flagged = stretches(seen.over(), fps).map(w => ({ ...w, wholeAt: wholeFrames.some(i => i / fps >= w.a && i / fps <= w.b), much: seen.over(Math.floor(w.a * fps), Math.min(seen.n, Math.ceil(w.b * fps) + 1)).length })).sort((x, y) => y.wholeAt - x.wholeAt || y.much - x.much || x.a - y.a);
   for (const w of flagged) {
     if (looks <= 0.25 * allowed && !w.wholeAt) { unlooked = true; break; }      // ...and some kept back to do something about what it finds
     const r = await lookClose(R, score, w.a, w.b, ctx, spent);
     if (r.at.length) todo.push({ ...w, ...r }); else falseAlarms++;
   }
   // The whole frame first: it's the one with no allowance at all
-  todo.sort((x, y) => y.whole - x.whole || x.a - y.a);
+  todo.sort((x, y) => y.whole - x.whole || y.at.length - x.at.length || x.a - y.a);
   for (const spot of todo) {
     if (looks <= 0) { unlooked = true; break; }
     spot.reached = true;
