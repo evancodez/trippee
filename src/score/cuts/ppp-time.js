@@ -8,6 +8,6 @@ export default {
     { at: 86, from: 78, id: 'time.spiral', moves: [{ id: 'slit', map: 'spiral', arms: 1, wind: 0.9, D: [[86, 0], [96, 3], [116, 3], [120, 0]], turn: 0.5, push: 0.2, beats: 'strong' }] },
     { at: 128, from: 120, id: 'time.cells', moves: [{ id: 'slit', map: 'cells', wave: 1.1, ang: 0.3, D: [[128, 0], [136, 2], [156, 2], [160, 0]], turn: 0.55, spin: 0.1, beats: 'strong' }] },
     { at: 168, from: 160, id: 'time.venetian', moves: [{ id: 'slit', map: 'sweep', bands: 9, D: [[168, 0], [176, 2.4], [196, 2.4], [200, 0]], turn: 0.6, spin: 0.1, beats: 'strong' }] },
-    { at: 208, from: 200, id: 'time.wave', moves: [{ id: 'slit', map: 'wave', wave: 3, waveV: 1.4, ang: 0.4, D: [[208, 0], [216, 1.6]], turn: 0.4, spin: 0.15, beats: 'strong' }] },
+    { at: 208, from: 200, id: 'time.wave', moves: [{ id: 'slit', map: 'wave', wave: 3, waveV: 0.6, ang: 0.4, D: [[208, 0], [216, 1.2]], turn: 0.3, spin: 0.1, beats: 'strong' }] },
   ],
 };

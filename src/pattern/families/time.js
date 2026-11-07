@@ -32,7 +32,7 @@ export default [
   // Bands across the frame, each a moment behind the next.
   slit('venetian', 'Late Bands', { fams: [spokes(10), logring(1.6)] }, { map: 'sweep', D: 2.4, bands: 9, turn: 0.6, spin: 0.1, ang: Math.PI / 2 }),
   // A wave of delay crosses the sheet.
-  slit('wave', 'Delay Wave', { fams: [plane(2.4, 30), plane(2.4, 120)] }, { map: 'wave', D: 1.6, wave: 3, waveV: 1.4, turn: 0.4, spin: 0.15, ang: 0.4 }),
+  slit('wave', 'Delay Wave', { fams: [plane(2.4, 30), plane(2.4, 120)] }, { map: 'wave', D: 1.2, wave: 3, waveV: 0.6, turn: 0.3, spin: 0.1, ang: 0.4 }),
 
   // A spiral of time, with a seam where the past meets the future; and cells, two moments of the sheet interleaved.
   slit('spiral', 'Time Spiral', { fams: [plane(2.2, 0), plane(2.2, 90)] }, { map: 'spiral', D: 3, arms: 1, wind: 0.9, turn: 0.5, push: 0.2 }),
