@@ -183,12 +183,12 @@ const excess = m => Math.max(GOOD.white[0] - m.white, m.white - GOOD.white[1], 0
 
 // ---------------------------------------------------------------- one gesture
 // In a world what's looked at is its coverage, so every measure here stays what it is on the film. Only the flash pass asks for true colour.
-// And a world's film may be rehearsed while a change of world is running on it: that's on real seconds, so frame() would draw the change at every time it's asked about, in the program it's leaving. What's being rehearsed is the film after it.
+// And a world's film may be rehearsed while a change of world is running on it: that's on real seconds, so frame() would draw the change at every time it's asked about, in the program it's leaving. What's being rehearsed is the film after it. The same for the film a change of world goes back to: drawn at other times with the change on, its plan was worked out again for whatever was there, on this renderer, and the picture jumped (Pearl back to the film, 10 s in: 64 out of 255).
 // A rehearsal looks at the film, not the layer that follows the song over it (src/score/hear.js): what it might change for a flash is the film's own, and it mustn't slow a film down over something that layer's doing. A test's look sees all of it.
 const FILM_ONLY = { hear: 0 };
 const drawn = (R, score, t, W, H, colour = false, edits = FILM_ONLY) => {
   R.resize(W, H, 1);
-  const h = score.world ? score.handover : null;
+  const h = score.world || score.handover?.change ? score.handover : null;
   if (h) score.handover = null;
   const f = frame(score, t, R, edits);
   if (h) score.handover = h;
@@ -707,7 +707,7 @@ async function buildFor(R, score, until, breathe) {
   await on.whenBuilt(list);
   score.woahPrograms = { list, seconds: +((performance.now() - t0) / 1000).toFixed(2) };
 }
-const drawnNot = (R, score, t, edits) => { const h = score.world ? score.handover : null; if (h) score.handover = null; frame(score, t, R, edits); if (h) score.handover = h; };
+const drawnNot = (R, score, t, edits) => { const h = score.world || score.handover?.change ? score.handover : null; if (h) score.handover = null; frame(score, t, R, edits); if (h) score.handover = h; };
 
 // ---------------------------------------------------------------- a trick the guard can't clear
 // It's swapped for the next thing that could go there, and what clears it most is kept. It's never dropped: what's least bad stays, and all of it's in score.refused.

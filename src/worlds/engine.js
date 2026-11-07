@@ -162,11 +162,11 @@ class WorldPrograms {
 
   // Linking takes nothing from the picture (tests/worlds.mjs measured no rAF gap at all), but the GPU process builds a program's pipeline at its first draw, and that stops everything for 200 to 500 ms, a film's programs just the same.
   // So the ones a change is about to need go through one scissored pixel on the real framebuffer, all in one frame, right after the click, and not in the middle of the flight or on the landing. The frame's own draw covers the pixel.
-  warm() {
+  warm(more = []) {
     const R = this.R, gl = this.gl;
-    // Plain and flight always. The fuller two if the world's own patterns wear something only they have.
+    // Plain and flight always. The fuller two if the world's own patterns wear something only they have. And any a change is about to draw with (changePrograms).
     const fuller = (this.W._pool ?? []).some(p => { const S = base(p); return R._extra(S); });
-    const list = [0, FLIGHT, ...(fuller ? [EXTRA, EXTRA | FLIGHT] : []), ...(this.W.fuller ? [FULL, FULL | FLIGHT] : [])].filter(v => this.progs[v] && !this.warmed.has(v));
+    const list = [...new Set([0, FLIGHT, ...(fuller ? [EXTRA, EXTRA | FLIGHT] : []), ...(this.W.fuller ? [FULL, FULL | FLIGHT] : []), ...more])].filter(v => this.progs[v] && !this.warmed.has(v));
     if (!list.length) return Promise.resolve();
     return new Promise(res => {
       const before = R.warm;
@@ -298,6 +298,16 @@ function quietForeign(S, share) {
   // Between programs, what's a world's own can't be drawn by the other one. It lets go before the middle and takes up after, so at the middle no program can tell it was there.
   if (S[OFF['field.kind']] > FOREIGN_KIND) for (let i = 0; i < FAMILIES; i++) S[OFF[`field.k${i}`]] *= share;
   if (share === 0 && S[OFF['surf.kind']] > FOREIGN_SURF) S[OFF['surf.kind']] = 0;
+  // Gone, the field isn't read at all. Times 0 wasn't enough: one world's field on another's numbers can be NaN, and NaN times 0 is NaN. Flower's pattern in Dusk's program had every phase NaN, so none of Dusk's inks could arrive, and they all came on at once at the end (128 out of 255).
+  if (share === 0 && S[OFF['field.kind']] > FOREIGN_KIND) S[OFF['field.kind']] = 0;
+}
+// What a world's uniforms write into the film's own numbers (a beat's bulge, a pole's swell, the tune's bend) lets go with the geometry share in a change, so at the middle, where the program changes, both programs draw the same numbers.
+// Flower's beat on its petals and checks, then Dusk's own, was a jump of 101 out of 255 at x=0.5. With no change nothing here runs.
+const held = { A: null, B: null, F: null };
+function holdNumbers(st) { for (const k of ['A', 'B', 'F']) { if (held[k]?.length !== st[k].length) held[k] = new Float32Array(st[k].length); held[k].set(st[k]); } }
+function letGo(st, geo) {
+  if (geo >= 1) return;
+  for (const k of ['A', 'B', 'F']) { const S = st[k], H = held[k]; for (let i = 0; i < S.length; i++) if (S[i] !== H[i]) S[i] = H[i] + (S[i] - H[i]) * geo; }
 }
 
 function writeWorld(st, score, R, edits) {
@@ -340,9 +350,13 @@ function writeWorld(st, score, R, edits) {
     E[13] = roll;
   }
   if (W.uniforms || W.table || wp.trace) {
-    const ctx = { t: st.t, c: st.c, x: st.x, T: st.T, kind: st.kind, G: st.G, from: st.from, to: st.to, plan: st.plan, geo, score, A, B, F, R, edits, tables: W === score.world ? score.tables : score.tablesOf?.(W) ?? null,      // a world on its way out reads its own tables if the song kept them, else none
-      at: c => (score.react ? reactAt(score.react, c) : null), change: ch };
+    // A world on its way out goes on reading the film it was showing (the change keeps it): its own song tables, its runs and the song as it heard it. Read off the next world's film, Flower's inks changed set on the first frame of a change and Flyer lost its drive (50 and 111 out of 255).
+    const sc = leaving && ch.score ? ch.score : score;
+    const ctx = { t: st.t, c: st.c, x: st.x, T: st.T, kind: st.kind, G: st.G, from: st.from, to: st.to, plan: st.plan, geo, score: sc, A, B, F, R, edits, tables: W === sc.world ? sc.tables : sc.tablesOf?.(W) ?? score.tablesOf?.(W) ?? null,      // a world on its way out reads its own tables if the song kept them, else none
+      at: c => (sc.react ? reactAt(sc.react, c) : null), change: ch };
+    if (ch) holdNumbers(st);
     W.uniforms?.(U, ctx);
+    if (ch) letGo(st, geo);
     if (W.table && W.table.fill(wp.table, ctx) !== false) wp.tableDirty = true;      // after uniforms, or a table that goes by what's in the slot reads a number uniforms is about to change
     if (wp.trace) wp.trace.run(ctx);
   }
@@ -372,12 +386,38 @@ export async function changeWorld(stage, id, opts = {}) {
     await until(() => !app.edits.beyond);
     if (me !== ticket) return false;
   }
-  return new Promise(res => stage.settle(app.pictureT(), () => {
-    if (me !== ticket) { res(false); return; }
-    change(stage, to, opts);
-    guardColour(app);
-    res(true);
-  }));
+  // Once nothing's moving, the programs the change will draw with, and then the change. Building one can take a moment, and something may have started moving meanwhile, so it settles again.
+  for (let n = 0; ; n++) {
+    await new Promise(res => stage.settle(app.pictureT(), res));
+    if (me !== ticket) return false;
+    const wait = n < 2 ? changePrograms(R, stage.world ?? null, to, !app.manual) : null;
+    if (!wait) break;
+    await wait;
+    if (me !== ticket) return false;
+  }
+  change(stage, to, opts);
+  guardColour(app);
+  return true;
+}
+
+// What's showing is the outer pattern right through a change's flight, in the program it's leaving and then in the one it's going to, so whatever it wears (a fold, the extras, the hand) has to be in both flights.
+// One that's still building is drawn without, for as long as it takes: Flower's fan into Dusk lost its mirrors at the middle (132 out of 255), and Flower's own flight found them 3 s in (28). Null when they're all there.
+// And a fold can come up in the middle of one: what's flown into may be wearing one, or what's flown out of may open one on its last stretch. Every mode casts folds, so both flights with a fold are built too: Flyer into Pearl drew its middle without one, then with it (107 out of 255).
+function changePrograms(R, from, to, warm) {
+  const bits = (R._variantOf(R.frame) & (HAND | EXTRA | FOLD)) | FLIGHT, waits = [];
+  for (const W of [from, to]) {
+    const all = [...new Set([bits, bits | FOLD, FLIGHT | FOLD])];
+    if (!W) {
+      for (const v of all) if (!R.progs[v]) { R.wantFold(v, true); waits.push(until(() => !!R.progs[v] || !R.order.includes(v))); }
+      continue;
+    }
+    const wp = R.worldPrograms?.get(W);
+    if (!wp || wp.failed) continue;
+    const list = [...new Set([...all, ...(W.fuller ? all.map(v => v | FULL) : [])])], need = list.filter(v => !wp.progs[v]), cold = list.filter(v => !wp.warmed.has(v));
+    if (need.length) waits.push(wp.whenBuilt(need).then(() => (warm ? wp.warm(list) : null)));
+    else if (warm && cold.length) waits.push(wp.warm(list));
+  }
+  return waits.length ? Promise.all(waits) : null;
 }
 
 function change(stage, to, opts) {
@@ -405,6 +445,7 @@ function change(stage, to, opts) {
   }
   stage.score = stage.score;      // stamped
   stage.morphFrom(snap, T, opts.dur ?? CHANGE_S, { world: from, noGlide: true });
+  if (from && snap.score?.world === from) stage.score.handover.change.score = snap.score;      // the film the world on its way out was showing: writeWorld
 }
 
 
