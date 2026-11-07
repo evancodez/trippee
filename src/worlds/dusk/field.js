@@ -14,15 +14,18 @@ float wShape(float x,float sharp){
 // Going up from a crest it's mist getting thinner, so a hill's top is dark against the bright mist in the valley behind it. Above the farthest crest it's sky, with broad bands in it.
 //   field.spin the farthest crest's height, field.scale how much bigger each is than the last, field._1 how far down the first is, field._2 how long its hills are, field.ph how tall, spare.a sharp, spare.b how far the train's gone, spare.d the seed.
 float wLand(int b,vec2 X,vec4 f,vec4 f2,vec4 sp){
-  float q=f2.y,D=f2.z,fr=f2.w,amp=f.w*(1.+.3*uW[9].x),y0=f2.x,s=1.,best=-1.,bd=0.,R0=y0,I=0.;
+  float q=f2.y,D=f2.z,fr=f2.w,amp=f.w*(1.+.3*uW[9].x),y0=f2.x,s=1.,best=-1.,bd=0.,R0=y0,I=0.,cs=1e3,cg=0.,bs=-1.,px=.75*length(vec2(dFdx(X.y),dFdy(X.y)));
   for(int i=0;i<7;i++){
     float R=y0+amp*D*wShape((X.x/s+sp.y)*fr+sp.w*(I*1.73+.4),sp.x);
     if(i==0) R0=R;
     if(X.y<=R){ best=I; bd=(R-X.y)/D; wAlong[b==0?0:1]=X.x/s+sp.y; wHasAlong[b==0?0:1]=true; }
+    if(abs(X.y-R)<abs(cs)){ cs=X.y-R; cg=2.52/D; }      // the nearest crest, and the slope of what's under it: .97*2.6/D
+    bs=mix(bs,I,1.-smoothstep(-px,px,X.y-R));           // which hill this is, filtered across a pixel at each crest, so the air in front of it changes there without a stair
     y0-=D; D*=q; s*=q; I+=1.;
   }
-  wSky[b==0?0:1]=best<0.?1.:.25*exp(-.6*best);
-  wHaze[b==0?0:1]=best<0.?1.:1.-.74*exp(-.62*best);
+  wCrestS[b==0?0:1]=cs; wCrestG[b==0?0:1]=cg;
+  wSky[b==0?0:1]=bs<0.?mix(1.,.25,bs+1.):.25*exp(-.6*bs);
+  wHaze[b==0?0:1]=bs<0.?mix(1.,.26,bs+1.):1.-.74*exp(-.62*bs);
   if(best<0.) return (X.y-R0)/(1.4*f2.z);
   return -best-.97*(1.-exp(-2.6*bd));
 }
@@ -68,5 +71,16 @@ float worldField(int b,vec2 X,vec4 f){
 #endif
   else S=lines;
   return S-lines;
+}
+`;
+
+// A crest is where the light starts again: a hill's field comes down to it from below and goes on up from it, so it's a V, and a gradient read off neighbouring pixels across it is nearly nothing.
+// So each crest drew unfiltered, in stairs two pixels wide at 720p. Near one, the filter is at least as wide as the steep side's slope across a pixel. Nothing at all when WGEO is 0, as the hooks' rule says.
+export const PHASE = `void worldPhase(int K,int i,vec3 X){
+  int s=K==1?1:0,b=K==1?SLOT:0,k=K*FAM+i;
+  float cs=wCrestS[s],w=min(length(vec2(dFdx(cs),dFdy(cs))),3.*length(vec2(dFdx(X.y),dFdy(X.y))));      // across a pixel, and never more than a steep crest's: where the nearest crest changes inside a quad, the difference isn't a gradient
+  if(!gOn[k]||WGEO<=0.||abs(cs)>2.5*w) return;
+  float want=abs(uG[b+I_fieldK][i])*wCrestG[s]*w;
+  gGn[k]=mix(gGn[k],max(gGn[k],want),WGEO);
 }
 `;

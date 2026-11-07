@@ -2,7 +2,7 @@
 // A whole way of seeing: colour is time since an edge passed, through film stock, in the light of one low sun. A song is one evening, its voice is the sun, its reverb is how long the light lingers, and the last few seconds of it are written along every line.
 import { OFF, FRAME, RIPPLES } from '../pattern/layout.js';
 import { pool } from './dusk/patterns.js';
-import { FIELD } from './dusk/field.js';
+import { FIELD, PHASE } from './dusk/field.js';
 import { DEFS, WARP, COLOR } from './dusk/light.js';
 import { writeStock, lampsAt, gammaAt, sunAt, chips } from './dusk/stocks.js';
 import { hearDusk, whoaOf, read, holdAt, eclipseAt } from './dusk/song.js';
@@ -39,7 +39,7 @@ function waterOf(G, t) {
 export default {
   id: 'dusk', name: 'Dusk', chips, pool, borrow: [],
   needs: ['trem', 'air', 'sustain'],
-  glsl: { defs: DEFS, field: FIELD, warp: WARP, color: COLOR },
+  glsl: { defs: DEFS, field: FIELD, phase: PHASE, warp: WARP, color: COLOR },
   camera: false,
   fuller: S => S[OFF['field.kind']] === 4 && S[OFF['field.a']] === 12,
   tables: (A, M) => hearDusk(A, M),

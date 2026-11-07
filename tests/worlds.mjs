@@ -683,8 +683,9 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
       // What the reader sees: the same grid?
       const grids = [];
       for (const id of ['lines.river', 'checks.vega', 'lattice.master', 'waves.silk', 'body.planet', 'dots.inflate', 'rooms.room', 'pole.garden']) {
-        const read = W => { put(W); T.still(id, .5); reader.now(); return { g: reader.grid.slice(), white: reader.white, tv: reader.tv, th: reader.th }; };
-        const a = read(null), b = read(mirror), c = read(tint);
+        // The sound's own program for what this frame draws, built before it's read: until then it reads the world's own colour program, which is close and for this colour wrong way up. Which one it got was a race (grid .989 to .992 against .99, run to run).
+        const read = async W => { put(W); T.still(id, .5); if (W && R.wp && window.COVER_LATE !== true) { await R.wp.coverProgram(R.wp.variantOf(R.frame)); T.still(id, .5); } reader.now(); return { g: reader.grid.slice(), white: reader.white, tv: reader.tv, th: reader.th }; };
+        const a = await read(null), b = await read(mirror), c = await read(tint);
         const agree = (x, y) => { let n = 0; for (let i = 0; i < x.g.length; i++) if ((x.g[i] > 127) === (y.g[i] > 127)) n++; return +(n / x.g.length).toFixed(3); };
         grids.push({ id, mirror: agree(a, b), numbers: agree(a, c), white: [+a.white.toFixed(3), +b.white.toFixed(3), +c.white.toFixed(3)], tv: [+a.tv.toFixed(2), +b.tv.toFixed(2)], th: [+a.th.toFixed(2), +b.th.toFixed(2)] });
       }

@@ -8,7 +8,8 @@ import { base } from '../../score/slot.js';
 import { directing } from '../../score/flags.js';
 import './moves.js';
 
-const SHARE = { target: 0.2, icon: 0.24, pop: 0.1, plate: 0.13, op: 0.22, film: 0.11 };
+// More of the big readable shapes (targets and icons: skull, fist, bolt, star) and less of the all-over op and film patterns, so there's a shape to read most of the time under the toner and the dots.
+const SHARE = { target: 0.22, icon: 0.3, pop: 0.1, plate: 0.13, op: 0.17, film: 0.08 };
 const rng = seed => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216; };
 
 export function cast(score, A, M, song) {

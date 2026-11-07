@@ -8,7 +8,7 @@
 //   STAGE=film SONG=media/mgmt.mp3     the world's whole film as a person gets it: what it hears, what it lands on, a 20 s sheet and slices across a landing.
 //   STAGE=change                       from the film into the world and back, as a sheet, with the byte check at the middle.
 //   STAGE=frames SONG=... AT=t,t,t     frames of the film at given moments, big enough to look at, and the film's whole cast. NAME=file COLS=4
-//   STAGE=big IDS=wires,blinds T=80    a few patterns big, at given times. No song: the evening goes by t.
+//   STAGE=big IDS=wires,blinds T=80    a few patterns big, at given times. No song: the evening goes by t. NATIVE=1: at the canvas's own pixels, as png, for looking at edges
 //   STAGE=trem IDS=ridge,road          the same frames with and without a tremolo, since no test song has one the extras can hear
 //   STAGE=pure SONG=...                which numbers in the block depend on what was drawn before
 //   STAGE=cost                         GPU ms per program at 3024x1964, governor off. Say what else was running.
@@ -147,12 +147,12 @@ async function stages({ page, log, save, sleep }) {
   }
   if (want.includes('big')) {
     // A few patterns big enough to look at: IDS=wires,blinds T=80,170
-    const r = await page.eval(async (ids, ts) => {
-      const W = await F_.enter(), by = id => W._pool.find(p => p.id === 'dusk.' + id), w = 960, h = 540, cv = document.createElement('canvas'); cv.width = w * Math.min(2, ids.length * ts.length); cv.height = h * Math.ceil(ids.length * ts.length / 2);
+    const r = await page.eval(async (ids, ts, native) => {
+      const W = await F_.enter(), by = id => W._pool.find(p => p.id === 'dusk.' + id), w = native ? trippee.canvas.width : 960, h = native ? trippee.canvas.height : 540, cv = document.createElement('canvas'); cv.width = w * Math.min(2, ids.length * ts.length); cv.height = h * Math.ceil(ids.length * ts.length / 2);
       const g = cv.getContext('2d'); let i = 0;
       for (const id of ids) for (const t of ts) { F_.show(by(id), t); g.drawImage(trippee.canvas, (i % 2) * w, Math.floor(i / 2) * h, w, h); i++; }
-      return cv.toDataURL('image/jpeg', 0.9);
-    }, (process.env.IDS || 'ridge').split(','), (process.env.T || '80').split(',').map(Number));
+      return cv.toDataURL(native ? 'image/png' : 'image/jpeg', 0.9);
+    }, (process.env.IDS || 'ridge').split(','), (process.env.T || '80').split(',').map(Number), !!process.env.NATIVE);
     save(process.env.NAME || 'big.jpg', r);
   }
   if (want.includes('trem')) {
