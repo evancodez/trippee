@@ -92,6 +92,30 @@ float wVeil(int b,vec2 X,float tail,float t){
   }
   return -log(max(sum,1e-5))/1.4;
 }
+// Agate, or abalone inlay: uneven cells, and bands going in parallel to each cell's sides. The distance to the nearest wall is F2-F1, and it's continuous, so nothing's cut.
+float wCells(vec2 X,float lat,out float cell){
+  vec2 g=X/lat,id=floor(g); float a=9.,c=9.; cell=0.;
+  for(int j=-1;j<=1;j++) for(int i=-1;i<=1;i++){
+    vec2 q=id+vec2(float(i),float(j)),h=vec2(wHash(q+11.),wHash(q+29.)),d=g-q-.5-.8*(h-.5); float r=dot(d,d);
+    if(r<a){ c=a; a=r; cell=h.x; } else if(r<c) c=r;
+  }
+  return sqrt(c)-sqrt(a);
+}
+// A strand of pearls: beads along slow curves, each with its dome of rings, on the grain.
+float wStrand(int b,vec2 X,float lat,float n,float A,float t,out float cell){
+  float S=wGrain(X,A,t); cell=.5;
+  float row=floor(X.y/(lat*1.9)+.5);
+  for(int j=-1;j<=1;j++){
+    float R=row+float(j),cy=R*lat*1.9,sway=.34*lat*1.9*sin(X.x*.9+R*2.1+.3*t);
+    float ix=floor(X.x/lat+.5);
+    for(int i=-1;i<=1;i++){
+      float kx=ix+float(i),h=wHash(vec2(kx,R)+5.),cx=kx*lat,r=lat*(.42+.12*h),yy=cy+.34*lat*1.9*sin(cx*.9+R*2.1+.3*t);
+      vec2 d=X-vec2(cx,yy); float u=dot(d,d)/(r*r);
+      if(u<1.){ float e=1.-u,m=smoothstep(0.,.2,e); S=mix(S,n*(1.-sqrt(e))+.7*d.y/r+h*2.,m); cell=h; }
+    }
+  }
+  return S;
+}
 #endif
 float wCellF[2]=float[2](0.,0.),wAngF[2]=float[2](0.,0.);
 float worldField(int b,vec2 X,vec4 f){
@@ -106,6 +130,8 @@ float worldField(int b,vec2 X,vec4 f){
   if(kind<5.5) return dot(vec2(.28,.96),wDew(X,max(f2.w,.05),A,f.z))-lines;
   if(kind<6.5) return wWaves(b,X,f.z,t)-lines;
   if(kind<7.5) return wVeil(b,X,f.z,t)-lines;
+  if(kind<8.5){ float c,rho=wCells(X,max(f2.w,.05),c); wCellF[b==0?0:1]=c; return rho-lines; }
+  if(kind<9.5){ float c,v=wStrand(b,X,max(f2.w,.05),f.z,A,t,c); wCellF[b==0?0:1]=c; return v-lines; }
 #endif
   return -lines;
 }

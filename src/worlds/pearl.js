@@ -8,6 +8,7 @@ import { hearSong, flowClock, voiceAt, focusAt, sheenAt, voiceSpot } from './pea
 import { rack, drain, breath } from './pearl/rack.js';
 import { cast, landings, moves } from './pearl/direct.js';
 import './pearl/moves.js';
+import './pearl/camera.js';
 
 const KEYS = ['H', 'wedge', 'R', 'B', 'C', 'gap', 'terrace', 'rib', 'ribs', 'pool', 'lets', 'echo', 'cell', 'barbs'];
 const filmOf = p => p?.film ?? FILM;
@@ -65,9 +66,11 @@ export default {
     // The focus. Loud is sharp across most of the frame. Quiet's a slit, with the rest melting. Her voice takes everything further out of focus: it's what the pearl's for.
     voiceSpot(song, t, spot);
     const [fy, ang] = song ? focusAt(song, t) : focusAt({}, t), v = spot[2], mel = s ? s.melSlow : 0;
-    const fw = 0.1 + 0.55 * e * e + 0.05 * lung;
+    // The strong beats open it: on each one, for a moment, more of the frame is sharp. And a big arrival is a pull (song.js).
+    const pull = song ? voiceAt(song.pull, t) : 0, melt = Math.max(pull, 0), snap = Math.max(-pull, 0);
+    const fw = 0.1 + 0.55 * e * e + 0.05 * lung + 0.13 * pulse + 1.9 * snap;
     set(24, 0.3 * Math.sin(t * 0.09), fy + 0.12 * mel, Math.cos(ang), Math.sin(ang));
-    set(25, fw, 0.6 - 0.32 * e, 0.008 + 0.05 * v * (1 - e), 40 + 130 * (song ? Math.min(1, voiceAt(song.width, t) * 2) : 0.2));
+    set(25, fw, (0.6 - 0.32 * e) * (1 + 1.1 * melt) * (1 - 0.8 * snap), (0.008 + 0.05 * v * (1 - e)) * (1 - snap) + 0.1 * melt, 40 + 130 * (song ? Math.min(1, voiceAt(song.width, t) * 2) : 0.2));
     // The film: down tilts with the harmony's pull, and the pool goes by on the music's own time.
     const lean = 0.8 * tens + 0.5 * Math.sin(t * 0.05), dr = song ? voiceAt(song.drain, t) : t * 40;
     set(26, Math.sin(lean), -Math.cos(lean), dr * 0.0042, t * (0.5 + e));
@@ -80,18 +83,19 @@ export default {
     const sh = sheenAt(song, t), dx = Math.cos(sh.dir - 1.57), dy = Math.sin(sh.dir - 1.57), width = 1.3;
     set(29, -2.2 + sh.x * (4.4 + width), width, dx, dy);
     set(30, 0.11 + 0.1 * lung, 0.66 + 0.1 * (1 - e), 0.018 + 0.012 * lung, 0);
-    set(31, kind === 'breath' ? 0.16 : 0.2, 40 + 110 * e, 0, 0);
+    set(31, kind === 'breath' ? 0.16 : 0.2, 80 + 190 * e, 0, 0);
     // The pearls: the voice, and its echoes along the same path, each a beat or two behind.
     for (let i = 0; i < ORBS; i++) {
       voiceSpot(song, t - i * ORB_LAG, spot);
       const off = i ? 0.82 ** i : 1;
-      set(40 + i, spot[0], spot[1], (0.5 + 0.1 * lung + 0.1 * e) * off, spot[2] * (i ? 0.62 ** i : 1));
+      set(40 + i, spot[0], spot[1], (0.5 + 0.1 * lung + 0.1 * e + 0.05 * pulse) * off, spot[2] * (i ? 0.62 ** i : 1));
     }
     // A ghost voice, written by the moves.
     set(44, A[OFF['spare.d']], 0, 0, 0); set(45, B[OFF['spare.d']], 0, 0, 0);
     // Lung: the contacts breathe.
     if (s) { const k = 1 + 0.1 * lung + 0.06 * pulse; for (const S of [A, B]) for (const n of ['blobs.r1', 'blobs.r2', 'blobs.r3', 'p1.q', 'p2.q']) if (S[OFF['field.kind']] === 4 && S[OFF['field.a']] < 0.5 && S[OFF[n]] > 0) S[OFF[n]] *= k; }
   },
+  camera: { pool: { quiet: ['float', 'sink', 'tideway', 'veil'], mid: ['float', 'tideway', 'sink', 'plate', 'wander'], loud: ['rise', 'sink', 'sweep', 'dolly'] } },      // src/score/camera.js. Weightless: it hardly turns, and it goes up and down as much as along.
   pace: { bars: [8, 6, 5, 4, 3], morph: [5, 8], most: 16 },
   motion: { len: [12, 20], morph: [6, 9], xforms: { rack, drain, breath }, xform: 'rack', keep: ['rack', 'drain', 'breath'], front: true },
   hear: { pulse: 0.8, melody: 1.2, tone: 0.8, harmony: 0.7, lung: 1 },

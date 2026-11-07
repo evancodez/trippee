@@ -6,7 +6,7 @@ const LINES = 2.2;
 export const FLOW = 6;         // lines per cycle of the film's clock
 const PH = 3;
 const NAMES = [['blobs.x1', 'blobs.y1', 'blobs.a1'], ['blobs.x2', 'blobs.y2', 'blobs.a2'], ['blobs.x3', 'blobs.y3', 'blobs.a3'], ['p1.x', 'p1.y', 'p1.ay'], ['p2.x', 'p2.y', 'p2.ay']];
-export const GAP = 0, GRAIN = 1, BUBBLE = 2, SCALE = 3, CAUSTIC = 4, DEW = 5, WAVES = 6, VEIL = 7;
+export const GAP = 0, GRAIN = 1, BUBBLE = 2, SCALE = 3, CAUSTIC = 4, DEW = 5, WAVES = 6, VEIL = 7, CELLS = 8, STRAND = 9;
 // What a pattern's film is, unless it says. See field.js.
 export const FILM = { H: 1500, wedge: 260, R: 130, B: 0, C: 0, gap: 90, terrace: 0, rib: 0, ribs: 60, pool: 170, lets: 1, echo: 110, cell: 0, barbs: 0 };
 
@@ -113,6 +113,16 @@ export const pool = [
     over: { fold: { n: 8, rot: 0, cx: 0, cy: 0 }, p1: { x: 0, y: 0, q: 0, ay: 1 } },
     arcs: [{ path: 'fold.rot', from: -0.4, to: 0.4 }, { path: 'scale', from: 1.0, to: 1.25, log: true }],
     film: { H: 1800, R: 90, wedge: 60, pool: 130, lets: 0.7, echo: 60 } }),
+  pearl({ id: 'pearl.agate', name: 'Agate', group: 'shell', kind: CELLS, k: 3.2, size: 0.95, time: 0, lines: 2,
+    arcs: [{ path: 'rot', from: -0.14, to: 0.14 }, { path: 'scale', from: 1.0, to: 1.35, log: true }, { path: 'tx', from: -0.24, to: 0.24 }],
+    film: { H: 1350, R: 150, cell: 620, wedge: 110, pool: 110, lets: 0.6, echo: 80 } }),
+  pearl({ id: 'pearl.strand', name: 'Strand of Pearls', group: 'contact', kind: STRAND, k: 1, n: 4.2, a: 0.5, size: 0.62, time: 0.1, lines: 1.5,
+    arcs: [{ path: 'tx', from: -0.3, to: 0.3 }, { path: 'scale', from: 1.05, to: 1.3, log: true }, { path: 'rot', from: -0.08, to: 0.08 }],
+    film: { H: 1350, wedge: 320, R: 170, cell: 340, pool: 120, lets: 0.7, echo: 70 } }),
+  pearl({ id: 'pearl.frost', name: 'Frost', group: 'shell', field: false, f0: { x: 2.2, ph: PH }, fams: [{ y: 1.1, d: -1, on: 1 }], flow: { 'f1.ph': 0.3 },
+    over: { fold: { n: 6, rot: 0, cx: 0, cy: 0 }, zig: { a: 0.3, c: 1.5, b: 0, n: 0 } },
+    arcs: [{ path: 'fold.rot', from: -0.35, to: 0.35 }, { path: 'zig.a', from: 0.22, to: 0.4 }, { path: 'scale', from: 1.0, to: 1.3, log: true }],
+    film: { H: 2000, R: 120, C: 200, wedge: 60, pool: 130, lets: 0.7, echo: 70 } }),
   // ---------------------------------------------------------------- the film's own, in this film
   own('waves.silk', 'wavesilk', 'Silk Waves', { H: 1500, pool: 220, lets: 0.8 }, { group: 'water' }),
   own('waves.pond', 'pond', 'Pond', { H: 1250, wedge: 200, lets: 0.8 }, { group: 'water' }),
