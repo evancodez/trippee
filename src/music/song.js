@@ -11,7 +11,7 @@ const VISUAL_LEAD = 0.025;      // the picture a touch ahead: an edge seen just 
 const END_HOLD = 2.5;           // seconds the film's last picture holds after the song has finished
 const ARRIVE = 7, FLIP = 6;     // seconds: a song's film flying in, and one film of a compared song flying into the other
 const HUSH = 0.45, HUSH_BACK = 2.5;      // seconds the song lets go of the sheet before a jump back in the music, and takes to come back after it
-const FLIGHT_MOST = 15, FLIGHT_FPS = 60, FLIGHT_H = 180;     // a flight that flashes takes longer, up to this. At the judge's rate and size, and by its count (FlashSeen.real): there's only the one flight to look at, and smaller and slower it passed flights the judge doesn't
+const FLIGHT_MOST = 10, FLIGHT_FPS = 60, FLIGHT_H = 180;     // a flight that flashes takes longer, up to this: it's the first thing anyone sees of a song, and past this it was mostly running into flashes in the film itself, which no flight can help. At the judge's rate and size, and by its count (FlashSeen.real): there's only the one flight to look at, and smaller and slower it passed flights the judge doesn't
 
 // ---------------------------------------------------------------- the analysis cache: a song is only analysed once
 const DB = 'trippee', STORE = 'analysis';

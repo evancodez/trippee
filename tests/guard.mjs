@@ -21,7 +21,7 @@ export default async ({ page, log, sleep }) => {
     const tau = t => t * 2, was = [{ t: 0, x: 0, v: 0.25 }, { t: 120, x: 30, v: 0.25 }, { t: 126, x: 31.125, v: 0.125 }];
     const out = {};
     for (const pay of [false, true]) {
-      const T = slowedTrack({ phiTrack: was, t0: 0, t1: 100, morph: 8 }, tau, 20, 24, 2, pay), rate = t => (evalTrack(T, tau(t) + 0.001) - evalTrack(T, tau(t) - 0.001)) / 0.002 / 2 / 0.5;       // how fast against 1/4 a beat
+      const T = slowedTrack({ phiTrack: was, t0: 0, t1: 100, morph: 8 }, tau, 20, 24, 2, pay), rate = t => (evalTrack(T, tau(t) + 0.001) - evalTrack(T, tau(t) - 0.001)) / 0.002 / 0.25;       // how fast against 1/4 a beat
       let back = 0, step = 0;
       for (let t = 0; t < 100; t += 0.01) { const d = evalTrack(T, tau(t + 0.01)) - evalTrack(T, tau(t)); if (d < -1e-9) back++; step = Math.max(step, Math.abs(d)); }
       let topAccel = 0;
