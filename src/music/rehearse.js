@@ -595,11 +595,11 @@ export class FlashSeen {
     return out;
   }
   // What the judge would count, close up: its limits and its swing, the smallest bit inside it for the difference in size. The frames are the last swing of each run, as in overIn.
-  real(a = 0, b = this.n) {
+  real(a = 0, b = this.n, strict = false) {
     const out = [];
-    this.overIn(i => this.mean[i], FLASH_WHOLE, REAL_SWING_WHOLE, out, a, b, REAL_WITHIN);      // the whole frame has no allowance, so it's read further inside the judge's 25.5
+    this.overIn(i => this.mean[i], FLASH_WHOLE, strict ? JUDGE_SWING : REAL_SWING_WHOLE, out, a, b, REAL_WITHIN);      // the whole frame has no allowance, so it's read further inside the judge's 25.5
     const whole = out.length;
-    for (let k = 0; k < 16; k++) this.overIn(i => this.tiles[i * 16 + k], FLASH_TILE, REAL_SWING, out, a, b, REAL_WITHIN);
+    for (let k = 0; k < 16; k++) this.overIn(i => this.tiles[i * 16 + k], FLASH_TILE, strict ? JUDGE_SWING : REAL_SWING, out, a, b, REAL_WITHIN);
     return { frames: out, whole };
   }
 }
@@ -643,10 +643,10 @@ async function guardHeard(R, score, until, colour, ctx) {
     }
     if (!left) break;
   }
-  // What's still flashing with the layer nearly gone is the film's own. Giving way there has done nothing but leave a dead second, so the layer has it back.
+  // What's still flashing by the judge's own count with the layer nearly gone is the film's own. Giving way there has done nothing but leave a dead second, so the layer has it back.
   if (left) {
     const stuck = [];
-    for (const w of stretches(seen.over(0, seen.n, colour), fps)) if (!fine.has(w.b.toFixed(1))) stuck.push(...(colour ? [w.b - 0.5] : (await lookClose(R, score, w.a, w.b, ctx, () => {}, edits)).at));
+    for (const w of stretches(seen.over(0, seen.n, colour), fps)) if (!fine.has(w.b.toFixed(1))) stuck.push(...(colour ? [w.b - 0.5] : (await lookClose(R, score, w.a, w.b, ctx, () => {}, edits, true)).at));      // what the judge itself would count: anything less and the dip's doing its job
     const keep = dips.filter(d => !stuck.some(t => d.b > t - 1.3 && d.a < t + 0.2));
     if (keep.length < dips.length) { H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
   }
@@ -655,7 +655,7 @@ async function guardHeard(R, score, until, colour, ctx) {
 
 // ---------------------------------------------------------------- is it really flashing?
 // A stretch of a film at the size the judge reads and at its rate, with a transformation twice that. Returns the seconds of what it counts, and whether any of that's the whole frame.
-async function lookClose(R, score, a, b, { aspect, task, breathe, batch }, count = () => {}, edits = FILM_ONLY) {
+async function lookClose(R, score, a, b, { aspect, task, breathe, batch }, count = () => {}, edits = FILM_ONLY, strict = false) {
   const g = score.gestures, H = CLOSE_H, W = Math.round(H * aspect);
   // At a hit a change goes by too quickly for 30 a second to be sure of it
   const crossing = g.some(G => G.morph && G.peak?.q && G.peak.hit > a - 1 && G.peak.hit < b + 1), fps = crossing ? CLOSE_FPS_MORPH : CLOSE_FPS, n = Math.max(2, Math.ceil((b - a) * fps));
@@ -667,7 +667,7 @@ async function lookClose(R, score, a, b, { aspect, task, breathe, batch }, count
   }
   await eyes.flush();
   count(n);
-  const r = s.real();
+  const r = s.real(0, s.n, strict);
   return { at: r.frames.map(i => a + i / fps), whole: r.whole, kinds: r.frames.map(i => ({ k: s.who[i], kind: s.kind[i] })) };
 }
 // A run of frames a coarse look flagged, as stretches of seconds: from a bit before the first, since a run of swings ends at the frame it's reported on, to a bit after the last.
