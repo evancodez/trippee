@@ -1,5 +1,5 @@
 // How hard the picture follows the song: everything the owner asked for by saying it wasn't nearly reactive enough. A layer over the film, on the song's own seconds, worked out once when the film's composed and read at
-// any moment, so frame() stays a pure function of t and flipping it (the h key, ?hear=0) composes nothing and costs nothing. With score.hearNow at 0 nothing here writes anything, and the film is exactly the film.
+// any moment, so frame() stays a pure function of t and flipping it (the e key, ?hear=0) composes nothing and costs nothing. With score.hearNow at 0 nothing here writes anything, and the film is exactly the film.
 //
 // It works on the whole sheet, as a camera and a few lenses in front of everything (FRAME.hear, src/gl/chunks/main.js), so it goes on answering through every transformation, every hero and every world:
 //   BEATS    on each strong beat the sheet pushes toward you and blooms from the middle, falling into the beat and easing away, and a ring runs out. Chosen per section (react.js), gentler on a soft song, never none
@@ -22,7 +22,8 @@ export const SIZE = {
   fallPull: 0.18, fallPinch: 0.2,                            // a falling moment
   lift: 0.15, note: 0.3, noteR: 0.6,      // the tune: per 6 semitones, and each note
   lean: 0.05,                               // the tone
-  ringBeat: 0.008, ringHit: 0.022, ringSpeed: 1.15, ringLife: 1.5,
+  ringBeat: 0.012, ringHit: 0.022, ringSpeed: 1.15, ringLife: 1.5,
+  ringMoment: 0.45, ringPerc: 0.72, ringSpan: 0.3, ringLines: [8, 16],     // ripples: the least moment that gets one; how far under ringPerc of drums a song is before it gets them on its lines too, over ringSpan; and every how many bars, very and somewhat liquid
   swayShift: 0.055, swayTurn: 0.035,        // loud
   weightUp: 1, tuneUp: 1.7, toneFiner: 0.3,      // what song-sheet.js does more of with this up: how much more a ring weighs, how far the tune's own waves go, how far the tone moves line density
   fall: 0,                                 // the rings falling in, or going as they always went. Falling in, a ring takes the whole frame's brightness with it on the beat, and that's most of what flashes
@@ -145,6 +146,9 @@ export function buildHear(A, R, { hits = [] } = {}) {
     }
   }
 
+  // ---- ripples have their place. They were a ring on nearly every strong beat of every song (40 to 65 a minute), and the owner said: "you overdo the ripple effect. It has its place but less, song dependent".
+  // Now a song's big moments ring, and only a song more sustained than driven by its drums rings on its lines as well: PPP every 8 bars, Wildflower every 16, MGMT and Disclosure only on their moments.
+  const liquid = smoother(((SIZE.ringPerc) - (A.character?.perc ?? SIZE.ringPerc)) / SIZE.ringSpan), lineBars = liquid >= 0.66 ? SIZE.ringLines[0] : liquid >= 0.33 ? SIZE.ringLines[1] : 0;
   // ---- the moments
   const moments = momentsOf(A, M, { hits }), hit = new Float32Array(n), fall = new Float32Array(n), turn = new Float32Array(n), wind = new Float32Array(n), slow = new Float32Array(n), rings = [];
   const add = (arr, m, atk, dec, k = 1, aft = 0) => {
@@ -163,10 +167,18 @@ export function buildHear(A, R, { hits = [] } = {}) {
       const aft = m.kind === 'lands' ? 0 : HIT_AFTER;
       add(hit, on, atk, Math.max(1.5 * bar, 1.2), sized, aft);
       add(turn, on, atk, Math.max(1.5 * bar, 1.2), sized * (side = -side), aft);
-      if (sized > 0.25) rings.push({ t: m.t, a: SIZE.ringHit * clamp(sized, 0.2, 1.4) });
+      if (sized > SIZE.ringMoment) rings.push({ t: m.t, a: SIZE.ringHit * clamp(sized, 0.2, 1.4) * lerp(0.8, 1, liquid), kind: 'moment' });
     } else { add(fall, m, 0.38, Math.max(1.5 * bar, 1.2), sized, HIT_AFTER); add(turn, m, 0.38, Math.max(1.5 * bar, 1.2), 0.6 * sized * (side = -side), HIT_AFTER); }
   }
-  for (const p of P) if (p.a > 0.55) rings.push({ t: p.t, a: SIZE.ringBeat * p.a });
+  // ...and on the lines of a song that's more sustained than driven by its drums: a ring at the top of every 8 or 16 bars, on the strong beat nearest it, unless a moment's already rung within the bar.
+  if (lineBars) {
+    const p0 = A.phrase0 ?? 0;
+    (A.bars ?? []).forEach((tb, i) => {
+      if ((((i - p0) % lineBars) + lineBars) % lineBars) return;
+      const p = P.reduce((b, q) => (Math.abs(q.t - tb) < 0.5 * bar && (!b || Math.abs(q.t - tb) < Math.abs(b.t - tb)) ? q : b), null);      // the strong beat nearest the line's top: the pulse may sit off the bar's first beat (PPP's are a beat after it from 39 s)
+      if (p && p.a > 0.55 && !rings.some(r => Math.abs(r.t - p.t) < bar)) rings.push({ t: p.t, a: SIZE.ringBeat * p.a, kind: 'line' });
+    });
+  }
   rings.sort((a, b) => a.t - b.t);
 
   // A build. From the last low in the song's size, or a few bars, up to the arrival: it winds up, hangs in the last beat, and lets go on the hit.
@@ -361,5 +373,5 @@ function writeHear(st, score, edits, tReal, hx) {
 }
 const rdR = (R, arr, c) => { const x = clamp(c * R.hz, 0, R.n - 1.001), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
 
-// What's on when nobody's said (a test's shot). The picture has edits.hear, eased by the h key.
+// What's on when nobody's said (a test's shot). The picture has edits.hear, eased by the e key.
 export const hearStart = () => (hearing.on ? 1 : 0);
