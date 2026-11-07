@@ -143,7 +143,7 @@ export function glides(a, b) {
 }
 
 export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = null } = {}) {
-  const bar = Math.max(M.bar, 0.8), beat = M.beat, bars = A.bars, reg = registerOf(A, M), name = world?.motion?.pace ?? reg.name, { lv, heat } = rideOf(A);
+  const bar = Math.max(M.bar, 0.8), beat = M.beat, bars = A.bars, reg = registerOf(A, M), name = reg.name, { lv, heat } = rideOf(A);
   const rand = rng(((seed | 0) * 48611 + songHash) >>> 0), lib = id => library.find(p => p.id === id);
   const shuffled = list => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const barAt = t => { let lo = 0, hi = bars.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (bars[m] <= t) lo = m; else hi = m - 1; } return lo; };
