@@ -14,6 +14,9 @@ const vec4 DS=vec4(1.,-.5,.75,-.25);   // each family's share of the tune's chan
 float prepare(int K,int b,vec2 p){
   p=moveCarry(b,p);
   float cover=1.,parity=1.,slipY=0.;
+#ifdef FOLD
+  p=spaceFold(b,p,parity);
+#endif
   // On a surface wrapped by angle the around-count has to stay a whole number, or there's a seam. So the view can't scale or turn
   // the texture there. It acts on the camera instead, like a lens: zoom and roll, about the same point as everywhere else.
   vec2 p0=p;
@@ -117,6 +120,9 @@ float prepare(int K,int b,vec2 p){
     if(inside<.5){ X=vec3(rot(bgv.y)*p0/(max(bgv.z,1e-4)*max(v.x,1e-5))+vec2(bgv.w,0.),0.); }
     cover=1.;
   }
+#ifdef FOLD
+  if(gFS) seam=true;
+#endif
   if(parity<0.==(uG[b+I_shape].w>.5)) parity=1.; else parity=-1.;
 #ifdef WORLD_X
   gX[K]=X.xy;
