@@ -7,7 +7,7 @@ import { INKS, chips, writeSchedules } from './flyer/inks.js';
 import { hearSong, noSong, popAt, knocks, waveAt, whoaOf } from './flyer/song.js';
 import { PAGE_ROWS, PAGE_ASPECT, TABLE_H, writePage } from './flyer/stencil.js';
 import crank, { bleed, feed, fill, STRIPS } from './flyer/change.js';
-import { cast, landings, moves } from './flyer/direct.js';
+import { cast, landings, moves, sheets } from './flyer/direct.js';
 
 const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
 const ease = x => { x = clamp(x); return x * x * x * (x * (x * 6 - 15) + 10); };
@@ -55,12 +55,27 @@ export default {
     },
   },
   whoa: (A, M) => whoaOf(A, M),
+  // The camera's the band's too: all of its travel falls into each strong beat, and hangs between them. A clock of its own, on the camera's own table, so it costs nothing and lands where it would have.
+  dressCamera(film) {
+    const song = film.flyer, cam = film.camera, hits = song?.hits;
+    if (!hits || hits.length < 4) return;
+    const lag = cam.lag ?? new Float32Array(cam.n);
+    for (let k = 0; k + 1 < hits.length; k++) {
+      const a = hits[k], b = hits[k + 1], gap = b - a;
+      if (gap > 3 || gap < 0.2) continue;
+      for (let i = Math.ceil(a * 30); i <= Math.floor(b * 30) && i < cam.n; i++) lag[i] -= gap * (0.75 * Math.sin(2 * Math.PI * ((i / 30 - a) / gap))) / (2 * Math.PI);
+    }
+    cam.lag = lag;
+  },
   direct(score, A, M) {
     if (!score.tau || !score.react) return score;
-    const song = hearSong(score, A, M);
+    let song = hearSong(score, A, M);
+    cast(score, A, M, song);
+    // The name's come on on the landing nearest the whoa, so that's where the whoa is now.
+    if (score.whoaAt != null) song = hearSong(score, A, M, score.whoaAt);
     score.flyer = song;
-    score.phi = t => song.clock(t) / FLOW;
-    cast(score, A, M);
+    score.phi = t => score.flyer.clock(t) / FLOW;
+    sheets(score, song);
     landings(score, song);
     moves(score, A, M);
     return score;

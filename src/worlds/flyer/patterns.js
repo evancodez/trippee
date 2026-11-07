@@ -29,7 +29,7 @@ function poster({ id, name, group = 'target', k = 2.5, n = 6, a = 0.2, kappa = 0
   };
   const phase = poles.map((_, i) => 1.7 * i + 0.4);
   return {
-    id, name, family: 'flyer', group, fine: false, lambda: 0.05, g, can, stencil, grid, pool, edition,
+    id, name, family: 'flyer', group, fine: false, lambda: 0.05, g, can, stencil, grid, pool, edition, via: { id: 'feed', dir: 3, ang: id.length * 1.3 },
     flow: { 'f1.ph': 1, ...flow },
     arcs,
     // The film's one clock, surging. Poles go round on it too, so they go with the music and stop when it stops.
@@ -50,7 +50,7 @@ function film(from, id, name, more = {}) {
   const o = byId[from], flow = { ...o.flow };
   delete flow['f0.ph'];
   return {
-    ...o, id: `flyer.${id}`, name, family: 'flyer', group: 'film', pool: true, fine: o.fine, flow, ...more,
+    ...o, id: `flyer.${id}`, name, family: 'flyer', group: 'film', pool: true, fine: o.fine, flow, via: { id: 'feed', dir: 3, ang: id.length * 1.3 }, ...more,
     drive(out, ctx) { o.drive?.(out, ctx); out[ctx.OFF['f0.ph']] -= ratchet(FLOW * ctx.phi); },
   };
 }
@@ -85,8 +85,8 @@ export const pool = [
     arcs: [{ path: 'rot', from: -0.25, to: 0.25 }, { path: 'scale', from: 1, to: 1.2, log: true }] }),
   poster({ id: 'flyer.ace', name: 'Black Spade', group: 'icon', k: 1.5, n: 9, a: 0.14, beta: 2.4, poles: [[-1.5, 0.3, 0.8, 0], [1.5, -0.3, 0.8, 1]], stencil: { key: 'spade', x: 0, y: 0, s: 0.97, rot: 0 }, screen: 6,
     arcs: swing(0.12) }),
-  poster({ id: 'flyer.vee', name: 'Flying V', group: 'icon', a: 0, k: 1.5, swell: 0, poles: [[0.3, -0.5, 1, 0]], spin: 0, orbit: 0.2, stencil: { key: 'vee', x: 0, y: 0, s: 0.96, rot: 0 }, n: 12, screen: 6,
-    arcs: swing(0.14) }),
+  poster({ id: 'flyer.anarchy', name: 'Anarchy', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 1.25, fams: [{ x: 1.25 }], stencil: { key: 'anarchy', x: 0, y: 0, s: 0.97, rot: 0 }, screen: 6,
+    arcs: [{ path: 'rot', from: 0.5, to: 0.9 }, { path: 'scale', from: 1, to: 1.15, log: true }] }),
   poster({ id: 'flyer.fist', name: 'Fist', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 1.5, stencil: { key: 'fist', x: 0, y: -0.02, s: 0.98, rot: 0 }, screen: 7,
     arcs: [{ path: 'rot', from: -0.3, to: 0.3 }, { path: 'scale', from: 1, to: 1.2, log: true }] }),
   // ---------------------------------------------------------------- Warhol: the same screen in panels, every panel in inks of its own
@@ -94,8 +94,8 @@ export const pool = [
     arcs: [{ path: 'rot', from: 0.5, to: 0.9 }] }),
   poster({ id: 'flyer.fists', name: 'Power', group: 'pop', field: false, poles: [[0, 0, 1, 0.5]], lines: 2.3, stencil: { key: 'fist', x: 0, y: 0, s: 0.88, rot: 0 }, grid: [3, 2], screen: 10,
     arcs: [{ path: 'rot', from: -0.9, to: -0.5 }] }),
-  poster({ id: 'flyer.stars', name: 'Superstars', group: 'pop', k: 2.6, a: 0.1, n: 9, poles: [[0, 0, 1, 0]], stencil: { key: 'star', x: 0, y: 0, s: 0.9, rot: 0 }, grid: [4, 2], screen: 11, arcs: swing(0.2) }),
-  poster({ id: 'flyer.bolts', name: 'Sparks', group: 'pop', field: false, poles: [[0, 0, 1, 0.5]], lines: 2.0, fams: [{ x: 2.0 }], stencil: { key: 'bolt', x: 0, y: 0, s: 0.92, rot: 0.08 }, grid: [5, 2], screen: 12,
+  poster({ id: 'flyer.stars', name: 'Superstars', group: 'pop', field: false, poles: [[0, 0, 1, 0]], lines: 2.2, stencil: { key: 'star', x: 0, y: 0, s: 0.92, rot: 0 }, grid: [4, 2], screen: 11, arcs: [{ path: 'rot', from: 1.1, to: 0.7 }] }),
+  poster({ id: 'flyer.bolts', name: 'Sparks', group: 'pop', field: false, poles: [[0, 0, 1, 0.5]], lines: 2.4, stencil: { key: 'bolt', x: 0, y: 0, s: 0.92, rot: 0.08 }, grid: [5, 2], screen: 12,
     arcs: [{ path: 'rot', from: 0.2, to: 0.5 }] }),
   // ---------------------------------------------------------------- headlines: wood type, and the first is the song's own name
   poster({ id: 'flyer.headliner', name: 'Headliner', group: 'icon', field: false, poles: [[0, 0, 1, 0]], lines: 1.4, stencil: { key: 'title', x: 0, y: 0, s: 0.84, rot: -0.04 }, screen: 6,

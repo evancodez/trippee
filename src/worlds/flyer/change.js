@@ -43,7 +43,7 @@ export const bleed = {
   id: 'bleed', enter: glideEnter,
   levers: { 'a feed instead': G => { const was = G.xform; if (!was) return null; G.xform = { id: 'feed', dir: 3, W: 0.8 }; return () => { G.xform = was; }; } },
   plan(a, b, ctx) {
-    if (!flat(a) || !flat(b) || a[OFF['fold.n']] !== b[OFF['fold.n']] || ctx.D < 2) return null;
+    if (ctx.noGlide || !flat(a) || !flat(b) || a[OFF['fold.n']] !== b[OFF['fold.n']] || ctx.D < 2) return null;
     return { kind: 'bleed', onClock: true, ...partners(a, b), fields: measures(a) || measures(b) ? FIELDS_LESS : FIELDS };
   },
   write(st, A, B) {
@@ -62,7 +62,8 @@ export const feed = {
   id: 'feed', enter: glideEnter,
   levers: { 'a wider front': G => { if (!G.xform || G.xform.W) return null; G.xform.W = 0.85; return () => { delete G.xform.W; }; } },
   plan(a, b, ctx) {
-    if (!planar(a) || !planar(b) || winds(a, 0) || winds(b, 0) || ctx.D < 2) return null;
+    // noGlide: a rehearsal's ruled it out, or it's a change of world, which has to be a flight to change programs half way.
+    if (ctx.noGlide || !planar(a) || !planar(b) || winds(a, 0) || winds(b, 0) || ctx.D < 2) return null;
     const o = ctx.xform?.id === 'feed' || ctx.xform?.dir ? ctx.xform : {}, dir = o.dir ?? 3, centre = dir === 3 ? [0, 0] : o.centre ?? [b[OFF['blobs.x1']] || 0, b[OFF['blobs.y1']] || 0], reach = dir === 3 ? 2.3 : Math.hypot(ctx.aspect + Math.abs(centre[0]), 1 + Math.abs(centre[1])) * 1.05;
     return { kind: 'feed', onClock: true, ...partners(a, b), dir, centre, reach, W: o.W ?? 0.5, ang: o.ang ?? 0 };
   },
@@ -84,7 +85,7 @@ export const fill = {
   id: 'fill', enter: glideEnter,
   levers: {},
   plan(a, b, ctx) {
-    if (!planar(a) || !planar(b) || winds(a, 0) || winds(b, 0) || ctx.D < 2) return null;
+    if (ctx.noGlide || !planar(a) || !planar(b) || winds(a, 0) || winds(b, 0) || ctx.D < 2) return null;
     const o = ctx.xform?.id === 'fill' ? ctx.xform : {};
     return { kind: 'fill', onClock: true, ...partners(a, b), ang: o.ang ?? 0, reach: 1.9, order: o.order ?? null, strips: o.strips ?? STRIPS };
   },
@@ -104,8 +105,11 @@ export const fill = {
 export default {
   id: 'crank', levers: {}, enter: glideEnter,
   plan(a, b, ctx) {
+    if (ctx.noGlide) return null;
     if (a[OFF['fold.n']] !== b[OFF['fold.n']]) return feed.plan(a, b, ctx);
     if (!flat(a) || !flat(b) || ctx.D < 2) return null;
+    // Nobody chose (a wander, or a film that didn't say): it isn't always the one thing. Which goes by the two patterns, so the same two always go the same way.
+    if (!ctx.xform?.chosen) { const h = Math.abs(Math.round((a[OFF['field.k0']] * 7 + b[OFF['blobs.x1']] * 11 + a[OFF['blobs.y1']] * 13 + b[OFF['field.a']] * 3 + a[OFF['f0.y']] * 5) * 10)) % 4; if (h === 1) return fill.plan(a, b, ctx); if (h === 2) return feed.plan(a, b, { ...ctx, xform: { dir: 3, ang: h * a[OFF['f0.y']] } }); if (h === 3) return bleed.plan(a, b, ctx); }
     if (!rings(a) || !rings(b)) return bleed.plan(a, b, ctx);
     return { kind: 'crank', onClock: true, ...partners(a, b) };
   },

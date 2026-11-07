@@ -52,6 +52,14 @@ const drawn = {
     g.bezierCurveTo(0.12, -0.5, 0.2, -0.8, 0.36, -0.94); g.lineTo(-0.36, -0.94); g.bezierCurveTo(-0.2, -0.8, -0.12, -0.5, -0.1, -0.26);
     g.bezierCurveTo(-0.26, -0.56, -0.78, -0.5, -0.78, -0.14); g.bezierCurveTo(-0.78, 0.28, -0.2, 0.62, 0, 0.98); g.closePath(); g.fillStyle = '#fff'; g.fill();
   },
+  // Circled A.
+  anarchy(g) {
+    g.strokeStyle = '#fff'; g.lineCap = 'butt'; g.lineJoin = 'miter'; g.lineWidth = 0.17;
+    g.beginPath(); g.arc(0, 0, 0.72, 0, 2 * Math.PI); g.stroke();
+    g.lineWidth = 0.2;
+    g.beginPath(); g.moveTo(-0.66, -1.0); g.lineTo(0, 1.0); g.lineTo(0.66, -1.0); g.stroke();
+    g.beginPath(); g.moveTo(-0.84, -0.3); g.lineTo(0.84, -0.3); g.stroke();
+  },
   // A flying V: a body in a wedge, its neck going up and away.
   vee(g) {
     g.save(); g.rotate(-0.38); g.scale(1.25, 1.0); g.translate(0, 0.02);

@@ -10,7 +10,7 @@ import './moves.js';
 const SHARE = { target: 0.2, icon: 0.24, pop: 0.1, plate: 0.13, op: 0.22, film: 0.11 };
 const rng = seed => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216; };
 
-export function cast(score, A, M) {
+export function cast(score, A, M, song) {
   const g = score.gestures, rand = rng(((score.seed | 0) * 6131 + (A.hash ? parseInt(String(A.hash).slice(0, 7), 16) : 11)) >>> 0), energyAt = t => { try { return reactAt(score.react, M?.C ? M.C(t) : t).energy; } catch { return 0.5; } };
   const P = score.patterns.filter(p => p.pool !== false), by = {};
   for (const k in SHARE) by[k] = P.filter(p => p.group === k);
@@ -34,10 +34,24 @@ export function cast(score, A, M) {
     else if (G.pattern !== p) { const N = score.remake(G, p); N.t0 = G.t0; N.t1 = G.t1; N.arcEnd = G.arcEnd; if (G.rise != null) N.rise = G.rise; g[i] = N; }
     g[i].page = i % 2;      // which page of the table its stencil's on: two in a row are never on the same one
   }
+  // The name of the song, in wood type, on the hit the whole film's been holding back for.
+  const w = song?.whoa, head = P.find(p => p.id === 'flyer.headliner');
+  if (w && head) {
+    let best = -1, gap = 2.5 * (M?.bar ?? 2);
+    g.forEach((G, i) => { if (i && i + 1 < g.length) { const at = g[i - 1].peak?.hit ?? g[i - 1].t1, d = Math.abs(at - w.t); if (d < gap) { gap = d; best = i; } } });
+    if (best > 0) {
+      const G = g[best], N = G.k == null ? null : score.remake(G, head);
+      if (N) { N.t0 = G.t0; N.t1 = G.t1; N.arcEnd = G.arcEnd; if (G.rise != null) N.rise = G.rise; N.page = G.page; g[best] = N; } else { G.pattern = head; G.arcs = head.arcs; }
+      score.whoaAt = g[best - 1].peak?.hit ?? g[best - 1].t1;
+    }
+  }
   return g;
 }
 
 // The ways across. Each wants to be different from the last. A fill wants a fill: it goes where the drummer plays one, if one's there.
+export function sheets(score, song) {
+  for (const G of score.gestures) if (G.pattern.edition != null) song.wear(G.t0, G.t1 - (G.morph || 0) * 0.5, G.pattern.edition, Math.min(G.morph || 3, 4));
+}
 const WEIGHT = { crank: 2.2, bleed: 1.6, feed: 2.2, fill: 2.6, dive: 0.6, iris: 1 };
 export function landings(score, song) {
   const g = score.gestures, used = {};

@@ -17,7 +17,7 @@ const after = (list, t) => { let lo = 0, hi = list.length; while (lo < hi) { con
 
 const LOUD = [1, 5, 3, 6, 9, 2], QUIET = [0, 4, 8, 7];      // editions: the loud sections' and the quiet's
 const RINGS_MOST = 1.3;     // a second
-export function hearSong(score, A, M) {
+export function hearSong(score, A, M, whoaAt = null) {
   const time = score.time ?? (x => x), bar = M?.bar || 2;
   const P = Array.from(score.react?.pulses ?? []), mains = Array.from(score.react?.mains ?? []);
   const hits = P.map(time), power = hits.map((_, i) => (mains[i] === false ? 0.72 : 1));
@@ -34,7 +34,7 @@ export function hearSong(score, A, M) {
   });
   // The whoa: where the song gets furthest with the most behind it.
   const arrive = (M?.arrivals?.(0.3) ?? []).filter(a => a.t > 16 && a.t < dur - 8)[0];
-  const whoa = arrive ? { t: time(arrive.t), song: arrive.t, a: arrive.a, wind: 6 * bar } : null;
+  const whoa = arrive ? { t: whoaAt ?? time(arrive.t), song: arrive.t, a: arrive.a, wind: 6 * bar } : null;
 
   // The ring clock: a surge on every strong beat, or every other if that's too fast. Held back into the whoa.
   const med = (() => { const g = hits.slice(1).map((h, i) => h - hits[i]).sort((a, b) => a - b); return g[g.length >> 1] || 1; })();
@@ -88,14 +88,16 @@ export function hearSong(score, A, M) {
     plan.length = 0; plan.push(...out);
     if (plan[0]?.t > 0) plan.unshift({ t: 0, e: 0, D: 0 });
   }
-  const starts = plan.map(p => p.t);
+  let starts = plan.map(p => p.t);
+  // A pattern that has a sheet it belongs on (a flame job's are fire) asks for it. It goes back to what the song was wearing after.
+  const wear = (t0, t1, e, D) => { const k = Math.max(0, after(starts, t0) - 1), was = plan[k].e; if (was === e) return; const kept = plan.filter(p => p.t < t0 - D || p.t > t1); kept.push({ t: t0 - D, e, D }); kept.push({ t: t1 - D, e: was, D }); kept.sort((x, y) => x.t - y.t); plan.length = 0; plan.push(...kept); starts = plan.map(p => p.t); };
   const editionAt = t => {
     const k = Math.max(0, after(starts, t) - 1), p = plan[k], q = p.D > 0 ? clamp((t - p.t) / p.D) : 1;
     if (q >= 1) { return { a: p.e, b: p.e, x: 0, way: 0 }; }
     return { a: plan[Math.max(0, k - 1)].e, b: p.e, x: q, way: (k * 2.4) % 6.283 };
   };
 
-  return { hits, power, snares, clock, driveAt, editionAt, whoa, every, plan, songOf, bar, wave: A.x?.wave ?? null, fills: A.x?.fill?.runs ?? [], time, react: score.react };
+  return { hits, power, snares, clock, driveAt, editionAt, wear, whoa, every, plan, songOf, bar, wave: A.x?.wave ?? null, fills: A.x?.fill?.runs ?? [], time, react: score.react };
 }
 
 // With no song: a band that doesn't know you're there. 104 bpm, 1 and 3, four bars of one sheet and four of another, and a knob someone's going up and down.
