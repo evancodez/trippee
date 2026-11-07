@@ -52,9 +52,11 @@ export function landings(score) {
     const open = [];
     if (sameFold && field(a) && field(b)) open.push('bud');
     if (sameFold && ours(a) && ours(b)) open.push('melt');
-    if (flat(a) && flat(b) && !wound(a) && !wound(b)) open.push('tide');
+    // Pop Dots' few marks on one ground: a tide across to them or from them thins to the ground alone before the next arrives. They melt, wherever they can.
+    const thin = (G.pattern.id === 'flower.dots' || N.pattern.id === 'flower.dots') && open.includes('melt');
+    if (flat(a) && flat(b) && !wound(a) && !wound(b) && !thin) open.push('tide');
+    // A flight looks laid over what it's flying out of here: a dim disc growing on the flower, its lines still showing through. Only when there's no other way across.
     if (!open.length) open.push('dive');
-    if (D >= 5) open.push('dive');
     if (D >= 5 && i % 5 === 3) open.push('iris');
     const score1 = k => WEIGHT[k] / (1 + (used[k] ?? 0)) * (k === prev ? 0.001 : 1);
     const k = open.sort((x, y) => score1(y) - score1(x))[0];

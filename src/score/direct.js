@@ -105,7 +105,7 @@ export function direct(score, A, M) {
   if (g[0].morph && g[0].t1 - g[0].morph < 7.5) g[0].morph = Math.max(g[0].t1 - 7.5, 5);
   // Pace (src/score/pace.js): the same moves, for what they do and not for how long they take over the film
   const P = score.pace;
-  const PAST_T = P ? Math.max(4 * bar, 6) : PAST, STAR_T = P ? [14, 26] : STAR_LEN, COIN_T = P ? [10, 18] : COIN_SECONDS, ROOM_T = P ? Math.max(1.5 * bar, 2.5) : ROOM, STAR_BODY = P ? 12 : 16, SHOCK_D = P ? clamp(3 * bar, 4, 7) : 10, SHOCK_ROOM = P ? 1 : 4;
+  const PAST_T = P ? Math.max(3 * bar, 5) : PAST, STAR_T = P ? [14, 26] : STAR_LEN, COIN_T = P ? [10, 18] : COIN_SECONDS, ROOM_T = P ? Math.max(1.5 * bar, 2.5) : ROOM, STAR_BODY = P ? 12 : 16, SHOCK_D = P ? clamp(3 * bar, 4, 7) : 10, SHOCK_ROOM = P ? 1 : 4;
   const lastG = () => g.length - 1;      // the film's tail: what carries on after the song, and nothing transforms into it
 
   // Who's on, and when. [a, b]: all the time it holds, so no one else can be put there. [wa, wb]: when everything else steps back for it. at: where it falls, for "never twice running".
@@ -148,7 +148,7 @@ export function direct(score, A, M) {
     const cut = P && g[b].t1 > L + PAST_T + 3 * bar && g[b].t0 < L + PAST_T ? (A.bars.find(t => t >= L + PAST_T) ?? null) : null;
     const H = countdown(pat, { L, score, meter, t1: cut ?? g[b].t1, morph: cut ? P.leadOf({ level: 2 }, pat, g[b].pattern, cut - L) : g[b].morph ?? 0, seed, longest: 24 }), m = H.moves[0], sl = pat.slip;
     // As many rings as there's room for. The board stays where it is while it comes apart and falls back together, every ring in the frame, and lets go when it's done.
-    const spb = 1 / Math.max(tau(L + 0.5) - tau(L - 0.5), 1e-3), longest = Math.min(P ? 18 : 24, L - COUNT_OPENING);
+    const spb = 1 / Math.max(tau(L + 0.5) - tau(L - 0.5), 1e-3), longest = Math.min(P ? 12 : 24, L - COUNT_OPENING);
     const W = meter * RING_SURGE, run = (n, st) => (n - 1) * st + meter + W / 2;       // the first surge starts here, in beats to go
     let step = meter, bands = Math.min(sl.bands, 8);
     if (!P && run(bands, step) * spb < 12) step = 2 * meter;
@@ -583,7 +583,7 @@ export function direct(score, A, M) {
   if (score.ears?.[9] && flag('slip') && score.remake && lib('dials.sunburst')) {
     const E = A.E || A.loud, sizeOf = G => { let s = 0, c = 0; for (let t = G.t0; t < G.t1; t += 0.5) { s += E[Math.min(E.length - 1, Math.round(t * A.fps))] || 0; c++; } return c ? s / c : 0; };
     const room = G => G.t1 - (G.morph || 0) - G.t0 - 2;
-    const spots = g.slice(1, lastG()).filter(G => isPlain(G) && G.replayOf == null && G.k != null && room(G) >= WHITNEY_SECONDS).sort((a, b) => sizeOf(b) - sizeOf(a));
+    const spots = g.slice(1, lastG()).filter(G => isPlain(G) && G.replayOf == null && G.k != null && room(G) >= WHITNEY_SECONDS && room(G) <= (P ? 2 * WHITNEY_SECONDS : Infinity)).sort((a, b) => sizeOf(b) - sizeOf(a));
     let done = 0, last = -1e9;
     for (const G of spots) {
       if (done >= WHITNEYS || Math.abs(G.t0 - last) < 40) continue;

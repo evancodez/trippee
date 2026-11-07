@@ -22,7 +22,7 @@ const BARS = { chill: [12, 10, 8, 6, 5], travel: [9, 7, 5, 3, 2], riot: [7, 5, 3
 const LEAD = { chill: [5, 4, 3, 2.5, 2], travel: [3, 2.5, 2, 1.25, 1], riot: [2.5, 2, 1.25, 1, 0.75] };     // bars of a change before its hit...
 const TAIL = { chill: [3.5, 3, 2, 1.5, 1], travel: [2.5, 2, 1.25, 0.75, 0.5], riot: [2, 1.25, 1, 0.5, 0.5] };     // ...and after
 const ONE_MORE = 0, STIFF = 0.25;    // what another landing has to be worth in the composer's search, in place of its 3, and how hard it holds to the length it wants
-const LEAST_S = 3.2, MOST_BARS = 18, MOST_S = 30;     // the shortest and longest a landing can leave behind it
+const LEAST_S = 3.2, MOST_BARS = 13, MOST_S = 22;     // the shortest and longest a landing can leave behind it
 const GLIDE_LEAST = 4.5, FLIGHT_LEAST = 5.6, FLIGHT_LEAD = 0.3;          // seconds: a flight in less than this flashes, where a glide doesn't. Its fastest frame on screen comes well before its middle (about 2 s in 5.6, measured on MGMT), so most of it goes after the hit: it sets off on the song's moment, this share of it before
 const HOLD = 8;                     // bars a pattern can stay with nothing but its ordinary flow
 const CLASS_LEAST = 6;              // bars
@@ -38,7 +38,7 @@ const OPENS = 14;                   // seconds: the arrival. The first thing tha
 const CAP = { relay: 16, riot: 5, still: 12, suite: 10 };       // bars a way of changing runs before the next thing in its wardrobe
 const LEAST = { relay: 3, riot: 3.5, still: 6 }, SUITE_LEAST = 6.8, RELAY_MOST = 0.36;      // ...seconds, and the share of the film        // bars. Any shorter and it's a suite
 const GEAR = [32, 16, 12, 8, 6];     // beats to a cycle of flow, by level
-const STEP = { chill: [12, 8, 8, 4, 2], travel: [8, 8, 4, 2, 1], riot: [4, 4, 2, 2, 1] };      // a Relay's bars between steps, at most: the song's own landings, and the breath's own bar lines where they're further apart than this, so a step falls on the phrase
+const STEP = { chill: [8, 6, 4, 4, 2], travel: [6, 4, 4, 2, 1], riot: [4, 4, 2, 2, 1] };      // a Relay's bars between steps, at most: the song's own landings, and the breath's own bar lines where they're further apart than this, so a step falls on the phrase
 const BOLD = [6, 8, 9];            // cycles per picture unit: how fine a chorus, a lift and the rest would rather not go
 
 // How each register goes about each class of the song's level: a short routine of ways of changing, the next one for each new kind of section. A section coming back runs the routine it ran.
@@ -349,6 +349,8 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
         }
         const on = [], apart = (lvl >= 4 || (name === 'riot' && lvl >= 3) ? 0.8 : 1.5) * bar;
         for (const t of stops.sort((x, y) => x - y).map(time)) if (t - lead > a + clear && t + tail < end && (!on.length || t - on.at(-1) > apart)) on.push(t);
+        // A Relay that takes no step is just a pattern standing there. The bar line nearest the middle of the room it has, if nothing fell in it.
+        if (!on.length && end - tail - (a + clear + lead) > 0) { const mid = (a + clear + lead + end - tail) / 2, t = bars.map(time).filter(x => x > a + clear + lead && x < end - tail).sort((x, y) => Math.abs(x - mid) - Math.abs(y - mid))[0]; if (t != null) on.push(t); }
         if (on.length) {
           fixed();
           const from = done.get(part.seq) ?? 0;
@@ -472,7 +474,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   };
 
   return {
-    register: name, registerScore: reg.score, least: own ? own.morph[0] + 4 : Math.max(LEAST_S, 1.8 * bar), most: Math.min(MOST_S, MOST_BARS * bar), oneMore: ONE_MORE, stiff: STIFF, bar,
+    register: name, registerScore: reg.score, least: own ? own.morph[0] + 4 : Math.max(LEAST_S, 1.8 * bar), most: own?.most ?? Math.min(MOST_S, MOST_BARS * bar), oneMore: ONE_MORE, stiff: STIFF, bar,
     want: t => barsWanted(t) * bar, firstOfMany: t => { const s = A.segments.find(x => t >= x.t0 && t < x.t1); return !!s && !(s.visit || 0) && A.segments.some(x => x.label === s.label && x.visit > 0); }, isLoud: t => classAt(t) === 'loud' || classOfLabel((A.segments.find(x => t >= x.t0 && t < x.t1) ?? A.segments.at(-1)).label) === 'loud', shrinkArcs, dropWorth: (dE, i) => (Math.abs(dE) >= DROP ? DROP_WORTH : 0) + (jumpAt.get(i) ?? 0), levelAt, classAt, get climaxAt() { return climaxAt; }, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
   };
 }
