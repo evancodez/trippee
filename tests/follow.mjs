@@ -154,12 +154,12 @@ export default async ({ page, log, save, sleep }) => {
   await sleep(400);
   await dropSong(page, songPath, { resolvePath: resolve, sleep });
   if (world) await enterWorld(page, world, log);
-  const info = await page.eval(() => { const s = app.song.score; return { duration: app.song.duration, bpm: s.song?.bpm, meter: s.song?.meter, pulses: Array.from(s.react?.pulses || []) }; });
+  const info = await page.eval(() => { const s = app.song.score; return { duration: app.song.duration, bpm: s.song?.bpm, meter: s.song?.meter, pulses: Array.from((s.heard ?? s.react)?.pulses || []) }; });
   await page.eval(`app.manual=true;app.governor.enabled=false;app.R.drawScale=1;app.t=0`);
   // A control in real pixels: the film's own flow clock warped by hand, so the sheet really does fall into each pulse (change 1's speed law, .15 + x^1.5) or into the point half way between them. Nothing in the film is changed but this page's copy of its clock.
   const control = process.env.CONTROL;
   if (control) await page.eval(({ control }) => {
-    const s = app.stage.score, P = Array.from(s.react.pulses), phi0 = s.phi;
+    const s = app.stage.score, P = Array.from((s.heard ?? s.react).pulses), phi0 = s.phi;
     const at = control === 'off' ? P.slice(1).map((p, i) => (p + P[i]) / 2) : P;
     const warp = t => {
       let lo = 0, hi = at.length - 1; if (t < at[0] || t >= at[hi]) return t;

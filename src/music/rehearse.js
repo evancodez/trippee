@@ -182,11 +182,13 @@ const excess = m => Math.max(GOOD.white[0] - m.white, m.white - GOOD.white[1], 0
 // ---------------------------------------------------------------- one gesture
 // In a world what's looked at is its coverage, so every measure here stays what it is on the film. Only the flash pass asks for true colour.
 // And a world's film may be rehearsed while a change of world is running on it: that's on real seconds, so frame() would draw the change at every time it's asked about, in the program it's leaving. What's being rehearsed is the film after it.
-const drawn = (R, score, t, W, H, colour = false) => {
+// A rehearsal looks at the film, not the layer that follows the song over it (src/score/hear.js): what it might change for a flash is the film's own, and it mustn't slow a film down over something that layer's doing. A test's look sees all of it.
+const FILM_ONLY = { hear: 0 };
+const drawn = (R, score, t, W, H, colour = false, edits = FILM_ONLY) => {
   R.resize(W, H, 1);
   const h = score.world ? score.handover : null;
   if (h) score.handover = null;
-  const f = frame(score, t, R, null);
+  const f = frame(score, t, R, edits);
   if (h) score.handover = h;
   const wp = R.wp;
   if (wp && !colour) wp.block[0] = 1;
@@ -194,8 +196,8 @@ const drawn = (R, score, t, W, H, colour = false) => {
   if (wp) wp.block[0] = 0;
   return f;
 };
-const shot = (R, score, t, W, H, px, colour = false) => {
-  const f = drawn(R, score, t, W, H, colour);
+const shot = (R, score, t, W, H, px, colour = false, edits = FILM_ONLY) => {
+  const f = drawn(R, score, t, W, H, colour, edits);
   R.gl.readPixels(0, 0, W, H, R.gl.RGBA, R.gl.UNSIGNED_BYTE, px);
   return f;
 };
@@ -402,7 +404,8 @@ async function chooseWay(R, score, A, B, ctx) {
   return out;
 }
 
-export { getRig, shot, drawn, Eyes, slowedTrack };    // for tests: the same eyes, at any moment of a film
+const shownShot = (R, score, t, W, H, px, colour = false) => shot(R, score, t, W, H, px, colour, null), shownDrawn = (R, score, t, W, H, colour = false) => drawn(R, score, t, W, H, colour, null);
+export { getRig, shownShot as shot, shownDrawn as drawn, Eyes, slowedTrack };    // for tests: the same eyes, at any moment of a film
 
 // Returns { jumps: [{ t, by, id }], bad: [pattern ids], rides: [what each gesture rides], ways: [each transformation], sitOut: [no good run], seconds }
 // stale: asked between looks. Once it says yes the rehearsal stops where it is, by throwing, because someone's made another film and this one will never be shown.

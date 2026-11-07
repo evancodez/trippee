@@ -173,8 +173,7 @@ export default {
   },
   write(st, A, B, F) {
     const { plan, T, x } = st;
-    // The song takes a share of the brightness per family, and these two needn't have as many. By the end it has to be what the next pattern will take on the plain path.
-    if (st.pulse) st.theta += st.pulse * (st.solid || 1) * (1 / openFamilies(A) - 1 / lerp(openFamilies(A), openFamilies(B), T));
+    // The song's share of the brightness goes per family, and these two needn't have as many: song-sheet.js has already gone from what A takes to what B takes as T does, so it lands on what the next pattern takes on the plain path.
     for (let j = 0; j < FAMILIES; j++) {
       if (fam(B, j, 'on') < 0.5) continue;
       if (plan.flip[j]) {

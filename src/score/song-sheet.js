@@ -12,6 +12,7 @@ import { reactAt, chordLenses, pulseAt, melodyAt, melodyNowAt, bassAt } from './
 import { flag, hearOn } from './flags.js';
 import { handoverOn } from './morphclock.js';
 import { coinAmbient } from './moves/coin.js';
+import { SIZE, songEnding } from './hear.js';
 
 const lensTmp = new Float32Array(12), bassTmp = [0, 0];
 const BASS_LENS = -0.28, BASS_R = 0.9, LENS_REBOUND = 0.01;
@@ -58,8 +59,8 @@ const RING_LET = 1, RING_BACK = 1.5;     // seconds they take to let go before a
 const SONG_FADE = 3, SONG_COMES = 0.3;   // seconds the song takes to leave a wander that's standing in; how far into a handover from no song it's arrived
 const RING_DROP = 0.12;   // how far into a click's flight what's showing has let go of them
 const MEL_STEP = 0.125, MEL_SPEED = 0.62;
-const TUNE_AMBIENT = 0.5;       // hearing 2: however far a hero's turned everything down, the tune goes no lower than this
-const TUNE_FLOOR = 0.3, TUNE_AGE = 0.57, FLIGHT_TUNE = 0.25;     // hearing 2: the least the tune gets; how old it is in seconds at r = 1, going as r^3; and how much of it stays through the middle of a flight
+const TUNE_AMBIENT = 0.85;       // hearing 2: however far a hero's turned everything down, the tune goes no lower than this
+const TUNE_FLOOR = 0.55, TUNE_AGE = 0.57, FLIGHT_TUNE = 0.25;     // hearing 2: the least the tune gets; how old it is in seconds at r = 1, going as r^3; and how much of it stays through the middle of a flight
 const SHARP = 3.5;        // lines that move twice as far don't look twice as busy, so a lead has to be more than twice what's under it to read as one
 
 const readArr = (R, arr, c) => { const x = clamp(c * R.hz, 0, R.n - 1.001), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
@@ -105,14 +106,22 @@ function ringsNow(st, score, edits, flight, dive) {
   return ringShares;
 }
 
+// Which way the tune runs through the sheet. With the layer up it goes across the lines, one way everywhere: out from the middle pushes opposite sides opposite ways, and that reads as a swell, not a note going up.
+export const melOf = (G, hearNow) => (hearNow >= 0.5 ? G.melHeard ?? G.melMode ?? 0 : G.melMode ?? 0);
+
 export function songSheet(st, score, edits) {
-  const Rc = score.react;
+  // How far the layer that follows the song is up (src/score/hear.js). It has its own reading of the song, and it swaps at the bottom of a dip, so nothing's seen to swap.
+  const hearNow = score.hear ? score.hearNow ?? 0 : 0, loud = hearNow >= 0.5;
+  const Rc = loud && score.heard ? score.heard : score.react;
   let amt = edits?.reactAmt ?? 1;
+  if (hearNow > 0 && hearNow < 1) amt *= smoother(Math.abs(2 * hearNow - 1));
+  // What comes after the song has none of this on it, and it's far too much to lose in one frame: it's all let go by the time the song's over.
+  if (hearNow > 0) amt *= songEnding(score, st.t);
   // The song leaving (a wander standing in for a film keeps its tables for a moment, score.songFades) or arriving where it wasn't (a handover from something with no song on it) comes and goes
   // gradually: it's been pushing the whole frame about, and that can't stop or start between two frames.
   if (score.songFades != null) amt *= 1 - smoother((st.t - score.songFades) / SONG_FADE);
   const hd = score.handover, hOn = !!hd && handoverOn(hd, st.t), hx = hOn ? smoother((hd.wall ? (hd.e - (hd.e0 ?? 0)) / hd.D : (st.t - hd.t0) / (hd.t1 - hd.t0)) / SONG_COMES) : 1;
-  if (hOn && hd.rings === false) amt *= hx;
+  if (hOn && hd.rings === false) { amt *= hx; st.songHx = hx; }
   if (!(Rc && amt > 0)) return;
   const { G, A, B, F, kind, x, solid, moveA, moveB } = st;
   const c = st.c ?? st.t, s = reactAt(Rc, c), big = 0.5 + 0.7 * s.energy;
@@ -122,7 +131,7 @@ export function songSheet(st, score, edits) {
   if (hOn && hd.ambient != null) { chordRoom = lerp(hd.ambient * coinAmbient(hd.G, hd.ts ?? st.t), chordRoom, hx); ambient = lerp(hd.ambient, ambient, hx); }
   // A gesture the rehearsal found flashing with the song on it takes less of it (src/music/rehearse.js), letting go of that at both ends so nothing steps.
   const calmFrom = G.calmWin?.[0] ?? G.t0, calmTo = G.calmWin?.[1] ?? G.t1, calm = G.calm ? lerp(1, G.calm, smoother((st.t - calmFrom) / 1.5) * smoother((calmTo - st.t) / 1.5)) : 1;
-  let mPulse = (edits?.reactPulse ?? 1) * amt * ambient * calm * (hOn && hd.pulse != null ? lerp(hd.pulse, score.pulseLane?.(st.t) ?? 1, hx) : score.pulseLane?.(st.t) ?? 1), mMel = (edits?.reactMelody ?? 1) * amt * (hearOn(score, 2) ? Math.max(ambient, TUNE_AMBIENT) : ambient), mTone = (edits?.reactTone ?? 1) * amt * ambient, mHarm = (edits?.reactHarmony ?? 1) * amt * chordRoom, mLung = (edits?.reactLung ?? 1) * amt * ambient * calm;
+  let mPulse = (edits?.reactPulse ?? 1) * amt * ambient * calm * (hOn && hd.pulse != null ? lerp(hd.pulse, score.pulseLane?.(st.t) ?? 1, hx) : score.pulseLane?.(st.t) ?? 1), mMel = (edits?.reactMelody ?? 1) * amt * (loud ? Math.max(ambient, TUNE_AMBIENT) : ambient), mTone = (edits?.reactTone ?? 1) * amt * ambient, mHarm = (edits?.reactHarmony ?? 1) * amt * chordRoom, mLung = (edits?.reactLung ?? 1) * amt * ambient * calm;
   // A world's own balance. It comes in with the handover, so nothing steps as the world changes.
   const H = score.world?.hear;
   if (H) { mPulse *= lerp(1, H.pulse ?? 1, hx); mMel *= lerp(1, H.melody ?? 1, hx); mTone *= lerp(1, H.tone ?? 1, hx); mHarm *= lerp(1, H.harmony ?? 1, hx); mLung *= lerp(1, H.lung ?? 1, hx); }
@@ -132,14 +141,15 @@ export function songSheet(st, score, edits) {
   // Who's leading. Without the conductor, the tune quietens the beat and everything else stays as it was.
   const conducted = Rc.conducted && flag('conductor') && edits?.conductor !== 0, g = s.gains;
   // Hearing 2: whoever's leading, the tune and the tone never go under a floor. Second place was .061 of a lead and the rest .0036, which is no melody at all.
-  const present = hearOn(score, 2), floored = v => (present ? TUNE_FLOOR + (1 - TUNE_FLOOR) * v : v);
+  const present = loud, floored = v => (present ? TUNE_FLOOR + (1 - TUNE_FLOOR) * v : v);
   const gDrums = conducted ? g.drums : 1 - 0.45 * s.voiced, gTune = conducted ? floored(Math.pow(g.tune, SHARP)) : 1, gTone = conducted ? floored(Math.pow(g.tone, SHARP)) : 1, gHarm = conducted ? Math.pow(g.harm, SHARP) : 1;
   // In a flight what's being flown through can't follow the song. These are the shares frame() gives the numbers it knows about, for the ones it doesn't.
   const shareA = flight ? (dive ? 1 - smoother(x / 0.35) : 1) : (moveA ? 1 : 0), shareB = flight ? (dive ? 1 : smoother((x - 0.65) / 0.35)) : (moveB ? 1 : 0);
 
   // Tone: brighter sound, finer lines. Only on flat patterns, slowly.
-  if (moveA && A[OFF['surf.kind']] < 0.5) A[OFF.freq] *= 1 + 0.16 * s.tone * mTone * gTone;
-  if (moveB && B[OFF['surf.kind']] < 0.5) B[OFF.freq] *= 1 + 0.16 * s.tone * mTone * gTone;
+  const fineBy = (loud ? SIZE.toneFiner : 0.16) * s.tone * mTone * gTone;
+  if (moveA && A[OFF['surf.kind']] < 0.5) A[OFF.freq] *= 1 + fineBy;
+  if (moveB && B[OFF['surf.kind']] < 0.5) B[OFF.freq] *= 1 + fineBy;
   // A surface's lines can't change how many there are, and when the tone's leading it can't just have nothing to do. Its view comes in a little instead. That isn't a number frame() knows about.
   if (conducted) {
     const near = 1 - 0.09 * s.tone * mTone * gTone;
@@ -161,8 +171,8 @@ export function songSheet(st, score, edits) {
     const rA = Math.sqrt(nA), rB = Math.sqrt(nB), rn = st.two && !flight ? lerp(rA, rB, st.T) : rA;
     // A beat's weight never pushes anything past 90% of closing, and what's closing up in a flight has to end up exactly closed: that's why the ends of a flight have shares of their own.
     // Hearing 6: all of a ring's weight comes at once now over the middle of the frame, so a ring weighs less, and gathers less as it closes.
-    const fall = hearOn(score, 6), gather = fall ? FALL_GATHER : GATHER;
-    const w = WEIGHT * big * mPulse * (0.35 + 0.65 * gDrums) * (fall ? FALL_WEIGHT : 1);     // however quiet the drums are, a strong beat still lands. What they lose is reach
+    const fall = (loud && SIZE.fall) || hearOn(score, 6), gather = fall ? FALL_GATHER : GATHER;
+    const w = WEIGHT * big * mPulse * (0.35 + 0.65 * gDrums) * (fall ? FALL_WEIGHT : 1) * (loud ? SIZE.weightUp : 1);     // however quiet the drums are, a strong beat still lands. What they lose is reach
     let wa, wb = 0;
     if (flight) {
       wa = w * rA * st.sa * (dive ? 1 - smoother(x / 0.35) : 1 - smoother((x - 0.55) / 0.4));
@@ -206,7 +216,7 @@ export function songSheet(st, score, edits) {
   if (weighs) { if (lung) { F[Po + 12] = fx; F[Po + 13] = fy; F[Po + 14] = LUNG_LENS * s.lung * mLung; F[Po + 15] = LUNG_R; } }
   else { F[Po + 12] = 0; F[Po + 13] = 0; F[Po + 14] = 0.07 * beat; F[Po + 15] = 1.15; }
   // Hearing 1: where the gear's so slow that the flow can't show a stride, a little of it goes on the whole sheet as a lens, 1% at the deepest. It swells into the beat, stops on it and eases back.
-  if (weighs && score.walk?.lag) {
+  if (weighs && loud && score.walk?.lag) {
     const secs = (G.gears?.[0] ?? 16) * 60 / Math.max(score.song?.bpm ?? 120, 40), slow = smoother((secs - 3) / 6);
     if (slow > 0) { F[Po + 14] += (LENS_REBOUND / 0.25) * score.walk.lag(st.t) * slow * mPulse; if (!lung) { F[Po + 12] = fx; F[Po + 13] = fy; F[Po + 15] = LUNG_R; } }
   }
@@ -216,7 +226,7 @@ export function songSheet(st, score, edits) {
   // In a flight only the transformation moves: the tune pushing a big element's edge back and forth would be the whole frame changing colour with it.
   let still = weighs && flight ? (x < 0.25 ? 1 - smoother(x / 0.25) : x > 0.75 ? smoother((x - 0.75) / 0.25) : 0) : 1;
   if (present) still = FLIGHT_TUNE + (1 - FLIGHT_TUNE) * still;
-  F[Ml] = (0.085 + 0.09 * s.energy) * (rings ? 0.9 : 1) * mMel * gTune * still; F[Ml + 1] = present ? TUNE_AGE / MEL_STEP : 1 / (MEL_STEP * MEL_SPEED); F[Ml + 2] = G.melMode ?? 0; F[Ml + 3] = present ? 1 : 0;
+  F[Ml] = (0.085 + 0.09 * s.energy) * (rings ? 0.9 : 1) * mMel * gTune * still * (loud ? SIZE.tuneUp : 1); F[Ml + 1] = present ? TUNE_AGE / MEL_STEP : 1 / (MEL_STEP * MEL_SPEED); F[Ml + 2] = melOf(G, hearNow); F[Ml + 3] = present ? 1 : 0;
   const Ms = FRAME.melS * 4;
   const heard = present && Rc.melNow ? melodyNowAt : melodyAt;
   for (let n = 0; n < 32; n++) F[Ms + n] = heard(Rc, Math.max(0, c - n * MEL_STEP));
@@ -224,7 +234,7 @@ export function songSheet(st, score, edits) {
   if (Rc.bassY && hearOn(score, 5)) { const Pr = FRAME.press * 4, b = bassAt(Rc, c, bassTmp); F[Pr] = 0; F[Pr + 1] = b[0]; F[Pr + 2] = BASS_LENS * b[1] * mHarm * still; F[Pr + 3] = BASS_R; }
   // ...and it carries the lines with it: as the note climbs they slide one way, as it falls they slide back, so a guitar slide pulls
   // the whole sheet. The sheet also leans a little with it.
-  const carried = s.melSlow * s.voiced * mMel * gTune;
+  const carried = (loud && Rc.melNow ? melodyNowAt(Rc, c) : s.melSlow) * s.voiced * mMel * gTune;
   const lean = 0.05 * carried;
   const slid = S => (weighs ? Math.min(SLIDE_MAX, SLIDE_FAR * fineness(S)) : SLIDE_MAX) * carried;
   // Hearing 7: on a check each direction is its own voice. One steps on the strong beats, deeper than the sheet as a whole does. The other doesn't step at all: it pours, and it carries the tune alone. They only ever split in a plain body.

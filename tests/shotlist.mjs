@@ -135,7 +135,7 @@ export const collect = async ({ F, W, H }) => {
     dur, bpm: A.bpm, meter: A.meter, keyOwn: NAMES[A.key] + (A.minor ? 'm' : ''), home: M.home.name, homeC: M.home.c, keySig: NAMES[M.key], beat: M.beat, bar: M.bar, climax: A.climax,
     character: A.character, swell: A.swellRegularity, phraseBars: A.phraseBars,
     breath: { beats: M.breath.beats, seconds: M.breath.seconds, bars: M.breath.bars, bar0: M.breath.bar0, loop: M.breath.loop, loopSeconds: M.breath.loopSeconds, t: M.breath.t, depth: M.lungs.map(l => l.depth) },
-    choices: RR.choices, pulses: RR.pulses, bars: Array.from(A.bars), beats: Array.from(A.beats),
+    choices: (S.heard ?? RR).choices, pulses: (S.heard ?? RR).pulses, bars: Array.from(A.bars), beats: Array.from(A.beats),
     segments: A.segments.map(x => ({ t0: x.t0, t1: x.t1, label: x.label, visit: x.visit || 0, rot: x.rot || 0 })),
     arrivals: M.arrivals(0.3).map(p => ({ bar: p.bar, t: p.t, a: p.a, s: p.s })), arrival: Array.from(M.arrival), rests: M.rests, windows: time.windows ?? [],
     runs: M.runs.map(r => ({ t0: r.t0, t1: r.t1, c: r.c, name: chordName(r.c) })), conductor: M.conductor.map(c => ({ t: c.t, lead: c.lead, second: c.second, margin: c.margin })),

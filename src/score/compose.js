@@ -10,6 +10,7 @@
 // Which pattern goes where (flag `spread`) is scored against what the film has had so far, so it can't sit in one family or one look.
 import { rng, clamp, lerp, smoother, evalTrack } from './curves.js';
 import { buildReact, surgedBeats, makeWalk } from './react.js';
+import { buildHear, hearRates, flowLagAt, HEAR_FLOOR } from './hear.js';
 import { buildTime } from './time.js';
 import { direct } from './direct.js';
 import { applyCut } from './cut.js';
@@ -734,8 +735,11 @@ export function compose(A, seed = 1, opts = {}) {
 
   const react = buildReact(A, seed, ears);
   const surged = t => surgedBeats(react, tau, t);
-  let walk = ears[1] ? makeWalk(react, time) : null;
   if (P) P.dress(gestures, { time, react, tau, meter });
+  // How hard the picture follows the song (src/score/hear.js). A second reading of it, kept apart, so that with the layer turned down this film is exactly the film it always was.
+  const heard = buildReact(A, seed, { ...ears, 1: true, 2: true });
+  let walk = makeWalk(heard, time);
+  walk.gain = 0;
   const landings = L.slice(1).map((l, j) => {
     const out = { B: +l.B.toFixed(3), kind: l.kind, form: l.form, pol: l.pol, holdOut: l.holdOut, holdIn: l.holdIn, dE: +(l.dE ?? 0).toFixed(3) };
     if (!form) return out;
@@ -774,16 +778,25 @@ export function compose(A, seed = 1, opts = {}) {
   let turn = null;      // hearing 11, once the director's said where the heroes are
   // Plain bold stripes flow steadily, since they change the whole frame's brightness as they go by. Their long move still walks.
   const walkFlow = G => (G.walkFlow ??= lookOf(G.pattern) === 'lines' && boldStripes(G.pattern) ? 0 : 1);
-  const film = (W?.direct ?? direct)({
+  let film = null;
+  film = (W?.direct ?? direct)({
     gestures, landings, stats, tau, rate, family, pool: pool.map(p => p.id), patterns, seed, aspect,
     library, remake: (G, pattern) => gestureFor(G.k, { pattern, a: G.t0, b: G.t1 }),
     pace: P,
     // Flow surges on the strong beats and glides between, so it stays locked and never jolts
-    phi: walk || ears[11]
-      // Hearing 1 and 11. Told how much of the clock's speed is left (rho) and what the time really is, it walks to the beats you can hear while that clock slows into a transformation. Asked with neither, it's just walking.
-      ? (t, G, now = t, rho = 1) => { const off = t + rho * ((walk ? walk(now) * walkFlow(G) : 0) + (turn ? turn(now) : 0)), s = walk ? tau(off) : surged(off), v = G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8; return G.phiScale ? v * G.phiScale : v; }
-      : (t, G) => { const s = surged(t), v = G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8; return G.phiScale ? v * G.phiScale : v; },       // phiScale: a hero the rehearsal found flashing runs on a slower clock
-    react, time, ears,
+    // Told how much of the clock's speed is left (rho) and what the time really is, it walks to the beats you can hear while that clock slows into a transformation. Asked with neither, it's just walking.
+    // phiScale: a hero the rehearsal found flashing runs on a slower clock. hearRate: louder runs faster (hear.js), and it's composed in, since a change of speed after a gesture's been running would sweep its whole phase. walk.gain is how far the layer's turned up, and with it at 0 it's exactly the surged clock.
+    phi: (t, G, now = t, rho = 1) => {
+      const k = walk.on ?? 0, flowed = turn ? turn(now) : 0, H = film?.hear;
+      let s;
+      if (k > 0 || flowed) {
+        const off = t + rho * (walk(now) * walkFlow(G) + flowed) + (H ? rho * rho * (3 - 2 * rho) * k * flowLagAt(H, now) : 0), walked = tau(off), was = surged(t + rho * flowed);
+        s = k >= 1 ? walked : was + (walked - was) * k;
+      } else s = surged(t);
+      const v = G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8;
+      return v * (G.phiScale ?? 1) * (G.hearRate ?? 1);
+    },
+    react, heard, time, ears,
     song: { duration, bpm: A.bpm, hash: A.hash, meter, phraseBars: A.phraseBars },
   }, A, react.M);
   // A world's own: the tables it wants from the song, and how it goes about things. With none, nothing has been touched and no random number has been drawn.
@@ -791,21 +804,26 @@ export function compose(A, seed = 1, opts = {}) {
     film.world = W;
     film.tables = W.tables?.(A, react.M) ?? null;
     const m = W.motion;
-    if (m?.slower) { const phi = film.phi; film.phi = (t, G) => phi(t, G) / m.slower; }
+    if (m?.slower) { const phi = film.phi; film.phi = (t, G, now, rho) => phi(t, G, now, rho) / m.slower; }
     if (m) for (const G of film.gestures) { if (m.glide === false) G.noGlide = true; if (m.rise != null) G.rise = m.rise; }
   }
   // A hand cut, if one's asked for: everything above has happened as it always does, so the seed's draws are untouched and with none there's nothing to see.
   if (opts.cut) applyCut(film, opts.cut, A, react.M);
   // A hand cut times its own hits, and they have to stay where they were cut, so the walk stops on those too.
-  if (walk && opts.cut && film.sheet?.hits?.length) { const gain = walk.gain; walk = makeWalk(react, time, film.sheet.hits.map(h => h.t)); walk.gain = gain; }
+  if (opts.cut && film.sheet?.hits?.length) { const gain = walk.gain; walk = makeWalk(heard, time, film.sheet.hits.map(h => h.t)); walk.gain = gain; }
   if (ears[11] && react.M.surprises?.length) {
     const made = surpriseTurns(film, react.M);
     turn = made.turn; film.turns = made.at;
   }
-  if (walk) film.walk = walk;
+  film.walk = walk;
+  film.heard = heard;
+  film.hear = buildHear(A, heard, { hits: film.sheet?.hits ?? [] });
+  // Stop ducking the song. A hero can step the song back only so far, while the layer's up: the picture keeps answering through it.
+  if (film.ambient) { const raw = film.ambient; film.ambient = t => { const a = raw(t), k = walk.on ?? 0; return k > 0 ? a + (Math.max(a, HEAR_FLOOR) - a) * k : a; }; }
+  if (hearing.on && !opts.cut && !W) hearRates(film, film.hear);      // a hand cut's flow is as it was cut
   if (walk && ears.morph) film.walkMorph = (x, t, D) => x + WALK_MORPH * smoother(x / 0.2) * smoother((1 - x) / 0.2) * walk(t) / D;
   film.ears = ears;
   // Hearing 2: the tune lifts and sinks the whole sheet, one way everywhere, so it goes across the lines. Out from the middle pushes opposite sides opposite ways, and that reads as a swell, not a note going up.
-  if (ears[2]) for (const G of film.gestures) G.melMode = (f => (Math.abs(f.x || 0) > Math.abs(f.y || 0) * 2 ? 2 : 1))((G.pattern.g.fams || [])[0] || {});
+  for (const G of film.gestures) G.melHeard = (f => (Math.abs(f.x || 0) > Math.abs(f.y || 0) * 2 ? 2 : 1))((G.pattern.g.fams || [])[0] || {});
   return film;
 }

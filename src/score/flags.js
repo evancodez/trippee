@@ -32,18 +32,20 @@ directing.pace = new URLSearchParams(globalThis.location?.search ?? '').get('pac
   directing.sheet = all;
 }
 
-// How a film hears (docs/MODES.md section 6). Off means the film is exactly the film, byte for byte. setAllFlags can't reach these, so a test that turns everything on is still about today's film.
-// Each is one numbered change from that table. A world can say its own: score.world.hear.on[id].
-//   ?hear=1         everything in HEAR_READY     ?hear=1,2,6  exactly those     ?hear=6  just that one     ?hear=1,1  just 1, since ?hear=1 means them all
-//   ?hear=all ?hear=0   the obvious
-export const HEAR_READY = [1, 2];
-export const hearing = { 1: false, 2: false, 5: false, 6: false, 7: false, 9: false, 11: false, morph: false };      // morph: not in the plan's table. A transformation walks as well (hearing 1 has to be on)
+// How a film hears. Two things.
+// How hard the picture follows the song (src/score/hear.js): on by default. ?hear=0 starts without it, the h key flips it while a song plays. Off, the film is exactly the film. setAllFlags can't reach it, so a test that turns everything on is still about today's film.
+// And the numbered changes in docs/MODES.md section 6 that aren't part of that, each on its own, which do change how a film's composed. A world can say its own: score.world.hear.on[id].
+//   ?hear=0         without it   ?hear=1  with it, which is also what you get from nothing   ?hear=6,5  with it, and those   ?hear=all  with it and all of those
+export const HEAR_READY = [];
+export const hearing = { on: true, 5: false, 6: false, 7: false, 9: false, 11: false, morph: false };      // morph: not in the plan's table. A transformation walks as well
 export const hearOn = (score, id) => score?.world?.hear?.on?.[id] ?? hearing[id] ?? false;
 export function hearFrom(q) {
   for (const id in hearing) hearing[id] = false;
-  if (!q || q === '0') return hearing;
-  const list = q === 'all' ? Object.keys(hearing) : q === '1' ? HEAR_READY : q.split(',').map(x => x.trim()).filter(Boolean);
+  hearing.on = q !== '0';
+  if (!q || q === '0' || q === '1') return hearing;
+  const list = q === 'all' ? Object.keys(hearing) : q.split(',').map(x => x.trim()).filter(Boolean);
   for (const id of list) if (id in hearing) hearing[id] = true;
+  hearing.on = q !== '0';
   return hearing;
 }
 hearFrom(new URLSearchParams(globalThis.location?.search ?? '').get('hear'));

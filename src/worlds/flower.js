@@ -140,5 +140,5 @@ export default {
   },
   pace: { bars: [14, 11, 9, 7, 6], morph: [7.5, 11] },       // src/score/pace.js: bars between changes by the song's level, and how long a Bud takes. ?pace=0: motion's len and morph
   motion: { len: [18, 30], morph: [9, 12], xforms: { bud }, xform: 'bud', keep: ['bud'] },
-  hear: { pulse: 0.75, melody: 1, tone: 0.4, harmony: 0.7, lung: 1 },      // pulse: each strong beat's ring shoves a band's edge out and back across a tile
+  hear: { pulse: 1, melody: 1, tone: 0.4, harmony: 0.7, lung: 1 },
 };

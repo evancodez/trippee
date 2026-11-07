@@ -4,18 +4,16 @@ import { surgedBeats } from '../../score/react.js';
 import { groundOf } from './inks.js';
 import { FLOW } from './patterns.js';
 
-const RING_MOST = 1;         // rings a second. The plan's limit is 1.5, but where bands are as big as a tile each ring going by is a flash there, and a Bud's push comes on top. Any higher reads two a second on tiles all through the film.
+const RING_MOST = 1.25;         // rings a second. The plan's limit is 1.5, but where bands are as big as a tile each ring going by is a flash there, and a Bud's push comes on top. Any higher reads two a second on tiles all through the film.
 export const beatsPerRing = A => {
   const rate = (A.bpm || 120) / 60, opts = (A.meter || 4) === 3 ? [1, 3, 6, 12] : [1, 2, 4, 8];
   return opts.find(n => rate / n <= RING_MOST) ?? opts.at(-1);
 };
 
 // The film's clock. phi is cycles of the pattern's flow, so rings = phi * FLOW.
-// The rings go faster on the strong beats and slower between. Where bands are as big as a tile, each one that goes by is a flash there, and three swings of a tile in a second are the limit: so 1.5 rings a second at the fastest is two flashes a second, however briefly, and the sheet's own move adds to that. The surge takes them to RING_TOP at most, and on a song slow enough it's all there. SURGE_DEPTH is surgedBeats's.
-const RING_TOP = 1.15, SURGE_DEPTH = 0.42;
 export function flowClock(score, A) {
-  const N = beatsPerRing(A), tau = score.tau, R = score.react, share = Math.max(0, Math.min(1, (RING_TOP / ((A.bpm || 120) / 60 / N) - 1) / SURGE_DEPTH));
-  return t => { const b = tau(t); return (b + share * (surgedBeats(R, tau, t) - b)) / N / FLOW; };
+  const N = beatsPerRing(A), tau = score.tau, R = score.react;
+  return t => surgedBeats(R, tau, t) / N / FLOW;
 }
 
 const relMajor = c => (c & 1 ? ((c >> 1) + 3) % 12 : c >> 1);

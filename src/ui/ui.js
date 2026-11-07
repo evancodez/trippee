@@ -65,7 +65,8 @@ export function init(app) {
       <dt>w</dt><dd>wander</dd>
       <dt>z</dt><dd>clear what the hand has done</dd>
       <dt>m</dt><dd>calm: slower flow, no fine lines</dd>
-      <dt>f &nbsp; h</dt><dd>fullscreen, hide the interface</dd>
+      <dt>f &nbsp; shift h</dt><dd>fullscreen, hide the interface</dd>
+      <dt>h</dt><dd>with a song on: how hard the picture follows it, on or off</dd>
     </dl>`);
   const note = box('note');
   const rec = box('rec', `<span data-t></span><button data-stop>stop</button>`);
@@ -173,7 +174,8 @@ export function init(app) {
       case 'r': toggleRecord(); break;
       case 'c': picture(); break;
       case 'f': fullscreen(); break;
-      case 'h': document.body.classList.toggle('bare'); break;
+      // With a song on, h is how hard the picture follows it. Shift h, or h with no song, hides the interface.
+      case 'h': if (e.key === 'H' || !song.flipHearing()) document.body.classList.toggle('bare'); break;
       case 'm': hand.setCalm(!hand.calm); say(hand.calm ? 'calm' : 'calm off'); break;
       case '?': case '/': toggleHelp(); song.revealFilms(); break;
       case 'escape':

@@ -32,7 +32,7 @@ const limitRate = (a, most) => {
   for (let i = o.length - 2; i >= 0; i--) o[i] = clamp(o[i], o[i + 1] - most, o[i + 1] + most);
   return o;
 };
-const TUNE_RATE = 2;     // of the melody's units (6 semitones) per second
+const TUNE_RATE = 3.5;     // of the melody's units (6 semitones) per second
 const pct = (a, p) => { const s = Array.from(a).sort((x, y) => x - y); return s[Math.floor((s.length - 1) * p)] || 0; };
 
 // The lungs. An attack that ends on the breath, then a decay, each from wherever the last left off, so nothing jumps however the breaths fall.
@@ -157,13 +157,13 @@ export function buildReact(A, seed = 1, ears = {}) {
       const beatLen = (seg.t1 - seg.t0) / Math.max(b1 - b0, 1);
       let e = 0, c = 0; for (let t = seg.t0; t < seg.t1; t += 0.5) { e += energyAt(t); c++; }
       const big = clamp((c ? e / c : 0.5) / 0.6);
-      const want = ears[1] ? lerp(1.3, 0.9, big) : lerp(3, 1.6, big);        // seconds between pulses
+      const want = ears[1] ? lerp(1.2, 0.9, big) : lerp(3, 1.6, big);        // seconds between pulses
       const opts = meter === 3 ? [3, 6, 12] : [2, 4, 8];
       let best = opts[1], bestCost = 1e9;
       for (const every of opts) {
         let cost = Math.abs(Math.log(every * beatLen / want));
         // The 3 has to be earning its place: if there's little on it, the 1 alone is the rhythm.
-        if (meter === 4 && every === 2 && acc[(start + 2) % 4] < (ears[1] ? 0.55 : 0.6) * acc[start]) cost += 0.8;
+        if (meter === 4 && every === 2 && acc[(start + 2) % 4] < (ears[1] ? 0.3 : 0.6) * acc[start]) cost += 0.8;
         // A gait you can walk to: no gap over two seconds unless the song itself is that slow. A quiet section walks shallower, not slower.
         if (ears[1] && every * beatLen > 2 && beatLen < 0.75) cost += 4;
         // ...and not every drum hit either, which is what makes a picture jerky. On a song counted double time, the 1 and 3 are every 4.
@@ -222,7 +222,7 @@ export function buildReact(A, seed = 1, ears = {}) {
   const voicedNow = ears[2] ? smooth(vRaw.map(v => (v > 0.35 ? 1 : 0)), HZ * 0.35) : null;
   // Hearing 2: the tune moves the whole sheet now, not a wave of it, so how fast it can get there is how hard it can jolt. A note arrives as fast as this and no faster, half of the way before you hear it. A voice coming in from nothing is the worst case.
   // A voice coming in from nothing fades in: it's the note it comes in on that would be the jolt, not the notes after it.
-  const melNow = ears[2] ? smooth(limitRate(smooth(melody, HZ * 0.08).map((v, i) => v * voicedNow[i]), TUNE_RATE / HZ), HZ * 0.05) : null;
+  const melNow = ears[2] ? smooth(limitRate(smooth(melody, HZ * 0.13).map((v, i) => v * voicedNow[i]), TUNE_RATE / HZ), HZ * 0.06) : null;      // the pitch tracker's own wobble is small but quick, and on the whole sheet it would be a shiver
   // How much the tune is there at all, and a slower version of it, for what moves the whole sheet
   const voiced = smooth(vRaw.map(v => (v > 0.35 ? 1 : 0)), HZ * 0.5);
   const melSlow = smooth(melody, HZ * 0.45);
@@ -273,7 +273,7 @@ export function buildReact(A, seed = 1, ears = {}) {
   const chill = (ears.depth ?? 1) * (ears[1] && A.perc ? lerp(WALK_CHILL, 1, clamp((A.perc.reduce((x, y) => x + y, 0) / A.perc.length - 0.38) / 0.22)) : 1);
   const depths = ears[1] ? Float32Array.from(pulses, p => chill * p.deep * settling(p.t) * (WALK_DRUMS + (1 - WALK_DRUMS) * (M.conductor.length ? read({ hz: HZ, n }, gDrums, C(p.t)) : 1)) * clamp((energyAt(p.t) - 0.03) / 0.15)) : null;
   const bass = ears[5] && !M.neutral && A.bass ? bassTables(M, A, n, resample) : null;
-  return { hz: HZ, n, ...bass, pulse, pulses: pulses.map(p => p.t), depths, songIs: R_song, choices, melody: mel, melNow, melSlow, voiced, tone, energy, chords, dummy, M, C, T, lung, px, py, tension, gDrums, gTune, gTone, gHarm, conducted: M.conductor.length > 0 };
+  return { hz: HZ, n, ...bass, pulse, pulses: pulses.map(p => p.t), mains: pulses.map(p => p.main), depths, songIs: R_song, choices, melody: mel, melNow, melSlow, voiced, tone, energy, chords, dummy, M, C, T, lung, px, py, tension, gDrums, gTune, gTone, gHarm, conducted: M.conductor.length > 0 };
 }
 
 // Flow surges just after a strong beat and glides until the next, arriving at the same place on the beat clock each time, so it stays

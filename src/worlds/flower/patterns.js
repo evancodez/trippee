@@ -52,8 +52,8 @@ export const pool = [
     arcs: [{ path: 'rot', from: -0.22, to: 0.22 }, { path: 'scale', from: 1.02, to: 1.32, log: true }, { path: 'tx', from: -0.14, to: 0.14 }],
   }),
   flower({
-    id: 'flower.bloom', name: 'Big Bloom', n: 5, a: 0.85, fat: 0.42, k: 3.5, beta: 1.6,      // one flower fills the frame: with fewer rings than this, each one passing is the whole frame's chroma going up and down
-    poles: [[-0.55, 0.05, 1.05, 0.2], [1.5, 0.72, 0.5, 1.2], [1.25, -0.8, 0.38, 2.6]],
+    id: 'flower.bloom', name: 'Big Bloom', n: 5, a: 0.85, fat: 0.42, k: 2.8, beta: 1.6,
+    poles: [[-0.55, 0.05, 1.25, 0.2], [1.5, 0.72, 0.5, 1.2], [1.25, -0.8, 0.38, 2.6]],
     arcs: [{ path: 'rot', from: 0.2, to: -0.25 }, { path: 'scale', from: 1.3, to: 1.0, log: true }, { path: 'ty', from: 0.1, to: -0.1 }],
   }),
   flower({
