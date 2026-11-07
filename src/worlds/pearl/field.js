@@ -13,6 +13,8 @@
 //   28  x thickness on top of the pattern's, from the song, y Newton's bump in a change, z bloom, w breath of light
 //   29  x,y how far a sheen's wash has got, in table terms: front, width; z,w which way it runs
 //   30  x echo's step in cycles, y how each fades, z how much softer, w unused
+//   31  x how far out of focus a change's front goes, in picture units, y the strong beats' rings in nm, z,w unused
+//   40..43  the pearls: x, y, radius, strength
 export const FIELD = `
 vec4 wPole(int b,int i){ return i==0?uG[b+I_mBlobA]:i==1?uG[b+I_mBlobB]:i==2?uG[b+I_mBlobC]:i==3?uG[b+I_p1]:uG[b+I_p2]; }
 // Newton's rings. The gap between a lens and a flat grows as the square of the distance from where they touch, so each contact's rings crowd going out. It lets go a little far out, or the corners would be hairlines.
@@ -111,9 +113,25 @@ float worldField(int b,vec2 X,vec4 f){
 
 // How far a change has got here, on the pixel's own time. Colour and focus both go by it.
 export const DEFS = `float wT=0.;
-float wBlurNow=0.;
+float wBlurNow=0.,wOrbO=0.,wOrbSharp=0.;
 `;
 export const WT = `float worldT(vec2 p0,float T){ wT=T; return T; }
+`;
+
+// The pearls: lenses floating in front of everything, the voice and its echoes. Each holds a sharp, enlarged piece of whatever's behind it, however melted that is, and its own film has rings bunching at the rim. Nothing's cut: at the rim a pearl does nothing at all.
+export const WARP = `vec2 worldWarp(vec2 p0,vec2 p){
+  for(int i=0;i<4;i++){
+    vec4 o=uW[40+i];
+    if(o.w<=.001) continue;
+    vec2 d=p0-o.xy; float u=dot(d,d)/(o.z*o.z);
+    if(u>=1.) continue;
+    float e=1.-u,s=o.w*WGEO,g=e*e*(3.-2.*e);
+    p-=d*s*.62*g;
+    wOrbO+=s*(420.*(1.-sqrt(e))*smoothstep(0.,.1,e)+150.*d.y/o.z-200.*smoothstep(.0,.3,e));
+    wOrbSharp=max(wOrbSharp,s*smoothstep(0.,.16,e));
+  }
+  return p;
+}
 `;
 
 // Depth of field, for nothing: a band's filter is an exact box, so widening it blurs exactly, and past a cycle it's the true average. Hard in focus, melted out of it.
@@ -122,7 +140,7 @@ export const PREINK = `vec2 wP0(){ return (gl_FragCoord.xy-.5*uF[8].xy)/uF[8].y*
 float wFocusOf(float lets){
   vec4 F=uW[24],G=uW[25]; vec2 p0=wP0();
   float d=max(abs(dot(p0-F.xy,F.zw))-G.x,0.),front=wT*(1.-wT)*4.;
-  return (G.y*d*d/(1.+.6*d)+G.z)*lets+uW[28].y*.00042*front*front;
+  return (G.y*d*d/(1.+.6*d)+G.z)*lets*(1.-wOrbSharp)+uW[31].x*front*front;
 }
 void worldPreInk(int K){
   if(uW[0].x>.5){ wBlurNow=0.; return; }
@@ -162,7 +180,7 @@ vec3 worldColor(int k0,int k1,float c){
   vec4 G=uW[26],V=uW[28];
   float o=a.x+V.x+a.y*dot(p0,G.xy)+uW[25].w*p0.x+a.z*tri(x0);
   if(a.w!=0.) o+=a.w*tri(x0-x1);
-  if(b.x!=0.) o+=b.x*tri(x1);
+  { float gh=b.x+uW[k1-k0<=FAM?(k0==0?44:45):44].x; if(gh!=0.) o+=gh*tri(x1); }
   // A big slow unevenness in the film that has nothing to do with the lines. It's what travels.
   if(d.y!=0.){ float pt=G.z; vec2 q=p0*.85; o+=d.y*(sin(q.x*1.1+1.5*sin(q.y*.9+pt)+pt*.7)+.7*sin(q.y*1.7-1.2*sin(q.x*1.3-pt*.8)-pt*.6)); }
   // Terraces: the whole of a cell a thickness of its own. Mother of pearl.
@@ -173,7 +191,8 @@ vec3 worldColor(int k0,int k1,float c){
   if(b.w!=0.){ float fine=exp(-wBlurNow*22.); if(fine>.02) o+=b.w*fine*sin(TAU*(dot(p0,vec2(.09,.995))*d.x)+G.w); }
   // The voice: what's been sung, going out from where it's sung now. Each ring is a moment of the song, and nothing's moved but the colour.
   vec4 vo=uW[27]; float light=0.;
-  if(vo.z!=0.){ float x=min(length(p0-vo.xy)*vo.w,254.),f=floor(x); int i=int(f); vec4 h=mix(texelFetch(uWT,ivec2(i,4),0),texelFetch(uWT,ivec2(i+1,4),0),x-f); o+=vo.z*h.r; light=h.g; }
+  if(vo.z!=0.){ float x=min(length(p0-vo.xy)*vo.w,254.),f=floor(x); int i=int(f); vec4 h=mix(texelFetch(uWT,ivec2(i,4),0),texelFetch(uWT,ivec2(i+1,4),0),x-f); o+=vo.z*h.r+uW[31].y*h.b; light=h.g; }
+  o+=wOrbO;
   // A change: Newton's rings run with the front.
   float fr=wT*(1.-wT)*4.; if(fr>0.) o+=V.y*fr*fr;
   // The reverb: each edge leaves softer copies of itself behind, and they only move the film. So every line has a train of colour after it.
