@@ -25,6 +25,8 @@ export default async ({ page, save, log }) => {
     log('wrote', name);
   };
   const N = cols * rows;
+  // The programs come after the page's ready: wait for them, as a film a few seconds in would have.
+  await page.eval(async () => { for (let i = 0; i < 400 && !window.trippee.app.R.spaceReady(); i++) await new Promise(r => setTimeout(r, 50)); });
   // A hand cut using all of it on a real song, the song's reaction on, muted. Whole-film scan for flashes at 20 fps, the judge's count: opposing swings of 10% of full scale in a second, none for the whole frame, two for a tile.
   if (E.MODE === 'film') {
     const songPath = E.SONG || 'media/mgmt.mp3';
@@ -45,15 +47,24 @@ export default async ({ page, save, log }) => {
         { at: T[2], from: T[2] - 9, via: 'tube', id: 'lattice.master', tail: 4 },
         { at: T[3], from: T[3] - 7, via: 'drop', id: 'waves.silk', tail: 3, moves: [{ id: 'swell', lead: 5, coast: 5 }] },
         { at: T[4], from: T[4] - 6, via: 'pleat', id: 'space.pleats', tail: 3, moves: [{ id: 'pleats' }] },
-        { at: T[5], from: T[5] - 8, via: 'funnel', id: 'space.funnel', tail: 3, moves: [{ id: 'funnel' }] },
-        { at: T[6], from: T[6] - 7, via: 'hall', id: 'space.hall', tail: 3, moves: [{ id: 'hall' }] },
-        { at: T[7], id: 'space.crystal', moves: [{ id: 'slice' }] },
-        { at: T[8], id: 'lines.fall' },
+        { at: T[5], from: T[5] - 7, via: 'hall', id: 'space.hall', tail: 3, moves: [{ id: 'hall' }] },
+        { at: T[6], id: 'space.crystal', moves: [{ id: 'slice' }] },
+        { at: T[7], id: 'lines.fall' },
       ];
       applyCut(S, { hash: A.hash, name: 'space-test', shots }, A, M);
       return { T, refused: S.refused, gestures: S.gestures.map(G => [+G.t0.toFixed(1), +G.t1.toFixed(1), +(G.morph || 0).toFixed(1), G.pattern.id, G.xform?.id ?? '', (G.moves || []).map(m => m.id).join(',')].join(' ')), pulses: S.react.pulses?.length };
     });
     log(JSON.stringify(made, null, 0));
+    // AT=116-120,62-66 EVERY=.25: close frames across those stretches, full size
+    if (E.AT) for (const span of E.AT.split(',')) {
+      const [p, q] = span.split('-').map(Number), every = +(E.EVERY || 0.25);
+      const u = await page.eval(async ({ p, q, every }) => {
+        const T = window.trippee, n = Math.ceil((q - p) / every), cols = 6, W = 320, H = 180, c = document.createElement('canvas'); c.width = W * cols; c.height = H * Math.ceil(n / cols); const g = c.getContext('2d'); g.font = '12px monospace';
+        for (let i = 0; i < n; i++) { const t = p + i * every; T.seek(t); g.drawImage(T.canvas, (i % cols) * W, (i / cols | 0) * H, W - 1, H - 1); g.fillStyle = '#000'; g.fillRect((i % cols) * W, (i / cols | 0) * H, 90, 14); g.fillStyle = '#f33'; g.fillText(`${t.toFixed(2)} ${app.lastFrame?.kind || ''}`, (i % cols) * W + 2, (i / cols | 0) * H + 11); }
+        return c.toDataURL('image/jpeg', 0.85);
+      }, { p, q, every });
+      save(`film-at-${span}.jpg`, u);
+    }
     const a = +(E.A ?? 20), b = +(E.B ?? 228);
     const r = await page.eval(async ({ a, b }) => {
       const T = window.trippee, c = document.createElement('canvas'); c.width = 320; c.height = 180; const x = c.getContext('2d', { willReadFrequently: true });
@@ -74,7 +85,10 @@ export default async ({ page, save, log }) => {
     const spans = (series, limit) => { const sw = swings(series), out = []; let worst = 0; for (let i = 0; i < sw.length; i++) { let j = i; while (j < sw.length && sw[j] - sw[i] < 20) j++; const n = Math.floor((j - i) / 2); worst = Math.max(worst, n); if (n > limit) out.push([r.ts[sw[i]], n]); } return { worst, at: out.slice(0, 16) }; };
     log('whole', JSON.stringify(spans(r.means, 0)));
     const perTile = r.tiles.map(q => spans(q, 2)), worstTile = Math.max(...perTile.map(q => q.worst));
-    log('tile worst', worstTile, JSON.stringify(perTile.flatMap(q => q.at).sort((p, q) => p[0] - q[0]).slice(0, 24)));
+    log('tile worst', worstTile, JSON.stringify(perTile.flatMap(q => q.at).sort((p, q) => q[1] - p[1] || p[0] - q[0]).slice(0, 14)));
+    const gs = await page.eval(() => app.stage.score.gestures.map(G => [G.t1 - (G.morph || 0), G.t1, G.xform?.id ?? '']).filter(x => x[2]));
+    for (const [p, q, id] of gs) log('tile over 2 in', id, p.toFixed(1), q.toFixed(1), perTile.flatMap(z => z.at).filter(x => x[0] >= p && x[0] <= q).length);
+    log('melody', JSON.stringify(await page.eval(() => { const R = app.stage.score.react, m = Array.from(R.melody ?? []); return m.length ? [Math.min(...m), Math.max(...m), R.hz] : null; })));
     const seen = {}; r.kinds.forEach(k => { seen[k] = (seen[k] || 0) + 1; }); log('kinds (frames at 20 fps)', JSON.stringify(seen));
     log('errors', errs().length, errs().slice(0, 3).join(' | ').slice(0, 1000));
     return;
@@ -82,7 +96,7 @@ export default async ({ page, save, log }) => {
   // A pop is one frame much further from its neighbours than they are from theirs. Every transformation, on real pairs from the film's pool, at 60 fps across each end and 30 across the middle.
   if (E.MODE === 'pops') {
     const PAIRS = (E.PAIRS || 'checks.vega,lines.fall;lattice.master,body.planet;rooms.room,waves.dune;waves.silk,rooms.hall;lines.river,checks.crush;void.diamond,dots.inflate').split(';').map(p => p.split(','));
-    for (const via of (E.VIAS || 'flood,drop,tube,pleat,funnel,hall').split(',')) for (const [a, b] of PAIRS) {
+    for (const via of (E.VIAS || 'flood,drop,tube,pleat,hall').split(',')) for (const [a, b] of PAIRS) {
       const r = await page.eval(async ({ a, b, via, D }) => {
         const T = window.trippee, app = T.app; app.governor.enabled = false; app.R.drawScale = 1;
         const c = document.createElement('canvas'); c.width = 240; c.height = 135; const g = c.getContext('2d', { willReadFrequently: true });
@@ -124,8 +138,8 @@ export default async ({ page, save, log }) => {
       out.plain = await measure(load('lines.fall', 5));
       out.plainAfter = await measure(load('lines.fall', 5));
       out.dive = await measure(morph(null, 0.5));
-      for (const [via, at] of [['flood', 0.5], ['drop', 0.5], ['tube', 0.5], ['pleat', 0.5], ['funnel', 0.5], ['hall', 0.5]]) out[via] = await measure(morph(via, at));
-      for (const [id, at] of [['space.swell', 20], ['space.terraces', 20], ['space.pleats', 20], ['space.ride', 20], ['space.funnel', 20], ['space.hall', 20], ['space.crystal', 20]]) out[id] = await measure(load(id, at));
+      for (const [via, at] of [['flood', 0.5], ['drop', 0.5], ['tube', 0.5], ['pleat', 0.5], ['hall', 0.5]]) out[via] = await measure(morph(via, at));
+      for (const [id, at] of [['space.swell', 20], ['space.terraces', 20], ['space.pleats', 20], ['space.ride', 20], ['space.hall', 20], ['space.crystal', 20]]) out[id] = await measure(load(id, at));
       return out;
     }, {});
     log(JSON.stringify(r));

@@ -8,7 +8,9 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
 // The first four are what a film needs to run; the rest build behind it.
 export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8, SPACE = 16;     // SPACE: the sheet in space, src/gl/chunks/space.js
-const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT, SPACE, SPACE | FLIGHT, SPACE | PLATES, SPACE | PLATES | FLIGHT, SPACE | HAND, SPACE | HAND | FLIGHT, SPACE | HAND | PLATES, SPACE | HAND | PLATES | FLIGHT];
+const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
+// Nothing waits for these: they build once everything else has. The hand on a bent sheet is built the first time it's asked for.
+const SPACE_LATER = [SPACE, SPACE | FLIGHT, SPACE | PLATES, SPACE | PLATES | FLIGHT];
 export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
@@ -29,7 +31,7 @@ export class Renderer {
   // bare: it'll never be asked for the hand or colour, so those aren't built at all
   constructor(canvas, { bare = false } = {}) {
     this.canvas = canvas;
-    this.order = bare ? [...ORDER.slice(0, 4), SPACE] : ORDER;
+    this.order = bare ? [...ORDER.slice(0, 4), SPACE, SPACE | FLIGHT] : ORDER;
     this.bare = bare;
     const gl = this.gl = canvas.getContext('webgl2', {
       antialias: false, alpha: false, depth: false, stencil: false,
@@ -114,7 +116,11 @@ export class Renderer {
     const gl = this.gl, c = this.canvas;
     let i = 0;
     const one = () => {
-      if (i >= list.length) { this._resolveAll(); return; }
+      if (i >= list.length) {
+        this._resolveAll();
+        if (this.parallel && !this.bare && !this.spaceAsked) { this.spaceAsked = true; this.order = [...this.order, ...SPACE_LATER]; if (!this._pending) { this._start(SPACE); this._poll(); } }
+        return;
+      }
       const low = this._lowTarget(0.5);
       gl.useProgram(list[i++]);
       gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
@@ -138,6 +144,9 @@ export class Renderer {
   _extra(S) {
     return S[OFF['slip.kind']] > .5 || S[OFF['star.k']] > 0 || (S[OFF['field.kind']] > .5 && S[OFF['field.kind']] < 3.5) || S[OFF['matte.kind']] > 2.5 || S[OFF['lathe.k']] !== 0 || S[OFF['lathe.w']] !== 0 || S[OFF['meta.amt']] !== 0;
   }
+
+  // Can a transformation through space be drawn yet? Only ever no in the first seconds of a page, and then it's a flight.
+  spaceReady() { return !!this.progs[SPACE | FLIGHT]; }
 
   _programFor(F) {
     if (this.wp) return this.wp.program(F);

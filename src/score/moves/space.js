@@ -1,7 +1,7 @@
 // The sheet in space, as a stretch of a song: a pattern on a sheet that has left the plane (src/gl/chunks/space.js). The numbers are the slot's own, so arcs, knobs, slides, flights, plates and the song all work on it. It's a camera and a
 // surface, in front of everything the pattern is, so it doesn't care what the pattern is. At amount 0 and pitch 0 it is exactly the flat frame.
 //
-//   G.moves = [{ id: 'swell' }]      any of swell, terraces, pleats, ride, funnel, hall, on any pattern. Every number can be a plain number or a lane [[t, x], ...] in song seconds. Say nothing, and it comes up over `lead` seconds from where the shot starts and
+//   G.moves = [{ id: 'swell' }]      any of swell, terraces, pleats, ride, hall, on any pattern. Every number can be a plain number or a lane [[t, x], ...] in song seconds. Say nothing, and it comes up over `lead` seconds from where the shot starts and
 //                                    goes back to flat over `coast` before `to` (song seconds; default the end of the shot's body), and in between it travels.
 //     amp      how high the sheet goes
 //     f, ph    its waves: how many a unit, and where they've got to
@@ -15,7 +15,7 @@
 import { OFF } from '../../pattern/layout.js';
 import { clamp, smoother } from '../curves.js';
 import { val } from './long.js';
-import { melodyAt } from '../react.js';
+import { melodyAt, reactAt } from '../react.js';
 
 const pulses = () => globalThis.app?.stage?.score?.react?.pulses;
 // A strong beat just happened: a moment's rise before it, and it dies away.
@@ -43,6 +43,12 @@ export function tuneAt(c) {
   return R?.melody ? melodyAt(R, c ?? 0) : 0;
 }
 
+// A big moment lifts the whole sheet higher: how much energy the song has here, 1 being about ordinary. With no song it's 1.
+export function bigAt(c) {
+  const R = globalThis.app?.stage?.score?.react;
+  return R?.energy || R?.env ? 0.82 + 0.45 * reactAt(R, c ?? 0).energy : 1;
+}
+
 export function writeSpace(out, kind, n) {
   out[OFF['space.kind']] = kind;
   out[OFF['space.amp']] = n.amp ?? 0; out[OFF['space.f']] = n.f ?? 0; out[OFF['space.ph']] = n.ph ?? 0;
@@ -67,7 +73,7 @@ export function reliefNumbers(G, t, c, m = {}) {
   const pitch = v(m.pitch) ?? (m.P ?? 0.98) * k, dist = v(m.dist) ?? 2.4 + ((m.D ?? 1.4) - 2.4) * k;
   const tune = tuneAt(c) * k;
   return {
-    amp: amp0 * (1 + (m.lift ?? 0.22) * kick),
+    amp: amp0 * (1 + (m.lift ?? 0.22) * kick) * bigAt(c),
     f, ph: v(m.ph) ?? (m.drift ?? 0.1) * d + 0.3 * surgeAt(T) * k,
     pitch, yaw: v(m.yaw) ?? k * (0.5 * Math.sin(d * 0.07) + 0.06 * tune), roll: v(m.roll) ?? k * (0.14 * Math.sin(d * 0.11 + 1) + 0.03 * tune), dist,
     x: v(m.x) ?? 0, y: v(m.y) ?? (m.fly ?? 0.55) * d + (m.heave ?? 0.5) * surgeAt(T) * k, z: v(m.z) ?? 0,
@@ -77,7 +83,7 @@ export function reliefNumbers(G, t, c, m = {}) {
 export function pleatNumbers(G, t, c, m = {}) {
   const T = t, { k, d } = life(G, T, m), kick = kickAt(T), v = l => (l == null ? undefined : val(l, T));
   return {
-    amp: (v(m.amp) ?? (m.A ?? 1.05) * k) * (1 + (m.lift ?? 0.16) * kick),
+    amp: (v(m.amp) ?? (m.A ?? 1.05) * k) * (1 + (m.lift ?? 0.16) * kick) * bigAt(c),
     f: v(m.f) ?? m.F ?? 3,
     ph: -1e3 * 0.5, a: 1e3,      // no walk: every cell is half and half, and what moves it is a wave of share
     pitch: v(m.pitch) ?? (m.P ?? 0.74) * k, yaw: v(m.yaw) ?? k * 0.28 * Math.sin(d * 0.09), roll: k * 0.1 * Math.sin(d * 0.07), dist: v(m.dist) ?? 2.4 + ((m.D ?? 1.6) - 2.4) * k,
@@ -97,15 +103,6 @@ export function rideNumbers(G, t, c, m = {}) {
   };
 }
 
-// A paper cone round you, its fold never quite settling. Breathes on the strong beats. No hole: there's nothing here to go through to.
-export function funnelNumbers(G, t, c, m = {}) {
-  const T = t, { k, d } = life(G, T, { ...m, lead: m.lead ?? 7, coast: m.coast ?? 7 }), kick = kickAt(T), tune = tuneAt(c);
-  return {
-    amp: (1 - (1 - (m.sin ?? 0.36)) * k) * (1 - 0.06 * kick * k), f: 0, ph: (m.spin ?? 0.1) * d + 0.25 * surgeAt(T) * k,
-    pitch: k * (m.tilt ?? 0.42) * Math.sin(d * 0.13), yaw: k * 0.5 * Math.sin(d * 0.07 + 1) + 0.04 * tune * k, dist: 2.4 + ((m.D ?? 1.25) - 2.4) * k,
-    z: k * 0.18 * Math.sin(d * 0.09), a: m.seam ?? -1.7, w: k * (m.pour ?? 0.55) * Math.sin(d * 0.05),
-  };
-}
 // A square hall, all of it the one sheet, turning over about you as you go along it.
 export function hallNumbers(G, t, c, m = {}) {
   const T = t, { k, d } = life(G, T, { ...m, lead: m.lead ?? 7, coast: m.coast ?? 7 }), H = m.half ?? 2.3;
@@ -150,7 +147,6 @@ export default {
   terraces: move('terraces', 1, reliefNumbers, TERRACES),
   pleats: move('pleats', 4, pleatNumbers),
   ride: move('ride', 5, rideNumbers),
-  funnel: move('funnel', 6, funnelNumbers),
   hall: move('hall', 7, hallNumbers),
   slice: { id: 'slice', needs(slot) { return [0, 1, 2, 3].every(i => slot[OFF[`f${i}.on`]] >= 0.5); }, write(out, c) { sliceDrive(out, c, c.m); } },
 };

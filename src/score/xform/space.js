@@ -3,7 +3,7 @@
 import { OFF, FRAME } from '../../pattern/layout.js';
 import { clamp, lerp, smoother } from '../curves.js';
 
-import { kickAt, surgeAt, tuneAt } from '../moves/space.js';
+import { kickAt, surgeAt, tuneAt, bigAt } from '../moves/space.js';
 
 const k = (x, a, b) => smoother((x - a) / (b - a));
 
@@ -11,13 +11,14 @@ const put = (F, i, a, b, c, d) => { const n = (FRAME.space + i) * 4; F[n] = a; F
 
 function flood(st, F, o) {
   const { x } = st, kick = kickAt(st.t), a = (o.amp ?? 0.42), rise = k(x, 0, 0.42), up = k(x, 0.04, 0.42) * (1 - k(x, 0.66, 1));
-  const amp = a * rise * (1 + 0.16 * kick);
+  const amp = a * rise * (1 + 0.16 * kick) * bigAt(st.c), tune = tuneAt(st.c);
   const f = o.f ?? 2.3, ph = (o.ph ?? 0) + 1.6 * x * x + 0.35 * kick * up;
-  const low = -a * 1.26 * 1.17 - 0.02, high = a * 1.26 * 1.17 + 0.02, L = lerp(low, high, k(x, 0.26, 0.74));
+  const low = -a * 1.26 * 1.17 * 1.2 - 0.02, high = a * 1.26 * 1.17 * 1.2 + 0.02,      // past anything a big moment lifts it to
+    L = lerp(low, high, k(x, 0.26, 0.74));
   const yEnd = o.fly ?? 5.2, y = yEnd * lerp(x, smoother(x), 0.6);
   const dist = lerp(o.dist ?? 2.4, 1.25, up), pitch = (o.pitch ?? 1.02) * up;
   put(F, 0, 1, amp, f, ph);
-  put(F, 1, pitch, (o.yaw ?? 0.5) * (up - 0.0) * Math.sin(x * Math.PI), 0.16 * Math.sin(x * Math.PI * 2) * up, dist);
+  put(F, 1, pitch, (o.yaw ?? 0.5) * up * Math.sin(x * Math.PI) + 0.05 * tune * up, 0.16 * Math.sin(x * Math.PI * 2) * up + 0.02 * tune * up, dist);
   put(F, 2, 0, y, lerp(0, high, k(x, 0.26, 0.74)), 0);      // it keeps its height over the water
   put(F, 3, (o.bowl ?? 0.1) * up, o.q ?? 0, o.pix ?? 0, 0);
   put(F, 4, L, 0, yEnd, 0);
@@ -29,7 +30,7 @@ function drop(st, F, o) {
   const dist = lerp(o.dist ?? 2.4, 1.5, k(x, 0, 0.5));
   const z = lerp(0, L, k(x, 0.5, 1));
   put(F, 0, 3, depth, 0, front + 0.05 * kick);
-  put(F, 1, (o.pitch ?? 0.86) * up, (o.yaw ?? 0.45) * up, 0, dist);
+  put(F, 1, (o.pitch ?? 0.86) * up, (o.yaw ?? 0.45) * up + 0.05 * tuneAt(st.c) * up, 0.04 * kick * up, dist);
   put(F, 2, 0, 0, z, 0);
   put(F, 3, 0, 0, pix, o.scatter ?? 0.7);
   put(F, 4, L, 0, 0, 0);
@@ -38,7 +39,7 @@ function drop(st, F, o) {
 function pleat(st, F, o) {
   const { x } = st, kick = kickAt(st.t), n = o.n ?? 2.8, up = k(x, 0, 0.32) * (1 - k(x, 0.68, 1)), tune = tuneAt(st.c);
   const width = o.width ?? 4.2, walk = lerp(-2.5 - width, 2.5, k(x, 0.08, 0.92));      // every cell in the frame is part way, all the time: it's the share of each that goes across
-  put(F, 0, 4, (o.h ?? 1.15) * up * (1 + 0.14 * kick), n, walk);
+  put(F, 0, 4, (o.h ?? 1.15) * up * (1 + 0.14 * kick) * bigAt(st.c), n, walk);
   put(F, 1, (o.pitch ?? 0.72) * up, (o.yaw ?? 0.3) * up * Math.sin(Math.PI * x) + 0.03 * tune * up, 0.1 * Math.sin(Math.PI * x) * up, lerp(2.4, 1.55, up));
   put(F, 2, 0, 0, 0, width);
   put(F, 3, 0, 0, (o.zig ?? 0.45) * up, o.dir ?? 0.3);
@@ -49,23 +50,12 @@ function tube(st, F, o) {
   const { x } = st, kick = kickAt(st.t), d = o.dist ?? 1.5, tune = tuneAt(st.c);
   const roll = k(x, 0, 0.3) * (1 - k(x, 0.7, 1));
   const look = k(x, 0.1, 0.44) * (1 - k(x, 0.58, 0.9));
-  const Yend = o.fly ?? 11, y = Yend * lerp(x, smoother(x), 0.5), neck = (o.neck ?? 0.55) * look * (1 + 0.16 * kick);
+  const Yend = o.fly ?? 8, y = Yend * lerp(x, smoother(x), 0.5), neck = (o.neck ?? 0.55) * look * (1 + 0.16 * kick) * bigAt(st.c);
   put(F, 0, 5, roll / d * 0.98, o.bw ?? 0.42, 2.2 * x + 0.3 * tune * look);
   put(F, 1, look * Math.PI / 2, 0, 0.35 * look * Math.sin(Math.PI * x), d);
   put(F, 2, 0, y, 0, (o.bend ?? 1.0) * look);
   put(F, 3, Math.min(neck, 0.8), o.neckLong ?? 1.1, 0, 0);
   put(F, 4, 0, 0, Yend, Yend * 0.56);
-}
-
-// The floor rolls up round you into a paper cone, turning, with a hole at its point. You go down it and through.
-function funnel(st, F, o) {
-  const { x } = st, kick = kickAt(st.t), tune = tuneAt(st.c), up = k(x, 0.02, 0.42), L = -(o.far ?? 2.8);
-  const sin = lerp(1, o.sin ?? 0.3, up) * (1 - 0.05 * kick * up), dist = lerp(2.4, o.dist ?? 1.25, k(x, 0, 0.42)), tilt = k(x, 0.1, 0.34) * (1 - k(x, 0.42, 0.66));
-  put(F, 0, 6, sin, (o.hole ?? 1.1) * k(x, 0.32, 0.66), (o.spin ?? 2.4) * x * x);
-  put(F, 1, (o.pitch ?? 0.5) * tilt, (o.yaw ?? 1.3) * tilt + 0.05 * tune * up, 0, dist);
-  put(F, 2, 0, 0, lerp(0, L, k(x, 0.36, 1)), o.seam ?? -1.7);
-  put(F, 3, 0, 0, 0, (o.pour ?? 0.7) * up * k(x, 0, 0.7));
-  put(F, 4, L, 0, 0, 0);
 }
 
 // The floor's only one side of a square hall going off ahead, and the walls are the next pattern. The camera looks up along it, the hall turns over about you, floor to wall to ceiling to wall, and you look back down at what was a wall.
@@ -82,13 +72,13 @@ function hall(st, F, o) {
   F[(FRAME.space + 4) * 4 + 2] = Yend;
 }
 
-const kinds = { flood, drop, pleat, tube, funnel, hall };
+const kinds = { flood, drop, pleat, tube, hall };
 
 function make(id) {
   return {
     id, long: true,
     plan(a, b, ctx) {
-      if (ctx.R?.wp) return null;      // a world's programs don't have it
+      if (ctx.R?.wp || ctx.R?.spaceReady?.() === false) return null;      // a world's programs don't have it, and for the first seconds of a page nothing does
       return { kind: id, o: ctx.xform ?? {}, close: [0] };
     },
     enter(st) {
