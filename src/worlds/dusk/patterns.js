@@ -28,7 +28,8 @@ function field({ id, name, group, kind, a = 0, f2 = [0, 0, 0, 0], sp = [0, 0, 0,
     },
   };
 }
-const land = ({ amp, hz, q, D, fr, sharp = 0, seed = 1, train = 0.5, ...more }) => field({ kind: 'land', group: 'land', cam: 'train', a: amp, f2: [hz, q, D, fr], sp: [sharp, 0, 0, seed], train, ...more });
+// A land's white is the far part of a hill, or going by the coverage there'd be more of it than anything else: duty .4, and its phase moved by what that moves the edge by. light.js goes by the edge.
+const land = ({ amp, hz, q, D, fr, sharp = 0, seed = 1, train = 0.5, ...more }) => { const p = field({ kind: 'land', group: 'land', cam: 'train', a: amp, f2: [hz, q, D, fr], sp: [sharp, 0, 0, seed], train, ph: 0.35, ...more }); p.g.fams[0].d = 0.4; return p; };
 
 const crane = (a, b) => ({ path: 'ty', from: a, to: b });
 const push = (a, b) => ({ path: 'scale', from: a, to: b, log: true });

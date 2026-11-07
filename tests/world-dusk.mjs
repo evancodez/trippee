@@ -141,6 +141,19 @@ async function stages({ page, log, save, sleep }) {
     }
     log(`clicks: ${good}/${ids.length} landed`);
   }
+  if (want.includes('fit')) {
+    // What a rehearsal thinks of each pattern, as coverage, at a few moments: anything it calls bad at every moment sits out of the film.
+    const r = await page.eval(async ts => {
+      const W = await F_.enter(), R = app.R, gl = R.gl, wp = R.worldPrograms.get(W), { measure } = await import(new URL('src/music/rehearse.js', location.href).href), out = [], w = 320, h = 180, px = new Uint8Array(w * h * 4);
+      for (const p of W._pool) {
+        const row = [];
+        for (const t of ts) { F_.show(p, t); wp.coverage(null, w, h); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); const m = measure(px, w, h); row.push(`${m.why || 'ok'}(${m.white.toFixed(2)},${m.area.toFixed(2)},${m.disc.toFixed(2)})`); gl.viewport(0, 0, R.canvas.width, R.canvas.height); }
+        out.push(`${p.id.slice(5).padEnd(22)} ${row.join(' ')}`);
+      }
+      return out;
+    }, (process.env.TIMES || '4,20,36').split(',').map(Number));
+    log(r.join('\n'));
+  }
   if (want.includes('big')) {
     // A few patterns big enough to look at: IDS=wires,blinds T=80,170
     const r = await page.eval(async (ids, ts) => {
