@@ -123,6 +123,8 @@ function bearingOf(G) {
   if (!B.free && locksOf(G).scale) B.pan = Math.min(B.pan, 0.3);
   return B;
 }
+// How much finer than its families' numbers a warp draws the lines: a zigzag or a bend steepens them, and those are what goes to wallpaper first.
+const warpedBy = s => { const n = k => Math.abs(s[OFF[k]]); return (1 + 2.5 * n('zig.a') * n('zig.c')) * (1 + 0.8 * n('teeth.a')) * (1 + 0.5 * n('bend1.a') * n('bend1.f') + 0.5 * n('bend2.a') * n('bend2.f')); };
 // The lines at a place on the sheet, in cycles per pattern unit: the families' own gradients there, with no warps.
 function linesAt(s, x, y) {
   const n = k => s[OFF[k]], p1x = n('p1.x'), p1y = n('p1.y'), p2x = n('p2.x'), p2y = n('p2.y');
@@ -324,7 +326,7 @@ function buildRoute(cam, G, prev) {
   const marks = B.marks, seenLines = new Array(M_);
   for (let j = 0; j < M_; j++) {
     fillSlot(slot, G, from + j * STEP / HZ, G.pattern, { phi: 0, noCam: true });
-    baseS[j] = slot[OFF.scale]; baseR[j] = slot[OFF.rot]; baseK[j] = fineness(slot); baseX[j] = slot[OFF.tx]; baseY[j] = slot[OFF.ty];
+    baseS[j] = slot[OFF.scale]; baseR[j] = slot[OFF.rot]; baseK[j] = fineness(slot) * warpedBy(slot); baseX[j] = slot[OFF.tx]; baseY[j] = slot[OFF.ty];
     seenLines[j] = marks.length ? slot.slice() : null;
   }
   const base = (a, i) => { const f = i / STEP, k = Math.floor(f); return lerp(a[Math.min(k, M_ - 1)], a[Math.min(k + 1, M_ - 1)], f - k); };
@@ -542,4 +544,4 @@ export function wearCamera(film, A, M, seed = 7, { lang = null } = {}) {
   return cam;
 }
 // A gesture made after the film was (a pick from the library) wears it too.
-export const wearOne = (score, G) => { if (G && !G.cam && score.camera && !G.hold) G.cam = score.camera.write; };
+export const wearOne = (score, G) => { if (G && !G.cam && score.camera) G.cam = score.camera.write; };
