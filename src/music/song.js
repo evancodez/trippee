@@ -81,7 +81,11 @@ export function init(app) {
   let duration = 0, analysis = null, score = null, opts = {};
   let endedAt = 0, resting = false;
   const lead = { value: VISUAL_LEAD };
-  const sitOut = new Set();     // patterns that made a jump in a rehearsal
+  // What each film of this song learnt in its rehearsals: the patterns that sat out, and the family it was kept in when they did. Per seed (and world), and forgotten with the song, so the
+  // same seed asked for again is the same film whatever's been shown since, and one song's film doesn't depend on which songs came before it. One set for everything, a take of seed 7
+  // came out without the patterns the first film had dropped and in whatever family it fell in, and it wasn't the film seed 7 had loaded as (PPP: another film, its big moments elsewhere).
+  let learnt = new Map();
+  const learntFor = (seed = opts.seed ?? 7, world = app.stage.world) => { const key = `${world?.id ?? ''}:${seed}`; let l = learnt.get(key); if (!l) learnt.set(key, l = { out: new Set(), family: undefined }); return l; };
   // A song with a hand cut has two films (docs/DIRECTION.md section 7), and for any other song all of these stay as they are. Which one's showing never touches the clock or the sound.
   let films = null;             // { auto, cut }: auto is the generated film, the latest take of it. cut is null until it's composed
   let showing = 'auto', comparing = null, cutComing = false;
@@ -137,8 +141,10 @@ export function init(app) {
     opts = { ...opts, ...o };
     const aspect = app.canvas.width && app.canvas.height ? app.canvas.width / app.canvas.height : 16 / 9;
     // A world's film is drawn from the world's own patterns, and with none on from the library as ever.
-    const W = app.stage.world, from = W?._pool?.length ? W._pool : app.patterns;
-    const allowed = from.filter(p => !sitOut.has(p.id));
+    const W = app.stage.world, from = W?._pool?.length ? W._pool : app.patterns, L = learntFor(opts.seed ?? 7, W);
+    if (keepFamily) L.family = keepFamily;
+    keepFamily ??= opts.family == null && opts.pattern == null ? L.family : undefined;
+    const allowed = from.filter(p => !L.out.has(p.id));
     // A pattern picked by hand before this world came on isn't one of its own, and a film can't be built round it.
     const foreign = W?._pool?.length && opts.pattern && !from.some(p => p === opts.pattern || p.id === opts.pattern);
     score = compose(analysis, opts.seed ?? 7, { family: keepFamily ?? opts.family, pattern: foreign ? undefined : opts.pattern, patterns: allowed.length ? allowed : from, aspect, ...(W ? { world: W } : null) });
@@ -163,10 +169,10 @@ export function init(app) {
       catch (e) { if (e.message !== 'stale') console.warn('rehearsal skipped:', e); return; }
       song.rehearsal = r;
       const mine = typeof opts.pattern === 'string' ? opts.pattern : opts.pattern?.id;
-      const fresh = r.bad.filter(id => id !== mine && !sitOut.has(id));
+      const L = learntFor(score.seed, score.world ?? null), fresh = r.bad.filter(id => id !== mine && !L.out.has(id));
       if (!fresh.length || last) return;
       console.warn('rehearsal: sitting out ' + JSON.stringify(r.jumps.slice(0, 6)));
-      for (const id of fresh) sitOut.add(id);
+      for (const id of fresh) L.out.add(id);
       // the same family: one bad pattern shouldn't change what kind of film this is
       await aFrame();
       composeNow({}, score.family);
@@ -323,6 +329,7 @@ export function init(app) {
       extrasOf = null;
       song.analysis = A; song.hash = hash;
       opts = { seed, family, pattern };
+      learnt = new Map();
       if (app.stage.world?.needs?.length) await song.extrasReady().catch(e => console.warn('the extras could not be heard:', e));      // a world that's on and hears them
       if (token !== loadToken) return null;
       await aFrame();
@@ -450,7 +457,8 @@ export function init(app) {
       rehearse(score, Math.min(analysis.duration, 1200)).then(r => {
         song.rehearsal = r;
         const mine = typeof opts.pattern === 'string' ? opts.pattern : opts.pattern?.id;
-        for (const id of r.bad) if (id !== mine) sitOut.add(id);
+        const L = learntFor(score.seed, score.world ?? null);
+        for (const id of r.bad) if (id !== mine) L.out.add(id);
       }).catch(() => {});
       return score;
     },

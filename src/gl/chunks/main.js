@@ -154,6 +154,7 @@ void main(){
     bool isOuter=(n&1)==0&&n<4;
     int j=n==4?2:isOuter==bOuter?1:0;
     float t=j==1?thB:th;
+    if(n==4&&so.w>1.) t=mix(1.,th,so.w-1.);      // an echo's lines opening, as on the plain path
     if(n<4&&!isOuter&&!iris) t=mix(uF[${FRAME.spare}].x,t,inWhite?cc[n-1]:1.-cc[n-1]);
     // The last of a dive, the first of a rise: what's left of the outer pattern shuts as a shape closing up, with a hard edge. Faded instead, it'd be a grey panel laid over the picture.
     if(isOuter&&!iris) t=mix(t,inWhite?-1.:1.,uF[${FRAME.spare}].y);
@@ -258,19 +259,21 @@ void main(){
   // The hand is the same pattern in negative, so it has a hard outline all the way round on anything, wherever the lines happen to fall
   if(hInk>0.){ c=mix(c,1.-c,hInk); c2=mix(c2,1.-c2,hInk); cP=mix(cP,1.-cP,hInk); }
 #endif
-  // the hand's moire: a lifted copy of the same sheet, XOR-ed on top
+  // the hand's moire: a lifted copy of the same sheet, XOR-ed on top. Up to 1, so.w is how much of it. Past 1 it's all of it, and an echo coming up (src/score/time-sheet.js) by its lines
+  // opening out of solid black, so it never fades: a fade there was a grey wash over most of the frame for a second and a half each way
 #ifndef FLIGHT
   vec4 so=uF[7];
 #endif
   if(so.w>0.){
+    float sw=min(so.w,1.);
 #ifdef FLIGHT
     float cs=cc[4];
 #else
     float ms=prepare(2,0,rot(so.z)*p+so.xy);
-    float cs=mix(o,inkOf(2,2*FAM,3*FAM,th),ms);
+    float cs=mix(o,inkOf(2,2*FAM,3*FAM,so.w>1.?mix(1.,th,so.w-1.):th),ms);
 #endif
-    c=mix(c,c+cs-2.*c*cs,so.w); c2=c;
-    cP=mix(cP,cP+cs-2.*cP*cs,so.w);
+    c=mix(c,c+cs-2.*c*cs,sw); c2=c;
+    cP=mix(cP,cP+cs-2.*cP*cs,sw);
   }
 #if defined(TIME)&&!defined(FLIGHT)
   if(uT[7].x!=0.){ c=timeTone(c); c2=timeTone(c2); cP=timeTone(cP); }

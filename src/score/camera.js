@@ -318,6 +318,19 @@ const BEFORE = 8, AFTER = 8;     // a gesture's camera is read this far either s
 const plus = (x, w) => w * Math.log1p(Math.exp(Math.min(x / w, 30)));
 const between = (x, lo, hi, w = 0.22) => { if (hi < lo) { const m = (lo + hi) / 2; lo = hi = m; } return lo + plus(x - lo, w) - plus(x - hi, w); };
 
+// The tracks' turn blended into one of the route's own (a ring road's way up the screen, an arm's heading), the short way round. The tracks' turn never comes back, so by the time a road
+// comes up the two can be a dozen whole turns apart, and a plain blend spun the sheet round that many times in a second or so: 55 radians a second at Disclosure 89 s, 174 at PPP's climax,
+// every tile of relay.rooms flashing. A whole turn is nothing to see, so each side is taken at the whole turn nearest the other while its own share is still nothing.
+const NONE = 1e-4;
+function shortWay() {
+  let k = 0, m = 0;
+  return (track, own, w) => {
+    if (w < NONE) k = Math.round((track - TAU * m - own) / TAU);
+    if (w > 1 - NONE) m = Math.round((track - own - TAU * k) / TAU);
+    return lerp(track - TAU * m, own + TAU * k, w);
+  };
+}
+
 function buildRoute(cam, G, prev) {
   const { T, n } = cam, B = G.camBear ??= bearingOf(G);
   const t0 = G.t0, tEnd = Math.min(G.t1, cam.dur + 6), N = Math.max(2, Math.ceil((tEnd - t0 + BEFORE + AFTER) * HZ)), from = t0 - BEFORE, ix0 = Math.round(BEFORE * HZ);
@@ -383,17 +396,18 @@ function buildRoute(cam, G, prev) {
   if (B.rings && B.pan >= 0.5 && marks.length && !B.floor && !B.room && !B.lensy) {
     const mk = marks[0], start = [base(baseX, ix0), base(baseY, ix0)], way = cam.wayAt(t0 + 1);
     let a = G.t0 * 0.9, lastKick = q(T.kick, ix0);
+    const turnTo = shortWay();
     for (let i = 0; i < N; i++) {
       const w = fly[i];
       const sc = base(baseS, i) * Math.exp(q(T.alt, i) * B.zoom), R = 1.9 / sc, kick = q(T.kick, i);
       if (i >= ix0) a += way * (q(T.speed, i) / HZ + (kick - lastKick)) / 1.9;
       lastKick = kick;
+      // Screen up is along the road: R(-rot)(0,1) is the way round. Off the road too, so a whole turn taken as it let go stays taken.
+      const along = way > 0 ? a + Math.PI / 2 : a - Math.PI / 2;
+      spin[i] = turnTo(spin[i], Math.PI / 2 - along - base(baseR, i), w);
       if (w <= 0) continue;
       const cx = mk[0] + R * Math.cos(a) - start[0], cy = mk[1] + R * Math.sin(a) - start[1];
       x[i] = lerp(x[i], cx, w); y[i] = lerp(y[i], cy, w);
-      // Screen up is along the road: R(-rot)(0,1) is the way round
-      const along = way > 0 ? a + Math.PI / 2 : a - Math.PI / 2;
-      spin[i] = lerp(spin[i], Math.PI / 2 - along - base(baseR, i), w);
     }
   }
 
@@ -424,6 +438,7 @@ function buildRoute(cam, G, prev) {
     const K = clamp(m / 3.2, 0.9, 2.4);          // frame units a unit of log radius takes: how big the cells look. And how far from the eye you ride
     const big = Math.log(K / base(baseS, ix0));
     let fallen = 0, spd = 0, u = 0, th = G.t0 * 1.1, lastKick = q(T.kick, ix0);
+    const turnTo = shortWay();
     const lean = Math.atan2(dth, du);       // how far the arm is from running straight out
     for (let i = 0; i < N; i++) {
       if (i >= ix0) {
@@ -438,7 +453,7 @@ function buildRoute(cam, G, prev) {
       y[i] = lerp((mk[1] - start[1]) * smoother((i - ix0) / (3 * HZ)), mk[1] + R * Math.sin(th) - start[1], w);
       z[i] = lerp(fallZ, zr + z[i] * 0.5, w);
       const heading = th + way * lean;       // the way along the arm, on the sheet
-      spin[i] = lerp(spin[i] + way * 0.5 * fallen, Math.PI / 2 - heading - base(baseR, i), w);
+      spin[i] = turnTo(spin[i] + way * 0.5 * fallen, Math.PI / 2 - heading - base(baseR, i), w);
     }
     wobs = true;
   }
@@ -490,7 +505,9 @@ function makeWrite(cam) {
       if (!B.room) out[OFF['cam.yaw']] += 0.5 * tip * Math.sin(dir);
       return;
     }
-    writeTip(out, tip, dir, lens);
+    // Every track comes up from nothing (starting), so the film's very first frame has a tip of exactly 0, and writeTip left it flat with no lens while the next was on its plane: a jump of
+    // 129 against 1 at 0.017 s wherever a film's shown from its start without flying in (a take, then back to 0). That frame's on its plane too, looking straight down at it.
+    writeTip(out, tip === 0 && p <= 0 ? Number.MIN_VALUE : tip, dir, lens);
   };
 }
 // What a shot in a cut draws by hand. Its one-knot fit of a size isn't drawing, only something like a lane is.

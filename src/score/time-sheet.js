@@ -5,6 +5,7 @@
 //     want.ghost { slide, shares, capsules: [[ax, ay, bx, by, r]] }, want.fringe { amp, shares, turn, size, bumps: [[x, y, rx, ry, a]] }, want.snakes { amt, dark, light, way, along, across }
 import { OFF, SLOT_FLOATS, FRAME, FAMILIES } from '../pattern/layout.js';
 import { fillSlot } from './slot.js';
+import { clamp } from './curves.js';
 import { writeHear } from './hear.js';
 import { MOVES } from './moves/index.js';
 import { XFORMS } from './xform/index.js';
@@ -101,7 +102,8 @@ function writeEcho(e, st, score, edits, tReal, phiOf, walkT, G, t) {
   fill(now, t); fill(tmp, t - e.lag);
   const F = st.F, So = FRAME.sheetOfs * 4;
   // A point of the sheet that's at p now was at rot(now - then) p a moment ago, near enough. Never less of a turn than its own: at none at all the XOR is solid black
-  F[So] = tmp[OFF.tx] - now[OFF.tx]; F[So + 1] = tmp[OFF.ty] - now[OFF.ty]; F[So + 2] = e.turn + Math.abs(tmp[OFF.rot] - now[OFF.rot]); F[So + 3] = e.amt;
+  // It comes up by thinning, never fading: past 1 the copy is all there, its lines opening out of solid black (chunks/main.js). Fast at first, so they're hairlines for as short a time as can be.
+  F[So] = tmp[OFF.tx] - now[OFF.tx]; F[So + 1] = tmp[OFF.ty] - now[OFF.ty]; F[So + 2] = e.turn + Math.abs(tmp[OFF.rot] - now[OFF.rot]); F[So + 3] = 1 + Math.sqrt(clamp(e.amt));
 }
 
 // When a hand-picked pattern has finished arriving: what it's picked by flies for a while first.
