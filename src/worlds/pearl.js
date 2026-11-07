@@ -1,7 +1,7 @@
 // Pearl, dream pop: a lens an inch from watered silk. docs/MODES.md, section 3. The picture is a film of varying thickness, and all the colour there is comes from how thick it is. A pattern's lines only step the film and shape it.
 // Lines hold and colour travels. Razor in focus and melted out of it, a band of focus racking on the phrase. Her voice is a pearl floating over the frame, sharp through whatever's melted behind it, with its echoes on the same path behind it. What she's sung goes out from it across the film, as thickness: no line moves for it. And every line has softer copies of itself behind it, which is the reverb, drawn.
 import { OFF, FRAME } from '../pattern/layout.js';
-import { pool, FILM, FLOW } from './pearl/patterns.js';
+import { pool, FILM } from './pearl/patterns.js';
 import { FIELD, DEFS, WT, WARP, PREINK, COLOR } from './pearl/field.js';
 import { SHEENS, CELLS, chips } from './pearl/sheens.js';
 import { hearSong, flowClock, voiceAt, focusAt, sheenAt, voiceSpot } from './pearl/song.js';
@@ -53,17 +53,15 @@ export default {
     return score;
   },
   uniforms(U, ctx) {
-    const { from, to, G, t, kind, score, A, B, F, plan, x } = ctx, g = U.all, song = ctx.tables, s = ctx.at(ctx.c);
+    const { from, to, G, t, kind, A, B, F, plan } = ctx, g = U.all, song = ctx.tables, s = ctx.at(ctx.c);
     const set = (i, a, b, c, d) => { const o = 4 * i; g[o] = a; g[o + 1] = b; g[o + 2] = c; g[o + 3] = d; };
     // The two patterns' films. A change that isn't a bend (a slide, by a click) has only the one slot to show them both in.
     const fa = filmOf((from ?? G)?.pattern), fb = filmOf((to ?? from ?? G)?.pattern), two = F[FRAME.compose * 4 + 1] > 0.5 || F[FRAME.dive * 4 + 3] > 0.5;
     if (to && from && !two) { writeFilm(U.a, fa, fb, ctx.T); writeFilm(U.b, fb); } else { writeFilm(U.a, fa); writeFilm(U.b, fb); }
-    // In a world's landing the lines run on the one clock, right through it. Every pattern's first family.
-    if (from && to && (kind === 'rack' || kind === 'drain' || kind === 'breath')) {
-      const now = FLOW * (score.phi ? score.phi(t, to) : t * 0.25);
-      A[OFF['f0.ph']] = (from.pattern.g.fams?.[0]?.ph ?? 0) - now; B[OFF['f0.ph']] = (to.pattern.g.fams?.[0]?.ph ?? 0) - now;
-      U.e[15] = plan.ang ?? 0;
-    }
+    // A landing's B is a whole number of cycles from where it'll be once it's landed, which nothing can see but a cell's own thickness. That's told what the offset is, so a cell keeps its colour across the landing.
+    const own = from && to && (kind === 'rack' || kind === 'drain' || kind === 'breath');
+    set(46, own ? plan.offset[0] : 0, own ? plan.offset[1] : 0, 0, 0);
+    if (own) U.e[15] = plan.ang ?? 0;
     const e = s ? clamp01(s.energy) : 0.45, lung = s ? Math.min(s.lung, 1.2) : 0.5 + 0.5 * Math.sin(t * 0.4), tone = s ? s.tone : 0, tens = s ? Math.min(s.tension, 1.5) : 0, pulse = s ? Math.min(s.pulse, 1.3) : 0;
     // The focus. Loud is sharp across most of the frame. Quiet's a slit, with the rest melting. Her voice takes everything further out of focus: it's what the pearl's for.
     voiceSpot(song, t, spot);

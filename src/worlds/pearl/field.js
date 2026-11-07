@@ -201,19 +201,23 @@ vec3 worldColor(int k0,int k1,float c){
   vec2 p0=wP0(); vec4 a,b,d,e; float cellF,angF;
   if(k1-k0<=FAM){ int n=k0==0?4:34; a=uW[n]; b=uW[n+1]; d=uW[n+2]; e=uW[n+3]; int s=k0==0?0:1; cellF=wCellF[s]; angF=wAngF[s]; }
   else { a=mix(uW[4],uW[34],wT); b=mix(uW[5],uW[35],wT); d=mix(uW[6],uW[36],wT); e=mix(uW[7],uW[37],wT); cellF=mix(wCellF[0],wCellF[1],wT); angF=mix(wAngF[0],wAngF[1],wT); }
-  // Which family carries the lines: the first with any, in whichever slot's showing. A closed one's phase still counts in colour, and that's the point of it.
-  int k=k0; if(!gOn[k]&&k1-k0>FAM) k=k0+FAM;
-  int k2=k+1; if(!gOn[k2]&&k1-k0>FAM) k2=k0+FAM+1;
-  float x0=gPh[k],x1=gOn[k2]?gPh[k2]:0.;
+  // Which family carries the lines: the first with any, in whichever slot's showing. In a bend a family with no partner is closing in A and opening in B, both at once, and each slot's own counts for its own share, so nothing steps where one of them ends.
+  bool two=k1-k0>FAM;
+  int k=k0; if(!gOn[k]&&two) k=k0+FAM;
+  int k2=k+1; if(!gOn[k2]&&two) k2=k0+FAM+1;
+  float x0=gPh[k],x1=gOn[k2]?gPh[k2]:0.,r0=tri(x0);
+  if(two&&gOn[k0]&&gOn[k0+FAM]) r0=mix(tri(gPh[k0]),tri(gPh[k0+FAM]),wT);
   vec4 G=uW[26],V=uW[28];
-  float o=a.x+V.x+a.y*dot(p0,G.xy)+uW[25].w*p0.x+a.z*tri(x0);
+  float o=a.x+V.x+a.y*dot(p0,G.xy)+uW[25].w*p0.x+a.z*r0;
   if(a.w!=0.) o+=a.w*tri(x0-x1);
-  { float gh=b.x+uW[k1-k0<=FAM?(k0==0?44:45):44].x; if(gh!=0.) o+=gh*tri(x1); }
+  // The second family alone: a family that's closed has no lines at all, so this is a whole other pattern, in colour only.
+  if(two){ float xa=gOn[k0+1]?gPh[k0+1]:0.,xb=gOn[k0+FAM+1]?gPh[k0+FAM+1]:xa; o+=mix((uW[5].x+uW[44].x)*tri(xa),(uW[35].x+uW[45].x)*tri(xb),wT); }
+  else { float gh=b.x+uW[k0==0?44:45].x; if(gh!=0.) o+=gh*tri(x1); }
   // A big slow unevenness in the film that has nothing to do with the lines. It's what travels.
   float mel=min(wBlurNow*4.,1.);
   if(d.y!=0.){ float pt=G.z; vec2 q=p0*.85; o+=d.y*(1.+1.5*mel)*(sin(q.x*1.1+1.5*sin(q.y*.9+pt)+pt*.7)+.7*sin(q.y*1.7-1.2*sin(q.x*1.3-pt*.8)-pt*.6)); }
   // Terraces: the whole of a cell a thickness of its own. Mother of pearl.
-  if(b.z!=0.){ float ca=floor(x0+.5),cb=gOn[k2]?floor(x1+.5):0.; o+=b.z*(fract(sin(ca*12.9898+cb*78.233)*43758.5453)-.5); }
+  if(b.z!=0.){ float lt=two&&wT>.5?1.:0.,ca=floor(x0+.5)-lt*uW[46].x,cb=gOn[k2]?floor(x1+.5)-lt*uW[46].y:0.; o+=b.z*(fract(sin(ca*12.9898+cb*78.233)*43758.5453)-.5); }
   if(e.x!=0.) o+=e.x*(cellF-.5);
   if(e.y!=0.) o+=(1.-min(wBlurNow*8.,1.))*70.*sin(angF*e.y);
   // Silk's ribs, in colour only, and only where it's in focus: out of focus they average away, as they would.

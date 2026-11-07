@@ -211,6 +211,34 @@ async function stages({ page, log, save, sleep }) {
     const shots = await page.eval(a => { trippee.seek(a + 2); const x = trippee.capture(); trippee.seek(a + 13); return [x, trippee.capture()]; }, a);
     save(`film-${song}-a.png`, shots[0]); save(`film-${song}-b.png`, shots[1]);
   }
+  if (want.includes('pops')) {
+    // Every landing's start and end in a film, frame by frame at 60 fps: does any one frame's step stand out from the frames around it? SONG=...
+    const songPath = process.env.SONG || 'media/ppp.mp3';
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 640, height: 360, deviceScaleFactor: 1, mobile: false });
+    await sleep(400);
+    await dropSong(page, songPath, { resolvePath: resolve, sleep });
+    await enterWorld(page, 'pearl', log);
+    const r = await page.eval(async () => {
+      const s = app.stage.score, g = s.gestures, w = 160, h = 90, c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d', { willReadFrequently: true }), out = [];
+      const grab = t => { trippee.seek(t); x.drawImage(trippee.canvas, 0, 0, w, h); return x.getImageData(0, 0, w, h).data; };
+      const diff = (p, q) => { let v = 0; for (let i = 0; i < p.length; i += 4) v += Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]); return v / (w * h * 3); };
+      for (let i = 0; i + 1 < g.length; i++) {
+        const G = g[i], N = g[i + 1], ts = [G.t1 - (G.morph || 0), G.t1];
+        for (let k = 0; k < 400 && (G.morph || 0) && !G.plan; k++) { trippee.seek(G.t1 - G.morph - 0.5); await new Promise(r => setTimeout(r, 4)); }
+        for (const t0 of ts) {
+          const steps = []; let p = grab(t0 - 7 / 60);
+          for (let k = -6; k <= 6; k++) { const q = grab(t0 + k / 60); steps.push(+diff(p, q).toFixed(2)); p = q; }
+          const sorted = [...steps].sort((a, b) => a - b), med = sorted[6], top = sorted.at(-1);
+          out.push({ at: +t0.toFixed(2), what: t0 === ts[0] ? 'starts' : 'lands', from: G.pattern.id.slice(6), to: N.pattern.id.slice(6), kind: G.xform?.id, ratio: +(top / Math.max(med, 0.05)).toFixed(2), top, med, steps: steps.join(' ') });
+        }
+        if (i % 2 === 0) await new Promise(r => setTimeout(r));
+      }
+      return out;
+    });
+    r.sort((a, b) => b.ratio - a.ratio);
+    for (const o of r.slice(0, 14)) log(JSON.stringify(o));
+    log('worst step anywhere', Math.max(...r.map(o => o.top)), 'median ratio', r.map(o => o.ratio).sort((a, b) => a - b)[r.length >> 1]);
+  }
   if (want.includes('walk')) {
     // The whole film, as a contact sheet of its own frames at a good size. SONG=..., N=frames, FROM, TO, COLS
     const songPath = process.env.SONG || 'media/wildflower.mp3', song = basename(songPath).replace(/\.\w+$/, '');
