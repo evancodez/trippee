@@ -49,7 +49,7 @@ const FLASH_SWING = 22, FLASH_SWING_WHOLE = 19, FLASH_WHOLE = 0, FLASH_TILE = 2,
 const JUDGE_SWING = 25.5, JUDGE_WITHIN = 1.15;
 // A film's looks. The whole film small and quick, at 30 a second, for anywhere that might be flashing; then whatever that finds is looked at again at twice the size again, the way the judge counts, and only a flash that's still there gets anything done about it.
 // Reads are batched (Eyes), which is why this can look so much more often than a read a look could and take less time: GPU_BATCH looks to one wait for the GPU.
-const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, FILM_SWING_WHOLE = 19, REAL_SWING_WHOLE = 21.5, GUARD_LOOKS = 42, GUARD_MOST = 10000, GUARD_LOOKS_ALL = 80, SCAN_LOOK = 0.4, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 8;     // GUARD_LOOKS: close looks, per second of film, for it to spend, so a film with twice the changes takes no longer. A coarse look costs SCAN_LOOK of one.
+const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, FILM_SWING_WHOLE = 19, REAL_SWING_WHOLE = 21.5, GUARD_LOOKS = 42, GUARD_MOST = 10000, GUARD_LOOKS_ALL = 80, SCAN_LOOK = 0.4, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 32;     // GUARD_LOOKS: close looks, per second of film, for it to spend, so a film with twice the changes takes no longer. A coarse look costs SCAN_LOOK of one. GPU_BATCH_GENTLE: behind a film that's playing, a wait for the GPU every 8 looks spent most of each frame's share waiting (the hand cut took 49 s behind MGMT; at 32 it takes 15, with no worse frames)
 // What it may do. A loud stretch never drops below half its flow, however stubborn the flash; a quiet one, a quarter. Both only for the seconds it flashes, easing there and back.
 const SLOW_LOUD = 2, SLOW_QUIET = 4, SLOW_RAMP = 1.2, SLOW_AROUND = 0.6, LONGER_MOST = 1.35;
 // How long a song's film takes to fly in, as song.js has it unless the flight needs longer: a first gesture's morph can't start before that, or stage._clearRunway cuts it short after it's been looked at.
@@ -203,6 +203,31 @@ const shot = (R, score, t, W, H, px, colour = false, edits = FILM_ONLY) => {
   R.gl.readPixels(0, 0, W, H, R.gl.RGBA, R.gl.UNSIGNED_BYTE, px);
   return f;
 };
+// The same frame, except that a transformation's plan that isn't there yet is worked out a look at a time, with the page going on between its looks (src/score/xform/plan.js planSteps),
+// instead of all of them at once inside this one frame: up to eight waits for the GPU, which behind a film that's playing was a frame of 60 to 120 ms. It's the same plan either way, so what's drawn is the same. A world plans as it did.
+const LATER = new WeakMap(), LATER_NONE = { planLater: true }, PLAN_WAITS = 4000;
+const laterOf = edits => { if (!edits) return LATER_NONE; let e = LATER.get(edits); if (!e) LATER.set(edits, e = { ...edits, planLater: true }); return e; };
+const waiter = (task, breathe) => async () => { await task(); await breathe(); };
+// And it's drawn with the program it asks for. One the rehearsal hasn't needed yet (a fold or a sheet in space that a swap has just brought in) was built while the frame went without it, so what
+// was looked at, and what the guard did about it, depended on how quickly the GPU built it: the same film rehearsed twice came out two ways. It waits for it, a few seconds at most.
+const PROGRAM_WAIT = 4000;
+const built = async (R, v) => {
+  if (R.noWait?.has(v)) return;      // one that didn't come in time isn't waited for again
+  const ok = await Promise.race([R.whenBuilt([v]).then(() => true), new Promise(res => setTimeout(() => res(false), PROGRAM_WAIT))]);
+  if (!ok) (R.noWait ??= new Set()).add(v);
+};
+async function drawnSoon(R, score, t, W, H, colour, edits, wait) {
+  if (score.world) return drawn(R, score, t, W, H, colour, edits);
+  const e = laterOf(edits);
+  let f = drawn(R, score, t, W, H, colour, e);
+  let want = R._variantOf(R.frame) | (R.timeOn ? TIME : 0);
+  if (!f.waiting && R.variant === want) return f;
+  for (let n = 0; n < PLAN_WAITS && f.waiting; n++) { await wait(); f = frame(score, t, R, e); }
+  want = R._variantOf(R.frame) | (R.timeOn ? TIME : 0);
+  if (!R.progs[want]) await built(R, want);
+  return drawn(R, score, t, W, H, colour, edits);
+}
+const shotSoon = async (R, score, t, W, H, px, wait) => { const f = await drawnSoon(R, score, t, W, H, false, FILM_ONLY, wait); R.gl.readPixels(0, 0, W, H, R.gl.RGBA, R.gl.UNSIGNED_BYTE, px); return f; };
 // Many looks and one wait. A plain readPixels makes the page wait for the GPU process every time, and that wait is most of what a small look costs: .59 ms against .12 ms at 160 x 90. So each frame is copied into a buffer
 // on the GPU's side as it's drawn, and the whole batch is read in one go once a fence says it's done. A fence only passes between tasks, so flush has to be awaited. The pixels handed over are good only inside the call.
 class Eyes {
@@ -253,13 +278,13 @@ const when = (G, u) => G.t0 + horizon(G) * u;
 // ...and with none of src/score/woah.js's tricks, which aren't what's being asked about here: is this pattern any good to ride, as itself.
 const alone = (G, over) => ({ ...G, freezeEase: null, thaw: null, morph: 0, plan: null, planning: null, ...(G.moves?.some(m => m.woah) ? { moves: G.moves.filter(m => !m.woah) } : null), ...over });
 // At one point of its long move, whatever the clock says
-const lookAt = (R, score, G, u, { W, H, px }, ph = 0) => {
-  shot(R, { gestures: [alone(G, { freezeU: u })], phi: (t, g) => score.phi(t, g) + ph, ...worldOf(score) }, when(G, u), W, H, px);
+const lookAt = async (R, score, G, u, { W, H, px, task, breathe }, ph = 0) => {
+  await shotSoon(R, { gestures: [alone(G, { freezeU: u })], phi: (t, g) => score.phi(t, g) + ph, ...worldOf(score) }, when(G, u), W, H, px, waiter(task, breathe));
   return measure(px, W, H);
 };
 // As it will really play, riding `ride` ({ range, arcs, phiTrack...}), x of the way through
-const lookAlong = (R, score, G, x, ride, { W, H, px }) => {
-  shot(R, { gestures: [alone(G, { freezeU: null, ...ride })], phi: score.phi, react: score.react, ...worldOf(score) }, G.t0 + horizon(G) * x, W, H, px);
+const lookAlong = async (R, score, G, x, ride, { W, H, px, task, breathe }) => {
+  await shotSoon(R, { gestures: [alone(G, { freezeU: null, ...ride })], phi: score.phi, react: score.react, ...worldOf(score) }, G.t0 + horizon(G) * x, W, H, px, waiter(task, breathe));
   return measure(px, W, H);
 };
 
@@ -267,7 +292,7 @@ const lookAlong = (R, score, G, x, ride, { W, H, px }) => {
 async function firstBad(R, score, G, ride, ctx) {
   let lone = false;
   for (const x of PATH) {
-    const m = lookAlong(R, score, G, x, ride, ctx), tone = m.why === 'white' || m.why === 'tiles';
+    const m = await lookAlong(R, score, G, x, ride, ctx), tone = m.why === 'white' || m.why === 'tiles';
     await ctx.breathe();
     if (m.why && (!tone || lone)) return { x, why: m.why };
     lone = tone;
@@ -330,7 +355,7 @@ async function rehearseGesture(R, score, G, ctx) {
   for (let i = 0; i <= n; i++) {
     let worst = null;
     for (const ph of phases) {
-      const m = lookAt(R, score, G, i / n, ctx, ph);
+      const m = await lookAt(R, score, G, i / n, ctx, ph);
       if (!worst || excess(m) > excess(worst)) worst = m;
       await breathe();
     }
@@ -378,13 +403,15 @@ async function rehearseGesture(R, score, G, ctx) {
 // ---------------------------------------------------------------- one transformation, looked at the way it would run
 const NOISY = new Set(['edges', 'fine', 'grey']);
 // The two gestures alone, so what this tries leaves no plan behind on the real ones. Returns which kind it became, and how long it stays bad.
-async function flightOf(R, score, A, B, rise, { W, H, px, breathe }) {
+async function flightOf(R, score, A, B, rise, { W, H, px, breathe, task }) {
   const fresh = { plan: null, planFor: null, planning: null };
   const pair = { gestures: [{ ...A, ...fresh, rise }, { ...B, ...fresh }], phi: score.phi, react: score.react, ...worldOf(score) };
   const t0 = A.t1 - A.morph, step = A.morph / SAMPLES;
   let kind = null, noise = 0, colour = 0, runN = 0, runC = 0;
   for (let i = 1; i < SAMPLES; i++) {     // the two ends are the gestures themselves, and those have been looked at
-    const f = shot(R, pair, t0 + i * step, W, H, px), m = measure(px, W, H);
+    const f = await drawnSoon(R, pair, t0 + i * step, W, H, false, FILM_ONLY, waiter(task, breathe));
+    R.gl.readPixels(0, 0, W, H, R.gl.RGBA, R.gl.UNSIGNED_BYTE, px);
+    const m = measure(px, W, H);
     kind = f.kind ?? kind;
     if (kind !== 'dive' && kind !== 'rise') break;     // a slide or a bend has no other way to go
     runN = NOISY.has(m.why) ? runN + step : 0; runC = m.why && !NOISY.has(m.why) ? runC + step : 0;
@@ -437,7 +464,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
     last = performance.now();
   };
 
-  const task = () => new Promise(r => { wake = r; ch.port2.postMessage(0); });
+  const task = () => new Promise(r => { wake = r; ch.port2.postMessage(0); }), soon = waiter(task, breathe);
   const gestures = score.gestures, rides = [], ways = [];
   if (!opening && score.woah) await buildFor(R, score, until, breathe);
   // A jump in brightness makes a whole new film, so it's looked for first, before anything's spent on this one. And one inside a trick is the trick's: it's the trick that goes.
@@ -455,7 +482,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
     const todo = gestures.filter(G => G.t0 < until && !G.fixedRange && !(G.arcs && !G.arcs.length && !G.pattern.drive));
     for (let n = 0; n < todo.length; n++) {
       const G = todo[n];
-      rides.push(await rehearseGesture(R, score, G, { W, H, px, aspect, breathe, mayChange: mayChangeFor(G) }));
+      rides.push(await rehearseGesture(R, score, G, { W, H, px, aspect, breathe, task, mayChange: mayChangeFor(G) }));
       onProgress(0.25 * (n + 1) / todo.length);
     }
     // Anything but the first gesture, which may be what the user asked for, and this film will be composed again without it. No need to look any further at this one.
@@ -466,7 +493,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
       const pairs = gestures.slice(0, -1).map((A, k) => [A, gestures[k + 1]]).filter(([A]) => A.morph && A.t1 <= until);
       for (let n = 0; n < pairs.length; n++) {
         const [A, B] = pairs[n];
-        ways.push(await chooseWay(R, score, A, B, { W, H, px, breathe, mayChange: mayChangeFor(B) }));
+        ways.push(await chooseWay(R, score, A, B, { W, H, px, breathe, task, mayChange: mayChangeFor(B) }));
         onProgress(0.25 + 0.25 * (n + 1) / pairs.length);
       }
     }
@@ -486,7 +513,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
   if (batched) {
     const eyes = Eyes.of(R, W, H, batch, task);
     for (let i = 0; i <= n; i++) {
-      const f = drawn(R, score, i * STEP / sub, W, H), o = { from: f.from, G: f.G, kind: f.kind };     // what the frame was, now: the pixels come later
+      const f = await drawnSoon(R, score, i * STEP / sub, W, H, false, FILM_ONLY, soon), o = { from: f.from, G: f.G, kind: f.kind };     // what the frame was, now: the pixels come later
       if (eyes.read(p => seen.take(i, p, o, gestures))) await eyes.flush();
       if (i % 25 === 0) onProgress(0.5 + 0.4 * clamp(i / n));
       await breathe();
@@ -634,7 +661,7 @@ async function guardHeard(R, score, until, colour, ctx) {
     a = Math.max(0, a); b = Math.min(n + 1, b);
     const eyes = Eyes.of(R, W, HH, ctx.batch, ctx.task);
     for (let i = a; i < b; i++) {
-      const f = drawn(R, score, i / fps, W, HH, colour, edits), o = { from: f.from, G: f.G, kind: f.kind };
+      const f = await drawnSoon(R, score, i / fps, W, HH, colour, edits, waiter(ctx.task, ctx.breathe)), o = { from: f.from, G: f.G, kind: f.kind };
       if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
       await ctx.breathe();
     }
@@ -718,7 +745,7 @@ function swapLooks(R, score, seen, ctx) {
   const scan = async ([a, b]) => {
     const eyes = Eyes.of(R, seen.W, seen.H, ctx.batch, ctx.task);
     for (let i = a; i < b; i++) {
-      const f = drawn(R, score, i / fps, seen.W, seen.H), o = { from: f.from, G: f.G, kind: f.kind };
+      const f = await drawnSoon(R, score, i / fps, seen.W, seen.H, false, FILM_ONLY, waiter(ctx.task, ctx.breathe)), o = { from: f.from, G: f.G, kind: f.kind };
       if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
       await ctx.breathe();
     }
@@ -752,7 +779,7 @@ async function jumpsFirst(R, score, until, ctx) {
   const H = JUMP_H, W = Math.max(8, Math.round(H * ctx.aspect)), g = score.gestures, n = Math.ceil(until / STEP), mean = new Float32Array(n + 1), who = new Int32Array(n + 1), eyes = Eyes.of(R, W, H, ctx.batch, ctx.task);
   const look = async (a, b) => {
     for (let i = a; i < b; i++) {
-      const f = drawn(R, score, i * STEP, W, H), G = f.from ?? f.G;
+      const f = await drawnSoon(R, score, i * STEP, W, H, false, FILM_ONLY, waiter(ctx.task, ctx.breathe)), G = f.from ?? f.G;
       who[i] = g.indexOf(G);
       if (eyes.read(p => { let s = 0; for (let k = 1; k < p.length; k += 4) s += p[k]; mean[i] = s / (W * H); })) await eyes.flush();
       await ctx.breathe();
@@ -821,7 +848,7 @@ async function lookClose(R, score, a, b, { aspect, task, breathe, batch }, count
   const crossing = g.some(G => G.morph && G.peak?.q && G.peak.hit > a - 1 && G.peak.hit < b + 1), fps = crossing ? CLOSE_FPS_MORPH : CLOSE_FPS, n = Math.max(2, Math.ceil((b - a) * fps));
   const s = new FlashSeen(n, W, H, fps), eyes = Eyes.of(R, W, H, Math.min(batch, GPU_BATCH_CLOSE), task);
   for (let i = 0; i < n; i++) {
-    const f = drawn(R, score, a + i / fps, W, H, false, edits), o = { from: f.from, G: f.G, kind: f.kind };
+    const f = await drawnSoon(R, score, a + i / fps, W, H, false, edits, waiter(task, breathe)), o = { from: f.from, G: f.G, kind: f.kind };
     if (eyes.read(p => s.take(i, p, o, g))) await eyes.flush();
     await breathe();
   }
@@ -897,7 +924,7 @@ async function guardFilm(R, score, seen, ctx) {
   const scan = async ([a, b]) => {
     const was = performance.now(), eyes = Eyes.of(R, seen.W, seen.H, ctx.batch, ctx.task);
     for (let i = a; i < b; i++) {
-      const f = drawn(R, score, i / fps, seen.W, seen.H), o = { from: f.from, G: f.G, kind: f.kind };
+      const f = await drawnSoon(R, score, i / fps, seen.W, seen.H, false, FILM_ONLY, waiter(ctx.task, ctx.breathe)), o = { from: f.from, G: f.G, kind: f.kind };
       if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
       await breathe();
     }
@@ -1070,7 +1097,14 @@ async function guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor, o
   const closeCtx = { aspect, task, breathe, batch };
   const anyReal = async (frames, fps) => { for (const w of stretches(frames, fps)) if ((await lookClose(R, score, w.a, w.b, closeCtx)).at.length) return true; return false; };
   const realOnly = async frames => { if (colour) return frames; const fps = seen.fps, keep = []; for (const w of stretches(frames, fps)) if ((await lookClose(R, score, w.a, w.b, closeCtx)).at.length) keep.push(...frames.filter(i => i / fps >= w.a && i / fps <= w.b)); return keep; };
-  const look = async ([a, b]) => { for (let i = a; i < b; i++) { const f = shot(R, score, i / seen.fps, W, H, px, colour); seen.take(i, px, f, g); await breathe(); } };
+  // Many looks to one wait for the GPU (Eyes), not a wait a look: the same frames, read in the same order. A world reads its colour as it did.
+  const frames = async (Wl, Hl, pl, a, b, at, take) => {
+    if (colour) { for (let i = a; i < b; i++) { const f = shot(R, score, at(i), Wl, Hl, pl, colour); take(i, pl, f); await breathe(); } return; }
+    const eyes = Eyes.of(R, Wl, Hl, batch, task);
+    for (let i = a; i < b; i++) { const f = await drawnSoon(R, score, at(i), Wl, Hl, false, FILM_ONLY, waiter(task, breathe)), o = { from: f.from, G: f.G, kind: f.kind }; if (eyes.read(p => take(i, p, o))) await eyes.flush(); await breathe(); }
+    await eyes.flush();
+  };
+  const look = ([a, b]) => frames(W, H, px, a, b, i => i / seen.fps, (i, p, f) => seen.take(i, p, f, g));
   // One change: make it, look again, keep it if there's less flashing in what it touched. Otherwise undo it and look again, so what's kept is what the film is.
   const tryIt = async (k, range, undo) => {
     const was = seen.over(...range).length, kept = seen.keep(range);
@@ -1088,7 +1122,7 @@ async function guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor, o
     const close = G.peak?.q ? 2 : 1, fps = FLASH_MORPH_FPS * close, Wc = W * close, Hc = H * close, pc = close > 1 ? new Uint8Array(Wc * Hc * 4) : px;
     const watch = async () => {
       const a = G.t1 - G.morph, n = Math.ceil(G.morph * fps), s = new FlashSeen(n, Wc, Hc, fps, colour, !score.cut);
-      for (let i = 0; i < n; i++) { const f = shot(R, score, a + i / fps, Wc, Hc, pc, colour); s.take(i, pc, f, g); await breathe(); }
+      await frames(Wc, Hc, pc, 0, n, i => a + i / fps, (i, p, f) => s.take(i, p, f, g));
       return s;
     };
     const s = await watch(), hits = s.over();

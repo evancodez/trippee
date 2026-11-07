@@ -33,7 +33,7 @@ const limitRate = (a, most) => {
   return o;
 };
 const TUNE_RATE = 3.5;     // of the melody's units (6 semitones) per second
-const pct = (a, p) => { const s = Array.from(a).sort((x, y) => x - y); return s[Math.floor((s.length - 1) * p)] || 0; };
+const pct = (a, p) => { const s = Float64Array.from(a).sort(); return s[Math.floor((s.length - 1) * p)] || 0; };      // a typed sort is numeric, and many times quicker than a sort through a function
 
 // The lungs. An attack that ends on the breath, then a decay, each from wherever the last left off, so nothing jumps however the breaths fall.
 function lungTable(M, n) {

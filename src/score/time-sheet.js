@@ -53,6 +53,9 @@ function table(want, st, score, edits, tReal, phiOf, walkT, G, t) {
 
 export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
   R.timeOn = false;
+  // A pattern picked by hand: when its trick starts is read while the flight into it is still on, and its program is built meanwhile. Read on the landing, the flight had already gone, so it was taken from the click, and the whole trick came on in that one frame (a pop of 80 to 110 /255, time.wave and time.fringe).
+  const h = score.handover, to = st.to;
+  if (h?.wall && to && to !== h.G && to.pattern.time && to._timeBegin == null) { handBegin(to, score); R._wantTime?.(0); }
   const G = st.from ?? st.G, xf = st.kind && XFORMS[st.kind]?.time;
   if (xf) { T.fill(0, 0, T_B * 4); xf(T, st); R.timeT = T; R.timeOn = true; }
   let m = G.pattern.time ?? null;

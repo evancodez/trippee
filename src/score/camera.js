@@ -126,15 +126,18 @@ function bearingOf(G) {
 }
 // How much finer than its families' numbers a warp draws the lines: a zigzag or a bend steepens them, and those are what goes to wallpaper first.
 const warpedBy = s => { const n = k => Math.abs(s[OFF[k]]); return (1 + 2.5 * n('zig.a') * n('zig.c')) * (1 + 0.8 * n('teeth.a')) * (1 + 0.5 * n('bend1.a') * n('bend1.f') + 0.5 * n('bend2.a') * n('bend2.f')); };
+// Where linesAt's numbers are, looked up once: it's asked four times a sample, thousands of times a film, and naming each by a string every time was half of what composing spent on the camera.
+const LINES_AT = Array.from({ length: FAMILIES }, (_, i) => ['on', 'd', 'x', 'y', 'r1', 'r2', 'l1', 't1', 'l2', 't2'].map(k => OFF[`f${i}.${k}`]));
+const [P1X, P1Y, P2X, P2Y, FREQ] = ['p1.x', 'p1.y', 'p2.x', 'p2.y', 'freq'].map(k => OFF[k]);
 // The lines at a place on the sheet, in cycles per pattern unit: the families' own gradients there, with no warps.
 function linesAt(s, x, y) {
-  const n = k => s[OFF[k]], p1x = n('p1.x'), p1y = n('p1.y'), p2x = n('p2.x'), p2y = n('p2.y');
-  const d1 = Math.max(Math.hypot(x - p1x, y - p1y), 0.05), d2 = Math.max(Math.hypot(x - p2x, y - p2y), 0.05), fq = Math.max(n('freq'), 1e-3);
+  const p1x = s[P1X], p1y = s[P1Y], p2x = s[P2X], p2y = s[P2Y];
+  const d1 = Math.max(Math.hypot(x - p1x, y - p1y), 0.05), d2 = Math.max(Math.hypot(x - p2x, y - p2y), 0.05), fq = Math.max(s[FREQ], 1e-3);
   let most = 0;
   for (let i = 0; i < FAMILIES; i++) {
-    if (n(`f${i}.on`) < 0.5 || Math.abs(n(`f${i}.d`)) > 1.01) continue;
-    const g = k => Math.abs(n(`f${i}.${k}`));
-    most = Math.max(most, Math.hypot(g('x'), g('y')) * fq + g('r1') + g('r2') + (g('l1') + g('t1') / TAU) / d1 + (g('l2') + g('t2') / TAU) / d2);
+    const [on, d, gx, gy, r1, r2, l1, t1, l2, t2] = LINES_AT[i];
+    if (s[on] < 0.5 || Math.abs(s[d]) > 1.01) continue;
+    most = Math.max(most, Math.hypot(Math.abs(s[gx]), Math.abs(s[gy])) * fq + Math.abs(s[r1]) + Math.abs(s[r2]) + (Math.abs(s[l1]) + Math.abs(s[t1]) / TAU) / d1 + (Math.abs(s[l2]) + Math.abs(s[t2]) / TAU) / d2);
   }
   return most;
 }
@@ -302,7 +305,8 @@ function buildHands(film, A, M, H, seed, only = null) {
     T.speed[i] = T.speed[i] * lerp(0.65, 1.25, e) * kEnd * kStart;
     T.spin[i] += SIZE.windTurn * side * w;
   }
-  const at = t => { let k = 0; for (let i = 0; i < spans.length; i++) if (spans[i].t0 <= t) k = i; return spans[k]; };
+  // The last span that's started by t (they're in order), found by halves: a route asks this every sample
+  const at = t => { let lo = 0, hi = spans.length - 1; if (!(spans[0]?.t0 <= t)) return spans[0]; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (spans[m].t0 <= t) lo = m; else hi = m - 1; } return spans[lo]; };
   return { T, n, knots: [...new Set(knots)].sort((a, b) => a - b), plan, dur: time(dur), moments, langAt: t => at(t).lang, wayAt: t => at(t).way };
 }
 

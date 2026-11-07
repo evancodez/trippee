@@ -51,8 +51,9 @@ function planFor(m, dtf, stop, phiOf, R, aspect, now, world) {
     // A handover can only ever fly in. Rising needs the next pattern at rest with its element where the plan found it, and a film's clock doesn't
     // stop for that: its element would have moved on, and the frame would sit inside whatever had moved there, one flat colour.
     // A change from one world to another flies: its inks drain and arrive band by band, and only a flight's program has that. The arriving pattern's own way in (Dusk's flare, from Flower Power) drew the second half pure black for 6 to 8 s.
-    const hurry = { now };
-    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? (holder.change?.from && holder.change.to ? null : to.pattern.via ?? to.pattern.arrive ?? null) : from.xform ?? world?._xform, noGlide: handover ? holder.noGlide : from.noGlide, quick: !handover && from.quick, ink: world?.ink }, hurry) };
+    const hurry = { now }, xform = handover ? (holder.change?.from && holder.change.to ? null : to.pattern.via ?? to.pattern.arrive ?? null) : from.xform ?? world?._xform;
+    R.ahead?.(lim, lim3, !!(xform && xformOf(xform.id)?.long));      // its programs, built while this is worked out
+    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform, noGlide: handover ? holder.noGlide : from.noGlide, quick: !handover && from.quick, ink: world?.ink }, hurry) };
   }
   w.hurry.now = now;
   let step = w.steps.next();
@@ -154,7 +155,7 @@ export function frame(score, t, R, edits) {
   const st = { t, c, G, A, B, F, x: 0, T: 0, kind: null, plan: null, two: false, solid: pat.solid ?? 1, theta: thetaOf(G, t), thetaB: 0, moveA: true, moveB: false, sa: 0, sb: 0, thA: 0, thB: 0 };
 
   // Which transformation is under way, if any: from `from` (at its own time) into `to`, over x from 0 to 1.
-  let m = morphAt(score, G, N, t), shown = G, xf = null;
+  let m = morphAt(score, G, N, t), shown = G, xf = null, waiting = false;
   if (score.camera) { wearOne(score, G); if (m) wearOne(score, m.to); }      // a gesture made after the film was, by a pick
   if (m) {
     const { from, to, tf, t0, D, phiFrom } = m;
@@ -167,8 +168,10 @@ export function frame(score, t, R, edits) {
     const tB = m.handover ? t : easeIn(t, t0 + D, stop);
     // A click's plan hasn't had a look ahead. Looking all at once would stall the picture the moment it's clicked, so what's showing carries on for the few frames it takes,
     // and the transformation starts from 0 when it's ready. One that's been waited on this long finishes at once.
-    st.plan = planFor(m, dtf, stop, phiOf, R, aspect, !(h && h.e < PLAN_PATIENCE), score.world);
-    if (!st.plan) h.e0 = h.e;
+    // edits.planLater: a rehearsal's look, which would rather wait for a plan a look at a time than have all its looks at the GPU in this one frame (src/music/rehearse.js drawnSoon). Not a handover's.
+    const later = !!edits?.planLater && !m.handover;
+    st.plan = planFor(m, dtf, stop, phiOf, R, aspect, !later && !(h && h.e < PLAN_PATIENCE), score.world);
+    if (!st.plan) { if (h) h.e0 = h.e; waiting = later; }
     fillSlot(A, from, tA, from.pattern, { phi: pf(tA), uT: walkT && !m.handover ? walkT(tA, rhoA) : undefined });
     shown = st.from = from;
     if (st.plan) {
@@ -215,7 +218,7 @@ export function frame(score, t, R, edits) {
   else A[OFF.theta] = st.theta;
   if (beyond) beyond.write(F, tFilm, score, shown, m ? m.to : null, st.T, st.plan);     // the plates stand still in a rest with everything else
   if (worldWrite) worldWrite(st, score, R, edits);
-  return { G, c, theta: st.theta, solid: st.solid, phi, T: st.T, kind: st.kind, from: m ? m.from : null, N: m ? m.to : null };
+  return { G, c, theta: st.theta, solid: st.solid, phi, T: st.T, kind: st.kind, from: m ? m.from : null, N: m ? m.to : null, waiting };
 }
 
 // The threshold a gesture wants at time t. Patterns can read it; `solid` isn't reached any more.
