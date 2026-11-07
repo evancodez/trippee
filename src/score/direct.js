@@ -274,7 +274,7 @@ export function direct(score, A, M) {
     if (!flag('iris') || A.climax <= OPENING + IRIS_D) return;
     const D0 = clamp(Math.round(IRIS_D / bar) * bar, 10, 14);
     const bold = (G, tm) => { fillSlot(slot, G, tm, G.pattern, { phi: phiOf(tm, G) }); return G.pattern.id !== 'checks.target' && canIris(slot) && fineness(slot) <= IRIS_FINE; };      // a target's fine spokes go round the tube as hairlines
-    const fits = (G, L) => { const D = clamp((L - G.t0 - ROOM) / IRIS_HIT, 10, D0); return L - G.t0 >= IRIS_HIT * D + ROOM ? D : 0; };      // it's shorter if it has to be
+    const fits = (G, L) => { const D = clamp((L - G.t0 - ROOM_T) / IRIS_HIT, 10, D0); return L - G.t0 >= IRIS_HIT * D + ROOM_T ? D : 0; };      // it's shorter if it has to be
     // Gesture i becomes the next one, turning inside out at L. On a sheet it can roll up, and if what's there isn't one, one that is, for the time it has.
     const irisOn = (i, L, D) => {
       let G = g[i];
@@ -298,7 +298,7 @@ export function direct(score, A, M) {
           next = others.map(p => score.remake(N, p)).find(x => seen(x) <= IRIS_NEXT) ?? N;
         }
       }
-      if (!wearIris(G, next, L, { D, aspect, focus, beats: score.react?.pulses ?? null, room: ROOM, way: rand() < 0.5 ? 1 : -1 })) return false;
+      if (!wearIris(G, next, L, { D, aspect, focus, beats: score.react?.pulses ?? null, room: ROOM_T, way: rand() < 0.5 ? 1 : -1 })) return false;
       g[i] = G; g[i + 1] = next;
       put('iris', G, L, G.t1 - D, G.t1, G.t1 - D, G.t1 + bar);
       return true;

@@ -21,7 +21,7 @@ import { SEQS } from './moves/relay.js';
 const BARS = { chill: [12, 10, 8, 6, 5], travel: [8, 6, 4, 3, 2], riot: [7, 5, 3, 2, 2] };          // bars between changes
 const LEAD = { chill: [5, 4, 3, 2.5, 2], travel: [3, 2.5, 2, 1.25, 1], riot: [2.5, 2, 1.25, 1, 0.75] };     // bars of a change before its hit...
 const TAIL = { chill: [3.5, 3, 2, 1.5, 1], travel: [2.5, 2, 1.25, 0.75, 0.5], riot: [2, 1.25, 1, 0.5, 0.5] };     // ...and after
-const ONE_MORE = 0, STIFF = 0.2;    // what another landing has to be worth in the composer's search, in place of its 3, and how hard it holds to the length it wants
+const ONE_MORE = 0, STIFF = 0.25;    // what another landing has to be worth in the composer's search, in place of its 3, and how hard it holds to the length it wants
 const LEAST_S = 3.2, MOST_BARS = 18, MOST_S = 30;     // the shortest and longest a landing can leave behind it
 const FLIGHT_LEAD = 2.8, FLIGHT_TAIL = 2.8;           // seconds. A flight in less than this flashes, where a glide doesn't
 const HOLD = 8;                     // bars a pattern can stay with nothing but its ordinary flow
@@ -31,19 +31,19 @@ const DROP = 0.25, DROP_WORTH = 6;  // a jump of this much energy across 2 bars 
 const JUMP_WORTH = [[4, 7], [2.5, 3]];     // ...and the same for one of the song's own jumps, by how big
 const KIND_LEAD = { rise: 0.8, fall: 1.35, break: 1.35 };     // a change takes longer where the song falls away, and it's quicker where it's rising
 const JITTER = 0.18;
-const IRIS_ROOM = 13;               // seconds the gesture before the climax's landing keeps, plain, so that the Iris can roll it up
+const IRIS_ROOM = 10.5;               // seconds the gesture before the climax's landing keeps, plain, so that the Iris can roll it up
 const CLIMAX_NEAR = 16;             // bars around the climax that may go at the peak's pace. Everything else is held to the chorus's, so there's something saved
 const OPENS = 14;                   // seconds: the arrival. The first thing that's looked at, plain
 const CAP = { relay: 16, riot: 6, still: 12, suite: 10 };       // bars a way of changing runs before the next thing in its wardrobe
-const LEAST = { relay: 4, riot: 4, still: 6 };        // bars. Any shorter and it's a suite
+const LEAST = { relay: 4, riot: 4, still: 6 }, SUITE_LEAST = 6.8;      // ...seconds        // bars. Any shorter and it's a suite
 const GEAR = [32, 16, 12, 8, 6];     // beats to a cycle of flow, by level
-const STEP = { chill: [10, 8, 6, 4, 3], travel: [5, 4, 3, 2, 2], riot: [4, 3, 2, 2, 1] };      // a Relay's bars between steps, at most: the song's own landings, and bar lines where they're further apart than this
+const STEP = { chill: [8, 8, 4, 4, 2], travel: [8, 4, 4, 2, 2], riot: [4, 4, 2, 2, 1] };      // a Relay's bars between steps, at most: the song's own landings, and the breath's own bar lines where they're further apart than this, so a step falls on the phrase
 const BOLD = [6, 8, 9];            // cycles per picture unit: how fine a chorus, a lift and the rest would rather not go
 
 // How each register goes about each class of the song's level: a short routine of ways of changing, the next one for each new kind of section. A section coming back runs the routine it ran.
 const MENU = {
-  riot: { loud: [['riot', 'relay'], ['relay', 'riot'], ['relay']], mid: [['relay', 'suite'], ['suite', 'relay'], ['riot', 'relay']], quiet: [['still', 'suite'], ['suite', 'relay']] },
-  travel: { loud: [['relay', 'riot'], ['riot', 'relay'], ['relay']], mid: [['relay', 'suite'], ['suite', 'relay'], ['still', 'relay'], ['suite', 'still']], quiet: [['suite', 'still'], ['still', 'suite'], ['suite']] },
+  riot: { loud: [['riot', 'relay'], ['relay', 'riot'], ['relay', 'suite', 'riot']], mid: [['relay', 'suite'], ['suite', 'relay'], ['riot', 'relay']], quiet: [['still', 'suite'], ['suite', 'relay']] },
+  travel: { loud: [['relay', 'riot'], ['riot', 'relay'], ['relay', 'suite', 'riot']], mid: [['relay', 'suite'], ['suite', 'relay'], ['still', 'relay'], ['suite', 'still']], quiet: [['suite', 'still'], ['still', 'suite'], ['suite']] },
   chill: { loud: [['relay', 'still'], ['still', 'relay']], mid: [['still', 'suite'], ['suite', 'relay'], ['relay', 'still']], quiet: [['still', 'suite'], ['suite', 'still']] },
 };
 const RELAYS = ['tour', 'star', 'whirl', 'saw', 'weave', 'floor', 'rooms'];       // not dipole: its rings go by as hairlines
@@ -224,7 +224,10 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       // A section coming back starts its routine from the top
       if (!last || last.w !== w || last.seg.visit !== seg.visit) { w.at = 0; w.used = {}; }
       let way = forced ? 'suite' : w.ways[w.at % w.ways.length];
-      if (last && last.w === w && last.way === way && !last.forced && !forced) {
+      // Where the song gets somewhere, the picture does too: a section's start or a strong arrival is a whole new gesture, not a step
+      const arrives = last && (last.seg !== seg || (M.arrivalAt?.(a) ?? 0) >= 0.5 || (jumpAt.get(barAt(a)) ?? 0) >= JUMP_WORTH[0][1]);
+      if (arrives && last.w === w && way === last.way && !forced) way = w.ways[++w.at % w.ways.length];
+      if (last && last.w === w && last.way === way && !last.forced && !forced && !arrives) {
         if ((b - last.a) / bar <= (last.saved ? 1.25 : 1) * CAP[way]) { last.hits.push(a); last.b = b; last.level = Math.max(last.level, level); continue; }
         way = w.ways[++w.at % w.ways.length];
       } else if (last?.w === w && !last.forced && !forced && last.way !== way) way = w.ways[w.at % w.ways.length];
@@ -240,7 +243,10 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
     const done = [];
     for (const p of out) {
       if (p.way !== 'suite' || !p.hits.length) { done.push(p); continue; }
-      const stops = [p.a, ...p.hits, p.b];
+      // A suite's changes are transformations, which want some time: quick runs are for a Relay
+      const stops = [p.a];
+      for (const t of p.hits) if (t - stops.at(-1) >= SUITE_LEAST && p.b - t >= SUITE_LEAST) stops.push(t);
+      stops.push(p.b);
       for (let i = 0; i + 1 < stops.length; i++) done.push({ ...p, a: stops[i], b: stops[i + 1], hits: [] });
     }
     parts.length = 0; parts.push(...done);
@@ -315,17 +321,16 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
         const lead = (lvl >= 3 ? 1.1 : lvl === 2 ? 1.5 : 2.2) * bar, tail = (lvl >= 3 ? 0.4 : lvl === 2 ? 0.75 : 1.25) * bar;
         // Not while the Iris is still opening onto it
         const clear = part.a === climaxAt ? 6 : 0.5 * bar, songEnd = part.b;
-        const keys = [part.a, ...part.hits, songEnd], stops = [];
+        const keys = [part.a, ...part.hits, songEnd], stops = [...part.hits];
+        // Bar lines between them where it's too long to wait, counted from the breath, so that a step falls on the phrase and the half phrase
+        const first = M.breath?.bar0 ?? 0;
         for (let k = 0; k + 1 < keys.length; k++) {
-          if (k) stops.push(keys[k]);
-          // Bar lines between them, evenly, where it's too long to wait
-          const gap = keys[k + 1] - keys[k], most = STEP[name][levelAt((keys[k] + keys[k + 1]) / 2)] * bar, n = Math.ceil(gap / most);
-          for (let j = 1; j < n; j++) {
-            const want = keys[k] + j * gap / n, near = bars.reduce((best, x) => (Math.abs(x - want) < Math.abs(best - want) ? x : best), want);
-            stops.push(near);
+          const most = STEP[name][levelAt((keys[k] + keys[k + 1]) / 2)];
+          for (let i = barAt(keys[k]) + 1; i < bars.length && bars[i] < keys[k + 1] - 0.5 * bar; i++) {
+            if (((i - first) % most + most) % most === 0 && bars[i] > keys[k] + 0.5 * bar) stops.push(bars[i]);
           }
         }
-        const on = [...new Set(stops)].sort((x, y) => x - y).map(time).filter((t, n, all) => t - lead > a + clear && t + tail < end && (!n || t - all[n - 1] > 0.8 * bar));
+        const on = [...new Set(stops)].sort((x, y) => x - y).map(time).filter((t, n, all) => t - lead > a + clear && t + tail < end && (!n || t - all[n - 1] > (name === 'riot' && lvl >= 3 ? 0.8 : 1.5) * bar));
         if (on.length) {
           fixed();
           const from = done.get(part.seq) ?? 0;
@@ -382,6 +387,13 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       G.peak = { hit: end, q: 2 };
       if (!G.fixedRange && G.regear) G.arcEnd = G.t1 - G.morph + Math.min(G.morph * 0.4, 3.5) / 2;
       forget(G);
+    }
+    // No transformation starts while the picture's clock is catching up with the song
+    for (let i = 0; i < last; i++) {
+      const G = g[i];
+      if (!G.morph || G.xform) continue;
+      const start = G.t1 - G.morph, w = lags.find(l => start > l.from && start < l.paid);
+      if (w && G.t1 - w.paid >= 2.5) { G.morph = G.t1 - w.paid; forget(G); }
     }
   };
 
