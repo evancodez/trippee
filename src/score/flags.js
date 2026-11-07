@@ -25,6 +25,7 @@ export const setAllFlags = on => { for (const id in flags) flags[id] = !!on; };
 // How a film is directed (docs/DIRECTION.md). Off means the film is exactly the film. setAllFlags can't reach these, so a test that turns everything on is still about today's film.
 // The timing is on: a change crosses at speed on the song's big moment, not coming to rest on it. ?peak=0 turns it off. ?direct=1 is the sheet too.
 export const directing = { peak: true, sheet: false };
+directing.folds = new URLSearchParams(globalThis.location?.search ?? '').get('folds') === '1';      // src/score/moves/foldfilm.js: a generated film wears the fold set on its long stays. Off unless ?folds=1 for now, so the film is exactly the film
 directing.pace = new URLSearchParams(globalThis.location?.search ?? '').get('pace') !== '0';      // src/score/pace.js: how often a film changes, and with what. On unless ?pace=0
 {
   const q = new URLSearchParams(globalThis.location?.search ?? ''), all = q.get('direct') === '1';

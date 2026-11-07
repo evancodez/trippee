@@ -16,6 +16,8 @@ import { base, fillSlot, fineness } from './slot.js';
 import { matchFamilies } from './xform/plan.js';
 import { MOVES } from './moves/index.js';
 import { SEQS } from './moves/relay.js';
+import { wearFolds } from './moves/foldfilm.js';
+import { directing } from './flags.js';
 
 // By the ride's five levels: 0 whisper, 1 verse, 2 lift, 3 chorus, 4 peak. All in the song's bars. First guesses, gone over on strips of real frames.
 const BARS = { chill: [12, 10, 8, 6, 5], travel: [9, 7, 5, 3, 2], riot: [7, 5, 3, 2, 2] };          // bars between changes
@@ -455,6 +457,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   // Or if it has no long move, it's wrung, gently, on the strong beats.
   const earn = (score, cast) => {
     const g = score.gestures, ctx = G => ({ score, A, M, G, shot: null, at: score.time ?? (x => x), bar, beat, meter: A.meter || 4, tau: score.tau });
+    if (directing.folds) wearFolds(score, ctx, { A, bar, seed });
     for (let i = 1; i < g.length - 1; i++) {
       const G = g[i];
       if (G.moves?.length || G.hero || G.pattern.drive || G.carry && G.t1 - G.t0 < HOLD * bar) continue;

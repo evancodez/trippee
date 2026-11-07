@@ -52,17 +52,23 @@ export const autoCut = async (page, song) => page.eval(async ({ song, LIST, BASE
 export default async ({ page, save, log }) => {
   const song = process.env.SONG || 'mgmt', SKIP = new Set((process.env.SKIP || '').split(','));
   for (let i = 0; i < 240; i++) { if (await page.eval('typeof window.trippee !== "undefined" && window.trippee.ready === true')) break; await sleep(250); }
-  const shotsFor = process.env.STAY ? CUTS.stay : CUTS[song] && !process.env.AUTO ? CUTS[song] : await autoCut(page, song);
-  log(JSON.stringify(shotsFor.map(s => [+s.at.toFixed(1), s.id, s.moves?.[0]?.id])));
+  const shotsFor = process.env.FILM ? null : process.env.STAY ? CUTS.stay : CUTS[song] && !process.env.AUTO ? CUTS[song] : await autoCut(page, song);
+  log(JSON.stringify(shotsFor?.map(s => [+s.at.toFixed(1), s.id, s.moves?.[0]?.id])));
   const made = await page.eval(async ({ song, shots, rehearseIt }) => {
     await app.R.whenFoldReady();
-    await app.song.load(`/media/${song}.mp3`, { seed: 7 }); app.song.pause(); app.ui?.song?.show?.(false);
+    await app.song.load(`/media/${song}.mp3`, { seed: 7 }); if (shots) { app.song.pause(); } app.ui?.song?.show?.(false);
     const here = u => new URL(u, location.href).href;
     const [{ compose }, { rehearse }, { auditCut }] = await Promise.all(['src/score/compose.js', 'src/music/rehearse.js', 'src/score/cut.js'].map(u => import(here(u))));
     const A = app.song.analysis;
-    const sc = compose(A, 7, { patterns: app.patterns, aspect: 16 / 9, cut: { hash: A.hash, name: 'folds', line: 'a test of the fold set', shots } });
-    if (rehearseIt) { const r = await rehearse(sc, Math.min(A.duration, 1200), () => {}, { lastTry: true }); auditCut(sc, r); }
-    app.song.score = sc; app.stage.setScore(sc);
+    let sc;
+    if (shots) {
+      sc = compose(A, 7, { patterns: app.patterns, aspect: 16 / 9, cut: { hash: A.hash, name: 'folds', line: 'a test of the fold set', shots } });
+      if (rehearseIt) { const r = await rehearse(sc, Math.min(A.duration, 1200), () => {}, { lastTry: true }); auditCut(sc, r); }
+    } else {
+      for (let i = 0; i < 2400 && !(app.song.rehearsal && app.ui.song.state === 'ready'); i++) await new Promise(r => setTimeout(r, 100));
+      sc = app.song.score; window.__reh = app.song.rehearsal?.flash;
+    }
+    app.song.pause(); app.song.score = sc; app.stage.setScore(sc);
     app.manual = true; app.governor.enabled = false; app.R.drawScale = 1; app.t = 0;
     window.__sc = sc;
     const c = document.createElement('canvas'); c.width = 320; c.height = 180; const x = c.getContext('2d', { willReadFrequently: true });
@@ -75,6 +81,7 @@ export default async ({ page, save, log }) => {
     window.__kinds = {}; for (const G of sc.gestures) if (G.morph) { app.t = G.t1 - G.morph * .5; window.trippee.seek(app.t); window.__kinds[+G.t1.toFixed(1)] = app.lastFrame?.kind; }
     return { kinds: window.__kinds, duration: A.duration, refused: sc.refused, gestures: sc.gestures.map(G => ({ t0: +G.t0.toFixed(2), t1: +G.t1.toFixed(2), morph: +(G.morph || 0).toFixed(2), id: G.pattern.id, moves: (G.moves ?? []).map(m => m.id), m: (G.moves ?? []).filter(m => m.from != null).map(m => ({ from: m.from, to: m.to, open: m.open, close: m.close, beats: m.beats?.length })), hits: (G.moves ?? []).find(m => m.id === 'roll')?.hits })) };
   }, { song, shots: shotsFor, rehearseIt: !!process.env.REHEARSE });
+  log(`guard ${JSON.stringify(await page.eval('window.__reh ?? null'))}`);
   log(`refused ${JSON.stringify(made.refused)}  kinds ${JSON.stringify(made.kinds)}`);
   log(made.gestures.map(g => `  ${g.t0}-${g.t1} morph ${g.morph} ${g.id} [${g.moves}] ${JSON.stringify(g.m)} ${g.hits ?? ''}`).join('\n'));
   if (process.env.AT) {
@@ -88,14 +95,14 @@ export default async ({ page, save, log }) => {
   }
   if (!SKIP.has('sheets')) {
     for (const g of made.gestures) {
-      if (g.moves.at(-1) === 'cue' || !g.moves.length) continue;
-      const m = g.m[0] ?? { from: g.t0, to: g.t1 - g.morph }, a = m.from - 2, b = m.to + 3, N = 96, cols = 12, tw = 150, th = 84;
+      if (g.moves.at(-1) === 'cue' || !g.moves.length || (process.env.FILM && !['fan', 'forever', 'screen', 'limit', 'crumple', 'pearls', 'roll'].includes(g.moves.at(-1)))) continue;
+      const m = (process.env.FILM ? null : g.m[0]) ?? { from: g.t0, to: g.t1 - g.morph }, a = m.from - 2, b = m.to + 3, N = 96, cols = 12, tw = 150, th = 84;
       const url = await page.eval(async ({ a, b, N, cols, tw, th }) => {
         const c = document.createElement('canvas'); c.width = cols * tw; c.height = Math.ceil(N / cols) * th; const x = c.getContext('2d'); x.font = '10px monospace';
         for (let i = 0; i < N; i++) { const t = a + (b - a) * i / N; window.trippee.seek(t); x.drawImage(window.trippee.canvas, (i % cols) * tw, (i / cols | 0) * th, tw - 1, th - 1); x.fillStyle = '#f33'; x.fillText(t.toFixed(1), (i % cols) * tw + 2, (i / cols | 0) * th + 10); if (i % 12 === 0) await new Promise(r => setTimeout(r)); }
         return c.toDataURL('image/jpeg', 0.8);
       }, { a, b, N, cols, tw, th });
-      save(`${song}-${g.moves.at(-1)}.jpg`, url);
+      save(`${song}-${process.env.FILM ? `${Math.round(g.t0)}-` : ''}${g.moves.at(-1)}.jpg`, url);
     }
   }
   if (!SKIP.has('flash')) {
@@ -104,7 +111,7 @@ export default async ({ page, save, log }) => {
       const T = window.trippee, o = { mean: [], tiles: [], time: [] }, N = Math.floor(duration * FPS);
       for (let i = 0; i < N; i++) { const t = i / FPS; T.seek(t); const v = window.__tiles(); o.mean.push(v.mean); o.tiles.push(v.tiles); o.time.push(+t.toFixed(3)); if (i % 40 === 0) await new Promise(r => setTimeout(r)); }
       return o;
-    }, { duration: Math.min(made.duration, 215), FPS });
+    }, { duration: made.duration, FPS });
     const whole = worstOf(res.mean, FPS, res.time, 0), tiles = Array.from({ length: 16 }, (_, k) => worstOf(res.tiles.map(a => a[k]), FPS, res.time, 2));
     log(`FLASH ${song}: whole ${whole.worst} tile ${Math.max(...tiles.map(t => t.worst))}`);
     for (const g of made.gestures) {
