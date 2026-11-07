@@ -125,7 +125,7 @@ export function shockFit(G, N, { D = G.morph || 10, aspect = 16 / 9, centre = [0
   const [a, b] = stillSlots(G, N, D, phiOf);
   return canShock(a, b, aspect, { centre, any, D });
 }
-export function wearShock(G, N, landing, { dir = 1, D = G.morph || 10, aspect = 16 / 9, centre = [0, 0], push = PUSH, phiOf, any = false, beats = null, surge = SURGE, turn = 0 } = {}) {
+export function wearShock(G, N, landing, { dir = 1, D = G.morph || 10, aspect = 16 / 9, centre = [0, 0], push = PUSH, phiOf, any = false, beats = null, surge = SURGE, turn = 0, leave = 7 } = {}) {
   if (!flag('shock')) return null;
   D = Math.min(D, landing - G.t0 - 0.5);      // it can't start before G has
   if (D < 4) return null;
@@ -133,7 +133,7 @@ export function wearShock(G, N, landing, { dir = 1, D = G.morph || 10, aspect = 
   if (!fit) return null;
   // In from the rim, the centre is halfway through its turn at 1 - W0/2 of the way along. Out from the centre, that's W0/2 of the way along.
   const W0 = fit.W * TIGHT, t1 = landing + (dir === 1 ? W0 * D / 2 : D * (1 - W0 / 2));
-  if (N.t1 - t1 < (N.morph ? 7 : 2)) return null;      // N would have no time left of its own, and its own transformation has to start after this one's over
+  if (N.t1 - t1 < (N.morph ? leave : 2)) return null;      // N would have no time left of its own, and its own transformation has to start after this one's over
   G.t1 = t1; N.t0 = t1; G.morph = D;
   if (N.morph) { N.morph = Math.min(N.morph, N.t1 - N.t0 - 1); delete N.plan; delete N.planFor; delete N.planning; }     // nor can the next one's start before this one has finished
   delete G.plan; delete G.planFor; delete G.planning;

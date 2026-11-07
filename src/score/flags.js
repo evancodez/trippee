@@ -24,11 +24,12 @@ export const setAllFlags = on => { for (const id in flags) flags[id] = !!on; };
 
 // How a film is directed (docs/DIRECTION.md). Off means the film is exactly the film. setAllFlags can't reach these, so a test that turns everything on is still about today's film.
 // ?direct=1 turns both on, ?peak=1 the timing alone.
-export const directing = { peak: false, sheet: false };
+export const directing = { peak: false, sheet: false, pace: true };      // pace: src/score/pace.js. On unless ?pace=0
 {
   const q = new URLSearchParams(globalThis.location?.search ?? ''), all = q.get('direct') === '1';
   directing.peak = all || q.get('peak') === '1';
   directing.sheet = all;
+  directing.pace = q.get('pace') !== '0';
 }
 
 // How a film hears (docs/MODES.md section 6). Off means the film is exactly the film, byte for byte. setAllFlags can't reach these, so a test that turns everything on is still about today's film.

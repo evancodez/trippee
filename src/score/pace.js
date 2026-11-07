@@ -1,0 +1,367 @@
+// Pace: how often a film changes, what it changes with, and how. The owner's note: "stays on an individual pattern too long almost always. Sometimes fair to hold on it but only if you're doing cool stuff/it fits."
+//
+// Behind directing.pace, on by default; ?pace=0 is the old film. A pure function of the song, like everything else that makes a film. compose() asks it three things:
+//   How long should a gesture be, here?      By the song's own level at that bar (its ride) and its register: chill, travel or riot. Loud is a change every 2 to 4 bars, the middle every 4 to 8, quiet every 8 to 16.
+//   What does a stretch of the song wear?    One way of changing per passage, and a section that comes back wears what it wore:
+//                                              relay   one gesture whose patterns close into each other, a step on each of the song's own landings. The quick changes: flash clean at 2 s a step, where a flight in 2 bars isn't
+//                                              riot    one gesture with a move that marches on the strong beats: Ratchet, Wring, Scissor, Bellows
+//                                              still   one gesture evolving on its own: Confocal, Moire Wheel, Mirror Walk, Vertigo. Chill is slow, never a wobble on one pattern
+//                                              suite   a short sequence of patterns, each transforming into the next on a landing
+//   How long does each change take?          In bars, not 7 to 13 s, with its fastest frame on the hit: `lead` bars before it and `tail` after.
+//
+// A long stay has to be doing something. Whatever's left plain for more than HOLD bars after all this gets a move of its own in dress().
+import { OFF, SLOT_FLOATS } from '../pattern/layout.js';
+import { clamp, rng, smoother } from './curves.js';
+import { base, fillSlot, fineness } from './slot.js';
+import { matchFamilies } from './xform/plan.js';
+import { MOVES } from './moves/index.js';
+import { SEQS } from './moves/relay.js';
+
+// By the ride's five levels: 0 whisper, 1 verse, 2 lift, 3 chorus, 4 peak. All in the song's bars. First guesses, gone over on strips of real frames.
+const BARS = { chill: [12, 10, 8, 6, 5], travel: [8, 6, 4, 3, 2], riot: [7, 5, 3, 2, 2] };          // bars between changes
+const LEAD = { chill: [5, 4, 3, 2.5, 2], travel: [3, 2.5, 2, 1.25, 1], riot: [2.5, 2, 1.25, 1, 0.75] };     // bars of a change before its hit...
+const TAIL = { chill: [3.5, 3, 2, 1.5, 1], travel: [2.5, 2, 1.25, 0.75, 0.5], riot: [2, 1.25, 1, 0.5, 0.5] };     // ...and after
+const ONE_MORE = 0, STIFF = 0.2;    // what another landing has to be worth in the composer's search, in place of its 3, and how hard it holds to the length it wants
+const LEAST_S = 3.2, MOST_BARS = 18, MOST_S = 30;     // the shortest and longest a landing can leave behind it
+const FLIGHT_LEAD = 3.4, FLIGHT_TAIL = 2;           // seconds. A flight in less than this flashes, where a glide doesn't
+const HOLD = 8;                     // bars a pattern can stay with nothing but its ordinary flow
+const CLASS_LEAST = 6;              // bars
+const IRIS_ROOM = 13;               // seconds the gesture before the climax's landing keeps, plain, so that the Iris can roll it up
+const CLIMAX_NEAR = 16;             // bars around the climax that may go at the peak's pace. Everything else is held to the chorus's, so there's something saved
+const OPENS = 14;                   // seconds: the arrival. The first thing that's looked at, plain
+const CAP = { relay: 16, riot: 6, still: 12, suite: 10 };       // bars a way of changing runs before the next thing in its wardrobe
+const LEAST = { relay: 4, riot: 4, still: 6 };        // bars. Any shorter and it's a suite
+const GEAR = [32, 16, 8, 4, 4];     // beats to a cycle of flow, by level
+const STEP = { chill: [10, 8, 6, 4, 3], travel: [5, 4, 3, 2, 2], riot: [4, 3, 2, 2, 1] };      // a Relay's bars between steps, at most: the song's own landings, and bar lines where they're further apart than this
+const BOLD = [6, 8, 10];            // cycles per picture unit: how fine a chorus, a lift and the rest would rather not go
+
+// How each register goes about each class of the song's level: a short routine of ways of changing, the next one for each new kind of section. A section coming back runs the routine it ran.
+const MENU = {
+  riot: { loud: [['riot', 'relay'], ['relay', 'riot'], ['relay']], mid: [['relay', 'suite'], ['suite', 'relay'], ['riot', 'relay']], quiet: [['still', 'suite'], ['suite', 'relay']] },
+  travel: { loud: [['relay', 'riot'], ['riot', 'relay'], ['relay']], mid: [['relay', 'suite'], ['suite', 'relay'], ['still', 'relay'], ['suite', 'still']], quiet: [['suite', 'still'], ['still', 'suite'], ['suite']] },
+  chill: { loud: [['relay', 'still'], ['still', 'relay']], mid: [['still', 'suite'], ['suite', 'relay'], ['relay', 'still']], quiet: [['still', 'suite'], ['suite', 'still']] },
+};
+const RELAYS = ['tour', 'star', 'whirl', 'saw', 'weave', 'floor', 'rooms'];       // not dipole: its rings go by as hairlines
+const RIOTS = ['ratchet', 'wring', 'scissor', 'bellows'];
+const STILLS = ['still.confocal', 'still.mirror', 'still.wheel', 'still.mirror6', 'still.floor', 'still.chevrons', 'still.mirror3', 'still.ball'];
+
+const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
+const sdOf = a => { const m = meanOf(a); return Math.sqrt(meanOf(a.map(v => (v - m) ** 2))) || 1; };
+const zOf = a => { const m = meanOf(a), sd = sdOf(a); return a.map(v => (v - m) / sd); };
+
+// Bar means of an analysis stream
+function perBar(A, key) {
+  const bars = A.bars, src = A[key], out = [];
+  for (let i = 0; i < bars.length; i++) {
+    const a = Math.round(bars[i] * A.fps), b = Math.round((bars[i + 1] ?? bars[i] + 2) * A.fps);
+    let v = 0, c = 0;
+    for (let f = Math.max(0, a); f < b && f < (src?.length ?? 0); f++) { v += src[f]; c++; }
+    out.push(c ? v / c : 0);
+  }
+  return out;
+}
+
+// The ride, docs/DIRECTION.md section 5: 0 whisper .. 4 peak per bar, cut at the song's own 15, 40, 70 and 90%, and nothing shorter than 4 bars.
+export function rideOf(A) {
+  const N = A.bars.length, loud = perBar(A, 'loud'), lz = zOf(loud), bz = zOf(perBar(A, 'bright')), pz = zOf(perBar(A, 'perc'));
+  const h0 = lz.map((v, i) => v + 0.5 * bz[i] * clamp(loud[i] / 0.4) + 0.4 * pz[i]);
+  const heat = h0.map((_, i) => meanOf(h0.slice(Math.max(0, i - 1), Math.min(N, i + 3))));
+  const sorted = [...heat].sort((a, b) => a - b), qs = [0.15, 0.4, 0.7, 0.9].map(q => sorted[Math.floor((N - 1) * q)]);
+  const lv = heat.map(h => qs.filter(q => h >= q).length);
+  for (let pass = 0; pass < 3; pass++) {
+    let a = 0;
+    for (let i = 1; i <= N; i++) {
+      if (i < N && lv[i] === lv[a]) continue;
+      if (i - a < 4 && (a > 0 || i < N)) {
+        const L = lv[a - 1], R = lv[i], to = L === undefined ? R : R === undefined ? L : Math.abs(L - lv[a]) <= Math.abs(R - lv[a]) ? L : R;
+        for (let k = a; k < i; k++) lv[k] = to;
+      }
+      a = i;
+    }
+  }
+  return { lv, heat };
+}
+
+// The register, docs/DIRECTION.md section 5: how driven a song is, by four numbers between these four songs' extremes. Chill under .25, riot over .75, and when in doubt, travel.
+export function registerOf(A, M) {
+  const perc = meanOf(perBar(A, 'perc')), dur = Math.max(A.duration, 1), chords = (M.runs ?? []).filter(r => r.t1 - r.t0 >= 1.2).length / dur * 60;
+  // Notes a second, while a voice is there: a move of a semitone or more held for 1/6 s
+  let notes = 0, held = null, away = 0, voiced = 0;
+  const step = Math.max(1, Math.round(A.fps / 12));
+  for (let f = 0; f < (A.pitch?.length ?? 0); f += step) {
+    if (!(A.voiced?.[f] > 0.35)) { held = null; continue; }
+    voiced++;
+    if (held === null) { notes++; held = A.pitch[f]; away = 0; }
+    else if (Math.abs(A.pitch[f] - held) >= 1) { if (++away >= 2) { notes++; held = A.pitch[f]; away = 0; } } else away = 0;
+  }
+  const noteRate = voiced ? notes / (voiced * step / A.fps) : 0;
+  // Jumps of 4 or more, per minute
+  const WEIGHT = { loud: 1, bright: 0.5, bass: 0.7, perc: 0.5, voiced: 0.3 }, N = A.bars.length, J = {};
+  const span = (a, i, j) => meanOf(a.slice(Math.max(0, i), Math.max(0, j)));
+  for (const k in WEIGHT) { const a = perBar(A, k), v = a.map((_, i) => span(a, i, i + 2) - span(a, i - 2, i)), sd = sdOf(v); J[k] = v.map(x => x / sd); }
+  const s = Array.from({ length: N }, (_, i) => { let up = 0, dn = 0; for (const k in WEIGHT) { up += WEIGHT[k] * Math.max(0, J[k][i]); dn += (k === 'bright' ? 0.4 : WEIGHT[k]) * Math.max(0, -J[k][i]); } return Math.max(up, dn); });
+  let jumps = 0;
+  for (let i = 4; i < N - 4; i++) { let top = s[i] >= 4; for (let k = -4; k <= 4 && top; k++) if (k && s[i + k] > s[i]) top = false; if (top) jumps++; }
+  const parts = [(perc - 0.46) / 0.17, (noteRate - 1.72) / 1.34, (chords - 10.7) / 11.8, jumps / dur * 60 / 1.59].map(x => clamp(x));
+  const score = meanOf(parts);
+  return { name: score < 0.25 ? 'chill' : score > 0.75 ? 'riot' : 'travel', score, parts };
+}
+
+// How fine a pattern's lines are in the middle of its long move
+const fineSlot = new Float32Array(SLOT_FLOATS);
+const fineOf = new Map();
+function finest(p) {
+  if (fineOf.has(p)) return fineOf.get(p);
+  let k = Infinity;
+  try {
+    k = 0;
+    for (const u of [0.2, 0.5, 0.8]) {
+      fillSlot(fineSlot, { pattern: p, arcs: p.arcs ?? [], flow: p.flow, freezeU: u, t0: 0, t1: 1 }, 0.5, p, { phi: 0 });
+      k = Math.max(k, fineness(fineSlot));
+    }
+  } catch { k = fineness(base(p)); }
+  fineOf.set(p, k);
+  return k;
+}
+
+// Can these two glide? The composer's own test for it, on the patterns as they stand. What really happens is found out when it's played.
+export function glides(a, b) {
+  if (!a || !b || a === b) return false;
+  const x = base(a), y = base(b), m = matchFamilies(x, y);
+  return m.plain && m.same('surf.kind') && x[OFF['surf.map']] < 0.5 && y[OFF['surf.map']] < 0.5 && m.fewExtras && m.closeEnough;
+}
+
+export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = null } = {}) {
+  const bar = Math.max(M.bar, 0.8), beat = M.beat, bars = A.bars, reg = registerOf(A, M), name = world?.motion?.pace ?? reg.name, { lv, heat } = rideOf(A);
+  const rand = rng(((seed | 0) * 48611 + songHash) >>> 0), lib = id => library.find(p => p.id === id);
+  const shuffled = list => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const barAt = t => { let lo = 0, hi = bars.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (bars[m] <= t) lo = m; else hi = m - 1; } return lo; };
+  // The peak's pace is saved for around the climax
+  const levelAt = t => { const l = lv[clamp(barAt(t), 0, lv.length - 1)] ?? 2; return Math.abs(t - A.climax) <= CLIMAX_NEAR * bar ? l : Math.min(l, 3); };
+  // Which class of the song's level, for what it wears: nothing under 6 bars, or a chorus that dips for a bar or two would change its clothes.
+  const classes = (() => {
+    const c = lv.map(l => (l >= 3 ? 2 : l === 2 ? 1 : 0)), N = c.length;
+    for (let pass = 0; pass < 3; pass++) {
+      let a = 0;
+      for (let i = 1; i <= N; i++) {
+        if (i < N && c[i] === c[a]) continue;
+        if (i - a < CLASS_LEAST && (a > 0 || i < N)) { const to = a > 0 ? c[a - 1] : c[i]; for (let k = a; k < i; k++) c[k] = to; }
+        a = i;
+      }
+    }
+    return c;
+  })();
+  const classAt = t => ['quiet', 'mid', 'loud'][classes[clamp(barAt(t), 0, classes.length - 1)] ?? 1];
+  const barsWanted = t => BARS[name][levelAt(t)];
+
+  // ---------------------------------------------------------------- what each kind of section wears
+  const bags = {
+    relay: shuffled(RELAYS.filter(k => lib(`relay.${k}`) && SEQS[k])),
+    riot: shuffled(RIOTS.filter(k => lib(`riot.${k}`) && MOVES[k])),
+    still: shuffled(STILLS.filter(lib)),
+  };
+  // Something nobody's seen yet, for the climax
+  const saved = bags.relay.length > 3 ? bags.relay.pop() : null;
+  const take = bag => { const k = bag.shift(); if (k !== undefined) bag.push(k); return k; };
+  const menuAt = { riot: 0, travel: 0, chill: 0 }, turn = { loud: Math.floor(rand() * 2), mid: Math.floor(rand() * 2), quiet: Math.floor(rand() * 2) };
+  const wardrobe = new Map();
+  const has = way => way === 'suite' || bags[way].length > 0;
+  const wardrobeOf = (key, cls, climax) => {
+    let w = wardrobe.get(key);
+    if (w) return w;
+    const menu = MENU[name][cls], pick = menu[turn[cls]++ % menu.length].filter(has);
+    w = { key, ways: pick.length ? pick : ['suite'], at: 0, items: {}, used: {} };
+    for (const way of w.ways) {
+      if (way === 'suite') continue;
+      w.items[way] = way === 'relay' && climax && saved ? [saved, take(bags.relay)] : [take(bags[way]), take(bags[way])];
+    }
+    wardrobe.set(key, w);
+    return w;
+  };
+
+  // ---------------------------------------------------------------- passages: the song's landings, with what a way of changing wears run together into one gesture
+  const parts = [];
+  let climaxAt = null;
+  const passages = (landIn, segAt) => {
+    const out = [];
+    // The climax gets its Iris, which rolls up a plain sheet: so there's a landing for it, with a plain gesture coming to it
+    let land = landIn;
+    {
+      const inner = land.slice(1, -1), near = inner.reduce((b, t) => (Math.abs(t - A.climax) < Math.abs(b - A.climax) ? t : b), inner[0] ?? 0);
+      if (Math.abs(near - A.climax) <= 30 && near > OPENS + IRIS_ROOM) { climaxAt = near; land = land.filter(t => !(t > near - IRIS_ROOM && t < near)); }
+    }
+    for (let k = 0; k + 1 < land.length; k++) {
+      const a = land[k], b = land[k + 1], mid = (a + b) / 2, seg = segAt(mid), level = levelAt(mid), cls = classAt(mid), climax = climaxAt != null && a >= climaxAt && a <= climaxAt + 2 * IRIS_ROOM;
+      const w = wardrobeOf(`${seg.label}.${cls}`, cls, climax), last = out.at(-1), forced = a < OPENS || b === climaxAt;
+      // A section coming back starts its routine from the top
+      if (!last || last.w !== w || last.seg.visit !== seg.visit) { w.at = 0; w.used = {}; }
+      let way = forced ? 'suite' : w.ways[w.at % w.ways.length];
+      if (last && last.w === w && last.way === way && !last.forced && !forced) {
+        if ((b - last.a) / bar <= CAP[way]) { last.hits.push(a); last.b = b; last.level = Math.max(last.level, level); continue; }
+        way = w.ways[++w.at % w.ways.length];
+      } else if (last?.w === w && !last.forced && !forced && last.way !== way) way = w.ways[w.at % w.ways.length];
+      const n = (w.used[way] = (w.used[way] ?? -1) + 1);
+      out.push({ a, b, seg, level, way, w, hits: [], n, forced });
+    }
+    for (const p of out) if (p.way !== 'suite' && (p.b - p.a) / bar < LEAST[p.way]) p.way = 'suite';
+    // What came back to a suite has its landings back
+    const done = [];
+    for (const p of out) {
+      if (p.way !== 'suite' || !p.hits.length) { done.push(p); continue; }
+      const stops = [p.a, ...p.hits, p.b];
+      for (let i = 0; i + 1 < stops.length; i++) done.push({ ...p, a: stops[i], b: stops[i + 1], hits: [] });
+    }
+    parts.length = 0; parts.push(...done);
+    return [...done.map(p => p.a), done.at(-1).b];
+  };
+
+  // ---------------------------------------------------------------- which patterns
+  const counts = new Map(), worn = new Map(), steps = new Map();
+  // What pattern a passage wears. choose asks the composer for one that suits here; prev is what's just been on.
+  const wear = (q, part, prev, choose) => {
+    const { w, seg } = part, visit = `${w.key}/${seg.visit || 0}`;
+    if (part.way !== 'suite') {
+      const it = w.items[part.way][part.n % w.items[part.way].length];
+      if (part.way === 'relay') { part.seq = it; part.pat = lib(`relay.${it}`); }
+      else if (part.way === 'riot') { part.riot = it; part.pat = lib(`riot.${it}`); }
+      else part.pat = lib(it);
+      if (part.pat === prev) {       // never the same picture twice running
+        const o = w.items[part.way][(part.n + 1) % w.items[part.way].length];
+        if (part.way === 'relay') { part.seq = o; part.pat = lib(`relay.${o}`); } else if (part.way === 'riot') { part.riot = o; part.pat = lib(`riot.${o}`); } else part.pat = lib(o);
+      }
+      return part.pat;
+    }
+    const n = counts.get(visit) ?? 0;
+    counts.set(visit, n + 1);
+    // A suite. A section coming back wears the sequence it wore, in order. Once it's got three or four it goes round them: a short sequence, recognisably this section's.
+    const had = worn.get(w.key) ?? [], most = name === 'chill' ? 3 : 4;
+    worn.set(w.key, had);
+    if (n < had.length || had.length >= most) {
+      const it = had[n % had.length];
+      if (it.pat !== prev) { q.replayOf = it.k; return it.pat; }
+      if (had.length > 1) { const o = had[(n + 1) % had.length]; if (o.pat !== prev) { q.replayOf = o.k; return o.pat; } }
+    }
+    const pat = choose();
+    if (had.length < most) had.push({ pat, k: q.k });
+    return pat;
+  };
+  // How much a pattern's fineness costs it here, in the composer's scoring. Bold on the loud parts.
+  const fineCost = (p, level) => {
+    const k = finest(p), lim = BOLD[level >= 3 ? 0 : level === 2 ? 1 : 2], over = clamp(Math.log(k / lim) / Math.log(2.5));
+    return (level >= 3 ? 3 : level === 2 ? 1.5 : 0.6) * over + (p.fine ? level / 2 : 0);
+  };
+
+  // ---------------------------------------------------------------- how long each change takes
+  const leadOf = (part, pat, next, len) => {
+    const l = part.level;
+    let lead = LEAD[name][l] * bar;
+    if (!glides(pat, next)) lead = Math.max(lead, FLIGHT_LEAD);
+    return clamp(lead, 1.5, Math.max(0.72 * len, 1.5));
+  };
+  const tailOf = (part, pat, next) => {
+    let tail = TAIL[name][part.level] * bar;
+    if (!glides(pat, next)) tail = Math.max(tail, FLIGHT_TAIL);
+    return tail;
+  };
+
+  // ---------------------------------------------------------------- what a gesture's wearing
+  // Runs just before the director. Everything's in the picture's seconds except what time() is for.
+  const dress = (gestures, { time, react, tau, meter }) => {
+    const score = { time, react }, ctx = G => ({ score, A, M, G, shot: null, at: time, bar, beat, meter, tau });
+    const done = new Map();       // how far a relay has got, so that it's further along each time
+    gestures.forEach((G, i) => {
+      const part = parts[i];
+      if (!part) return;
+      G.part = part; G.quick = true;
+      if (part.way !== 'relay' && part.way !== 'riot') return;
+      const lvl = part.level, a = G.t0, end = G.t1 - (G.morph || 0);
+      const fixed = () => { G.fixedRange = true; G.range = [0, 1]; G.phiTrack = [{ t: tau(a), x: 0, v: 1 / GEAR[lvl] }]; G.gears = []; G.melMode = 0; };
+      if (part.way === 'relay') {
+        const lead = (lvl >= 3 ? 1.1 : lvl === 2 ? 1.5 : 2.2) * bar, tail = (lvl >= 3 ? 0.4 : lvl === 2 ? 0.75 : 1.25) * bar;
+        // Not while the Iris is still opening onto it
+        const clear = part.a === climaxAt ? 6 : 0.5 * bar, songEnd = part.b;
+        const keys = [part.a, ...part.hits, songEnd], stops = [];
+        for (let k = 0; k + 1 < keys.length; k++) {
+          if (k) stops.push(keys[k]);
+          // Bar lines between them, evenly, where it's too long to wait
+          const gap = keys[k + 1] - keys[k], most = STEP[name][levelAt((keys[k] + keys[k + 1]) / 2)] * bar, n = Math.round(gap / most);
+          for (let j = 1; j < n; j++) {
+            const want = keys[k] + j * gap / n, near = bars.reduce((best, x) => (Math.abs(x - want) < Math.abs(best - want) ? x : best), want);
+            stops.push(near);
+          }
+        }
+        const on = [...new Set(stops)].sort((x, y) => x - y).map(time).filter((t, n, all) => t - lead > a + clear && t + tail < end && (!n || t - all[n - 1] > 0.8 * bar));
+        if (on.length) {
+          fixed();
+          const from = done.get(part.seq) ?? 0;
+          G.moves = [{ id: 'relay', seq: part.seq, on, lead: Math.max(lead, 1.2), tail: Math.max(tail, 0.4), from }];
+          done.set(part.seq, from + on.length);
+        }
+        return;
+      }
+      const m = { id: part.riot, beats: lvl >= 4 ? 'half' : 'strong', from: a, to: end };
+      if (part.riot === 'scissor') m.teeth = part.hits.map(time);
+      const made = MOVES[part.riot].cue(m, ctx(G)) ?? MOVES[part.riot].cue({ ...m, beats: 'half' }, ctx(G));
+      if (made) { fixed(); G.moves = [made]; G.hero = part.riot; }
+    });
+  };
+
+  // ---------------------------------------------------------------- the fastest frame on the hit
+  // land.js's idea, for changes this short: it starts `lead` before the hit, as composed, and coasts `tail` past it. A change that has to be home on time, or has no room, stays as it was.
+  const forget = G => { delete G.plan; delete G.planFor; delete G.planning; };
+  const roomIn = (N, cast) => {
+    if (N.hero === 'countdown') return 0;
+    let room = N.t1 - (N.morph || 0) - N.t0 - 0.5 * bar;
+    for (const m of N.moves ?? []) {
+      if (m.id === 'star') room = Math.min(room, m.t0 - N.t0);
+      if (m.id === 'relay' && m.on?.length) room = Math.min(room, m.on[0] - (m.lead ?? 2) - N.t0);
+    }
+    const lock = cast.find(h => h.G === N && h.kind === 'lock');
+    return lock ? Math.min(room, lock.a - N.t0) : room;
+  };
+  const timeHits = (score, cast = []) => {
+    const g = score.gestures, lags = score.time?.windows ?? [], last = g.length - 1;
+    earn(score, cast);
+    for (let i = 0; i < last - 1; i++) {
+      const G = g[i], N = g[i + 1];
+      if (!G.morph || G.xform || !G.part || G.peak) continue;
+      const end = G.t1, atRest = score.landings?.find(l => Math.abs(l.B - end) < 0.05)?.rest;
+      if (atRest || lags.some(x => end < x.b && end + bar > x.from)) continue;
+      const tail = Math.min(tailOf(G.part, G.pattern, N.pattern), roomIn(N, cast));
+      if (tail < 0.5 * bar || tail < 0.5) continue;
+      G.t1 = N.t0 = end + tail;
+      G.morph = Math.min(G.morph + tail, G.t1 - G.t0 - 0.25);
+      G.peak = { hit: end, q: 2 };
+      if (!G.fixedRange && G.regear) G.arcEnd = G.t1 - G.morph + Math.min(G.morph * 0.4, 3.5) / 2;
+      forget(G);
+    }
+  };
+
+  // A hold has to earn it. Whatever's still plain for more than HOLD bars, with its transformation counted out, whips its long move through the strongest bar in it: a Ramp, the same move on a clock that hangs and crosses at speed.
+  // Or if it has no long move, it's wrung, gently, on the strong beats.
+  const earn = (score, cast) => {
+    const g = score.gestures, ctx = G => ({ score, A, M, G, shot: null, at: score.time ?? (x => x), bar, beat, meter: A.meter || 4, tau: score.tau });
+    for (let i = 1; i < g.length - 1; i++) {
+      const G = g[i];
+      if (G.moves?.length || G.hero || G.pattern.drive || G.carry && G.t1 - G.t0 < HOLD * bar) continue;
+      const a = G.t0, end = G.t1 - (G.morph || 0);
+      if ((end - a) / bar <= HOLD) continue;
+      let best = null, top = -Infinity;
+      for (const b of A.bars) {
+        if (b < a + 3 * bar || b > end - 2 * bar) continue;
+        const s = (M.arrivalAt?.(b) ?? 0) + 0.01 * heat[clamp(barAt(b), 0, heat.length - 1)];
+        if (s > top) { top = s; best = b; }
+      }
+      if (best == null) continue;
+      const ramp = MOVES.ramp.cue({ id: 'ramp', hit: best, cap: 0.8 }, ctx(G));
+      if (ramp) { G.moves = [...(G.moves ?? []), ramp]; continue; }
+      const wrung = MOVES.wring.cue({ id: 'wring', beats: 'strong', amp: 0.5, from: a + bar, to: end, coast: 1 }, ctx(G));
+      if (wrung) { G.moves = [...(G.moves ?? []), wrung]; delete G.calm; }
+    }
+  };
+
+  return {
+    register: name, registerScore: reg.score, least: Math.max(LEAST_S, 1.8 * bar), most: Math.min(MOST_S, MOST_BARS * bar), oneMore: ONE_MORE, stiff: STIFF, bar,
+    want: t => barsWanted(t) * bar, levelAt, classAt, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
+  };
+}

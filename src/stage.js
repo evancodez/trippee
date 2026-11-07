@@ -311,7 +311,7 @@ export class Stage {
     if (sc.flownPast) { for (const [G, was] of sc.flownPast) { Object.assign(G, was); delete G.plan; delete G.planFor; delete G.planning; } sc.flownPast = null; }
     const g = sc.gestures, end = t + dur, worn = G => G.hero || G.moves?.length || G.xform || G.carry;
     let i = sc === this.score ? g.indexOf(this.current(t)) : Math.max(0, g.findLastIndex(x => x.t0 <= t));
-    while (g[i + 1] && g[i].t1 < end + 6) {
+    while (g[i + 1] && g[i].t1 < end + (sc.pace ? 5 : 6)) {
       const cur = g[i], n = g[i + 1];
       if (!worn(cur) && !worn(n)) { cur.t1 = n.t1; cur.morph = n.morph; g.splice(i + 1, 1); delete cur.plan; continue; }
       if (cur.t1 - (cur.morph || 0) >= end) break;

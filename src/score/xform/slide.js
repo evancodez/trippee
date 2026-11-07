@@ -99,7 +99,7 @@ export default {
   id: 'slide',
   plan(a, b, ctx) {
     const { m, D } = ctx;
-    if (!(m.plain && m.same('surf.kind') && a[OFF['surf.map']] < 0.5 && b[OFF['surf.map']] < 0.5 && m.fewExtras && m.closeEnough && D >= 6)) return null;
+    if (!(m.plain && m.same('surf.kind') && a[OFF['surf.map']] < 0.5 && b[OFF['surf.map']] < 0.5 && m.fewExtras && m.closeEnough && D >= (ctx.quick ? 2.5 : 6))) return null;
     const { pair, flip, offset, close, open, ratio } = m;
     const plan = { kind: 'slide', pair, flip, offset, close, open, ratio };
     if (!slideStaysBusy(a, b, plan, ctx)) return null;
