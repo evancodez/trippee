@@ -23,7 +23,7 @@ const LEAD = { chill: [5, 4, 3, 2.5, 2], travel: [3, 2.5, 2, 1.25, 1], riot: [2.
 const TAIL = { chill: [3.5, 3, 2, 1.5, 1], travel: [2.5, 2, 1.25, 0.75, 0.5], riot: [2, 1.25, 1, 0.5, 0.5] };     // ...and after
 const ONE_MORE = 0, STIFF = 0.25;    // what another landing has to be worth in the composer's search, in place of its 3, and how hard it holds to the length it wants
 const LEAST_S = 3.2, MOST_BARS = 18, MOST_S = 30;     // the shortest and longest a landing can leave behind it
-const FLIGHT_LEAD = 1.8, FLIGHT_TAIL = 3.8;           // seconds. A flight in less than this flashes, where a glide doesn't. Its fastest frame on screen comes well before its middle (about 2 s, measured on MGMT), so most of it goes after the hit: it sets off on the song's moment
+const FLIGHT_LEAST = 5.6, FLIGHT_LEAD = 0.3;          // seconds: a flight in less than this flashes, where a glide doesn't. Its fastest frame on screen comes well before its middle (about 2 s in 5.6, measured on MGMT), so most of it goes after the hit: it sets off on the song's moment, this share of it before
 const HOLD = 8;                     // bars a pattern can stay with nothing but its ordinary flow
 const CLASS_LEAST = 6;              // bars
 const ARC_SECONDS = 22;             // a pattern's long move is written for about this long. A shorter gesture rides the middle of it at that speed, not all of it at a run
@@ -291,18 +291,17 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   };
 
   // ---------------------------------------------------------------- how long each change takes
+  const flightOf = l => Math.max(FLIGHT_LEAST, (LEAD[name][l] + TAIL[name][l]) * bar);
   const leadOf = (part, pat, next, len, kind) => {
     const l = part.level;
     if (own) return clamp(LEAD.chill[l] * bar, own.morph[0], Math.max(own.morph[0], Math.min(own.morph[1], 0.75 * len)));
     // Not all the same length: that's what a generator does. It goes by how the song's moving, and a little by nothing at all.
-    let lead = LEAD[name][l] * bar * (KIND_LEAD[kind] ?? 1) * (1 + JITTER * (2 * rand() - 1));
-    if (!glides(pat, next)) lead = Math.max(lead, FLIGHT_LEAD);
+    const by = (KIND_LEAD[kind] ?? 1) * (1 + JITTER * (2 * rand() - 1));
+    const lead = glides(pat, next) ? LEAD[name][l] * bar * by : FLIGHT_LEAD * flightOf(l) * by;
     return clamp(lead, 1.5, Math.max(0.72 * len, 1.5));
   };
   const tailOf = (part, pat, next) => {
-    let tail = TAIL[name][part.level] * bar;
-    if (!glides(pat, next)) tail = Math.max(tail, FLIGHT_TAIL);
-    return tail;
+    return glides(pat, next) ? TAIL[name][part.level] * bar : (1 - FLIGHT_LEAD) * flightOf(part.level);
   };
 
   // ---------------------------------------------------------------- what a gesture's wearing
