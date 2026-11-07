@@ -8,8 +8,9 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
 // The first four are what a film needs to run; the rest build behind it.
 export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8;
+export const TIME = 64;      // src/gl/chunks/time.js: only ever built when something first asks for it. 16 and 32 are a world's own (src/worlds/engine.js).
 const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
-export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
+export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & TIME ? '#define TIME\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -57,6 +58,7 @@ export class Renderer {
 
     this.vs = compile(gl, gl.VERTEX_SHADER, VERT);
     this.progs = new Array(16).fill(null);
+    this.timeOn = false; this.timeT = null; this.timeLoc = {};      // set by src/score/time-sheet.js for a frame that wants time local to each pixel
     this.variant = 0;
     this._start(0);
     this._whenReady = new Promise(res => { this._resolveReady = res; });
@@ -91,6 +93,7 @@ export class Renderer {
     gl.useProgram(prog);
     gl.uniform1i(gl.getUniformLocation(prog, 'uPush'), 0);
     this.progs[v] = prog;
+    if (v & TIME) this.timeLoc[v] = gl.getUniformLocation(prog, 'uT');
     if (v === 0) {
       this.prog = prog;
       this.ubo = gl.createBuffer();
@@ -139,11 +142,20 @@ export class Renderer {
 
   _programFor(F) {
     if (this.wp) return this.wp.program(F);
-    const v = this._variantOf(F);
+    let v = this._variantOf(F);
+    if (this.timeOn) { if (this.progs[v | TIME]) v |= TIME; else this._wantTime(v); }      // one still building, the frame goes without it. What asks comes up from nothing
     if (!this.progs[v] && !this.parallel && !this._pending) { this._start(v); this._poll(); }
     const got = this.progs[v] ? v : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
     this.variant = got;
     return this.progs[got];
+  }
+
+  // A time program is never built until a frame asks for it, so nobody else waits for it or pays for it. The plain and flight ones of its kind come up together.
+  _wantTime(v) {
+    const list = [v | TIME, (v & ~FLIGHT) | TIME, v | FLIGHT | TIME].filter(n => !this.progs[n] && !this.order.includes(n));
+    if (!list.length) return;
+    this.order = [...this.order, ...list];
+    if (!this._pending) { const next = this.order.find(n => !this.progs[n]); if (next !== undefined) { this._start(next); this._poll(); } }
   }
 
   _initBrush() {
@@ -289,6 +301,7 @@ export class Renderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, low ? low.fbo : null);
     gl.viewport(0, 0, w, h);
     gl.useProgram(this._programFor(F));
+    if (this.variant & TIME) gl.uniform4fv(this.timeLoc[this.variant], this.timeT);
     this.costKey = this.variant + (F[FRAME.xf * 4] > 0.5 ? 0.5 : 0);     // a shock draws two patterns in a plain program: it costs what it costs, and what's plain stays sharp
     gl.activeTexture(gl.TEXTURE0);
     if (this.brushOk) gl.bindTexture(gl.TEXTURE_2D, this.brushA.tex);

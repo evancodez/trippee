@@ -7,6 +7,9 @@ float gLift=0.;                  // how far the sheet's phase has slipped at thi
 const vec4 LIFT=vec4(1.,.5,.75,.25);
 const vec4 DS=vec4(1.,-.5,.75,-.25);   // each family's share of the tune's change in line weight
 
+#ifdef TIME
+float timeSmooth(int K,int i); float timeSlide(int i);     // chunks/time.js
+#endif
 #ifdef WORLD_PHASE
 //@world:phase
 #endif
@@ -144,6 +147,9 @@ float prepare(int K,int b,vec2 p){
     if(tn.y!=0.) sm+=tn.y*boil(X.xy*tn.z,tn.w,float(i)*2.3+.7);
     sm+=gLift*LIFT[i];
     sm+=fS*uG[b+I_fieldK][i];
+#ifdef TIME
+    sm+=timeSmooth(K,i);
+#endif
     vec2 g=vec2(dFdx(sm),dFdy(sm));
     // Across the wrap the phase jumps by the around-count, which only that one pixel's gradient sees. Take off exactly that, so a
     // real gradient too fine to draw stays too fine, and doesn't alias into specks at the far end of a tunnel.
@@ -155,6 +161,9 @@ float prepare(int K,int b,vec2 p){
     sm+=gRing*clamp(length(g)*uF[8].y*.5,2.5,9.);           // a ring moves a line by the same distance however big it is, up to a point, and even broad shapes slip enough to show it
     gPh[k]=sm+fb.z*b1.z+fc.z*b2.z+fa.w+fa.y*tn.x*slipY+sl*uG[b+I_slipM][i];
     if(parity<0.){ gPh[k]+=.5; parity=1.; }                 // half a cycle on one family inverts the whole XOR
+#ifdef TIME
+    gPh[k]+=timeSlide(i);
+#endif
     gGr[k]=g; gGn[k]=max(length(g),1e-5); gDu[k]=abs(fb.w)<.85?clamp(fb.w+gTune*DS[i]*tuneShare,-.85,.85):fb.w;   // a closed family stays closed
 #ifdef WORLD_PHASE
     worldPhase(K,i,X);

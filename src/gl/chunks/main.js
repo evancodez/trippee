@@ -78,6 +78,9 @@ void main(){
     p+=dir*ml.x*mv;
   }
   p=handView(p);
+#ifdef TIME
+  p=timeWarp(p0,p);
+#endif
 
   songField(p0);
 #ifdef WORLD_SHARE
@@ -247,6 +250,9 @@ void main(){
     c=mix(c,c+cs-2.*c*cs,so.w); c2=c;
     cP=mix(cP,cP+cs-2.*cP*cs,so.w);
   }
+#ifdef TIME
+  { float tf=timeFence(p0); if(tf>=0.){ c=fenced(c,tf,p0); c2=fenced(c2,tf,p0); cP=fenced(cP,tf,p0); } }
+#endif
   vec3 col;
   // gamma-correct coverage, so an edge pixel carries half the light rather than looking dark
 #ifdef PLATES

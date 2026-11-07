@@ -15,6 +15,7 @@ import { xformOf } from './xform/index.js';
 import { songSheet, openFamilies, melOf } from './song-sheet.js';
 import { handSheet } from './hand-sheet.js';
 import { hearSheet, hearStart } from './hear.js';
+import { timeSheet } from './time-sheet.js';
 
 export { base, fillSlot, arcU, boldRange, fineness, thetaOf, noHorizon } from './slot.js';
 
@@ -172,6 +173,7 @@ export function frame(score, t, R, edits) {
   }
   handSheet(st, edits);
   hearSheet(st, score, edits, tReal, st.songHx ?? 1);
+  timeSheet(st, score, R, edits, tReal, phiOf, walkT);
 
   // Never empty, however much the song and the hand push it, except while a flight is closing one up inside an element
   if (st.kind !== 'rise') st.theta = clamp(st.theta, -0.9 * st.solid, 0.9 * st.solid);
