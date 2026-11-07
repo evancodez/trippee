@@ -272,9 +272,9 @@ export function direct(score, A, M) {
   // ------------------------------------------------------------- Iris: the climax, once
   const putIris = () => {
     if (!flag('iris') || A.climax <= OPENING + IRIS_D) return;
-    const D0 = clamp(Math.round(IRIS_D / bar) * bar, 10, 14);
+    const D0 = P ? clamp(Math.round(9.5 / bar) * bar, 9, 10.5) : clamp(Math.round(IRIS_D / bar) * bar, 10, 14);
     const bold = (G, tm) => { fillSlot(slot, G, tm, G.pattern, { phi: phiOf(tm, G) }); return G.pattern.id !== 'checks.target' && canIris(slot) && fineness(slot) <= IRIS_FINE; };      // a target's fine spokes go round the tube as hairlines
-    const fits = (G, L) => { const D = clamp((L - G.t0 - ROOM_T) / IRIS_HIT, 10, D0); return L - G.t0 >= IRIS_HIT * D + ROOM_T ? D : 0; };      // it's shorter if it has to be
+    const fits = (G, L) => { const D = clamp((L - G.t0 - ROOM_T) / IRIS_HIT, P ? 9 : 10, D0); return L - G.t0 >= IRIS_HIT * D + ROOM_T ? D : 0; };      // it's shorter if it has to be
     // Gesture i becomes the next one, turning inside out at L. On a sheet it can roll up, and if what's there isn't one, one that is, for the time it has.
     const irisOn = (i, L, D) => {
       let G = g[i];
