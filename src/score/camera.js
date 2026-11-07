@@ -490,7 +490,9 @@ function makeWrite(cam) {
       if (!B.room) out[OFF['cam.yaw']] += 0.5 * tip * Math.sin(dir);
       return;
     }
-    writeTip(out, tip, dir, lens);
+    // Every track comes up from nothing (starting), so the film's very first frame has a tip of exactly 0, and writeTip left it flat with no lens while the next was on its plane: a jump of
+    // 129 against 1 at 0.017 s wherever a film's shown from its start without flying in (a take, then back to 0). That frame's on its plane too, looking straight down at it.
+    writeTip(out, tip === 0 && p <= 0 ? Number.MIN_VALUE : tip, dir, lens);
   };
 }
 // What a shot in a cut draws by hand. Its one-knot fit of a size isn't drawing, only something like a lane is.
