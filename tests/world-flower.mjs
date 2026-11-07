@@ -1,6 +1,10 @@
 // Flower Power: what docs/MODES.md section 8 asks of it that no other test does. Muted, like every browser here.
 //   STAGE=stills                       every pattern in the pool, calm and buzzing, as a sheet. No song.
 //   STAGE=buds                         every Bud in the pool, as sheets, and a line's ink carried through it, by numbers. No song.
+//   STAGE=sheet                        every pattern on one sheet, to judge them against each other. TIMES=20,21,22 for several moments, NAME=file
+//   STAGE=lands                        landings as sheets: LANDS=daisy>hearts:bud,hearts>check:melt,check>dart:tide3 (tide3 is a straight tide), D=seconds. No song.
+//   STAGE=clicks                       every pattern in the library by a real click on its tile. On its own: the others stop the clock
+//   STAGE=steps SONG=... AT=t,t        frames either side of moments in the film, and what changed
 //   STAGE=film SONG=media/mgmt.mp3     the world's whole film as a person gets it: what it hears, what it lands on, a 20 s sheet and slices across a Bud.
 //   STAGE=change                       from the film into the world and back, as a sheet, with the byte check at the middle.
 //   STAGE=cost                         GPU ms per program at 3024x1964, governor off. Say what else was running.
@@ -97,7 +101,7 @@ async function stages({ page, log, save, sleep }) {
       for (let k = 0; k < list.length; k++) {
         const [a, b, kind] = list[k], st = app.stage;
         st.score.handover = null;
-        st.score.gestures = [{ t0: -20, t1: 2 + D, arcEnd: 2 + D, pattern: by(a), morph: D, xform: { id: kind } }, { t0: 2 + D, t1: 3600, arcEnd: 2 + D + 26, pattern: by(b) }];
+        st.score.gestures = [{ t0: -20, t1: 2 + D, arcEnd: 2 + D, pattern: by(a), morph: D, xform: kind === 'tide3' ? { id: 'tide', dir: 3, ang: 0.6 } : { id: kind, chosen: true } }, { t0: 2 + D, t1: 3600, arcEnd: 2 + D + 26, pattern: by(b) }];
         st.hold = true; app.t = 0; trippee.seek(0);
         for (let i = 0; i < 400 && !st.score.gestures[0].plan; i++) { trippee.seek(2.5); await new Promise(r => setTimeout(r, 4)); }
         let kinds = new Set(), V = new Set();

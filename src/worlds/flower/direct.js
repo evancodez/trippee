@@ -106,7 +106,7 @@ export function moves(score, A, M) {
         if (k) { G.uTrack = k; (G.moves ??= []).push({ id: 'ramp', hit: a }); }
         continue;
       }
-      const m = { id, beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - from, 0.5)), coast: Math.min(bar, Math.max(to + 0.5 * bar - hits.at(-1), 0.5)), from, to };
+      const m = { id, ...(id === 'pump' && base(G.pattern)[OFF['field.b']] ? { amp: 0.35 } : {}), beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - from, 0.5)), coast: Math.min(bar, Math.max(to + 0.5 * bar - hits.at(-1), 0.5)), from, to };
       // The film's own need setting up by their own cue, which goes in bars.
       if (id === 'scissor') { m.lead = 0.5; m.coast = 1; m.every = 4; if (!MOVES.scissor.cue(m, { score, A, M, G, at: x => x, bar, beat: M?.beat ?? 0.5, meter: M?.meter ?? 4, tau: score.tau })) continue; }
       (G.moves ??= []).push(m);

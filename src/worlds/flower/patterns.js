@@ -146,13 +146,13 @@ export const pool = [
     arcs: [{ path: 'scale', from: 1.0, to: 1.3, log: true }, { path: 'ty', from: 0.07, to: -0.07 }],
   }),
   flower({
-    id: 'flower.peace', name: 'Peace', group: 'motif', motif: PEACE, a: 1, k: 2.4, beta: 2.2, e: 0.1, sway: 0.1, orbit: 0.07, swell: 0.25,
-    poles: [[0.05, 0, 0.82, 0]],
+    id: 'flower.peace', name: 'Peace', group: 'motif', motif: [PEACE, 0, 0], n: 6, a: 1, k: 2.4, beta: 2.2, e: 0.1, sway: 0.1, orbit: 0.07, swell: 0.25,
+    poles: [[0.05, 0, 0.82, 0], [-1.72, 0.74, 0.17, 0.4], [1.74, -0.76, 0.17, 1.4]],      // the far rings of one flower alone go by all at once, and that's the whole frame's brightness: these two keep them out of step
     arcs: [{ path: 'scale', from: 0.95, to: 1.2, log: true }, { path: 'tx', from: 0.18, to: -0.18 }],
   }),
   flower({
-    id: 'flower.smile', name: 'Smile', group: 'motif', motif: SMILE, a: 1, k: 2.4, beta: 2.2, e: 0.1, sway: 0.1, orbit: 0.1, swell: 0.25,
-    poles: [[-0.05, 0, 0.84, 0]],
+    id: 'flower.smile', name: 'Smile', group: 'motif', motif: [SMILE, 0, 0], n: 6, a: 1, k: 2.4, beta: 2.2, e: 0.1, sway: 0.1, orbit: 0.1, swell: 0.25,
+    poles: [[-0.05, 0, 0.84, 0], [1.72, 0.76, 0.17, 0.4], [-1.74, -0.74, 0.17, 1.4]],
     arcs: [{ path: 'scale', from: 1.2, to: 0.95, log: true }, { path: 'tx', from: -0.18, to: 0.18 }],
   }),
   flower({

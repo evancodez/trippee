@@ -48,7 +48,9 @@ const holdInside = (A, B, plan, wasA, wasB) => { INSIDE.forEach((n, i) => { A[n]
 const insideOf = S => INSIDE.map(n => S[n]);
 
 export const melt = {
-  id: 'melt', levers: LEVERS, enter: glideEnter,
+  id: 'melt', enter: glideEnter,
+  // A melt whose rings are a long way from the stripes under them sends them all across together. As a last thing, those two can go by a tide, which does it a pixel at a time.
+  levers: { ...LEVERS, 'a tide instead': G => { const was = G.xform; if (!was) return null; G.xform = { id: 'tide', dir: 2, W: 0.8 }; return () => { G.xform = was; }; } },
   plan(a, b, ctx) {
     if (!flat(a) || !flat(b) || a[OFF['fold.n']] !== b[OFF['fold.n']] || ctx.D < 3) return null;
     // A family that goes by the first pole can't have it jump in the middle, field or no field.
