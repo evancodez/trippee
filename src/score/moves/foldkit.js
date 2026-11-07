@@ -42,7 +42,7 @@ const ease = x => smoother(clamp(x));
 // A cut's way in, for a move that opens over the first of its shot and shuts again before the shot's own transformation, so the next pattern gets a plain sheet.
 //   beats    what it marches on: 'strong' (the default), 'half', 'bar', 'beat', or a list of song seconds
 //   open, close   bars it takes to get in and to get out. Default 4 and 3.
-//   stay     true: it doesn't shut, and the shot's transformation flies out of the folded sheet.
+//   stay     true: it doesn't shut, and the shot's transformation flies out of the folded sheet. Into a pattern wearing the same fold with open: 0, and times: { from } back where the change starts, the two glide into each other under the same mirrors.
 //   times: { from, to }   where it runs, song seconds. Default the shot's body
 // Unlike the riot set it asks the song's own reaction to carry on as it was: this sits on top of it.
 export function cueFold(m, ctx) {
@@ -59,7 +59,7 @@ export function cueFold(m, ctx) {
 }
 const medianGap = list => { const g = []; for (let i = 1; i < list.length; i++) g.push(list[i] - list[i - 1]); g.sort((a, b) => a - b); return g[g.length >> 1] || 1; };
 // How far in it is, 0 to 1. A pattern picked by hand is simply in.
-export const inBy = (m, t) => (m?.beats ? ease((t - m.from) / m.open) * (m.stay ? 1 : ease((m.to - t) / m.close)) : 1);
+export const inBy = (m, t) => (m?.beats ? (m.open > 0 ? ease((t - m.from) / m.open) : 1) * (m.stay || !(m.close > 0) ? 1 : ease((m.to - t) / m.close)) : 1);
 
 // The song's big moments, as one number that only goes up, by how big each is, arriving through the moment. Anything that travels goes further on this, so the camera lurches on with the song and comes back to its stride.
 const bigOf = list => list.filter(x => x.sign > 0 && x.s >= 0.45).map(x => [x.t - 0.4, x.s]);

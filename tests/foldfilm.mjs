@@ -33,6 +33,14 @@ const CUTS = {
   ],
 };
 // Any other song: one fold to a section of the song, each on a pattern the film uses. FOLDS=fan,limit IDS=lines.fall,rooms.nested
+// STAY=1 on MGMT: out of a fold that doesn't shut, by a flight, and from one sheet to another under the same mirrors, by a glide.
+CUTS.stay = [
+  { at: 0, id: 'lines.fall', arcs: true },
+  { at: 47.51, from: 39.83, id: 'rooms.nested', via: 'plain', moves: [{ id: 'crumple', open: 3, stay: true }] },
+  { at: 77.75, from: 70.07, id: 'lines.fall', via: 'plain', moves: [{ id: 'limit', open: 2, stay: true }] },
+  { at: 112.79, from: 104, id: 'pole.garden', via: 'slide', moves: [{ id: 'limit', open: 0, close: 2, times: { from: 104 } }] },
+  { at: 151.19, from: 143.03, id: 'lines.fall', via: 'plain' },
+];
 const LIST = (process.env.FOLDS || 'fan,forever,limit,crumple,screen,pearls,roll').split(','), BASES = (process.env.BASES || 'rooms.nested,lines.fall,lines.fall,pole.garden,checks.vega,pole.garden,lines.fall').split(',');
 export const autoCut = async (page, song) => page.eval(async ({ song, LIST, BASES }) => {
   await app.song.load(`/media/${song}.mp3`, { seed: 7 }); app.song.pause();
@@ -44,7 +52,7 @@ export const autoCut = async (page, song) => page.eval(async ({ song, LIST, BASE
 export default async ({ page, save, log }) => {
   const song = process.env.SONG || 'mgmt', SKIP = new Set((process.env.SKIP || '').split(','));
   for (let i = 0; i < 240; i++) { if (await page.eval('typeof window.trippee !== "undefined" && window.trippee.ready === true')) break; await sleep(250); }
-  const shotsFor = CUTS[song] && !process.env.AUTO ? CUTS[song] : await autoCut(page, song);
+  const shotsFor = process.env.STAY ? CUTS.stay : CUTS[song] && !process.env.AUTO ? CUTS[song] : await autoCut(page, song);
   log(JSON.stringify(shotsFor.map(s => [+s.at.toFixed(1), s.id, s.moves?.[0]?.id])));
   const made = await page.eval(async ({ song, shots, rehearseIt }) => {
     await app.R.whenFoldReady();
@@ -64,10 +72,20 @@ export default async ({ page, save, log }) => {
       const o = []; for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) { let s = 0, n = 0; for (let y = (ty * H / 4) | 0; y < ((ty + 1) * H / 4 | 0); y++) for (let X = (tx * W / 4) | 0; X < ((tx + 1) * W / 4 | 0); X++) { s += L_[y * W + X]; n++; } o.push(+(s / n).toFixed(1)); }
       return { mean: +(sum / L_.length).toFixed(2), tiles: o };
     };
-    return { duration: A.duration, refused: sc.refused, gestures: sc.gestures.map(G => ({ t0: +G.t0.toFixed(2), t1: +G.t1.toFixed(2), morph: +(G.morph || 0).toFixed(2), id: G.pattern.id, moves: (G.moves ?? []).map(m => m.id), m: (G.moves ?? []).filter(m => m.from != null).map(m => ({ from: m.from, to: m.to, open: m.open, close: m.close, beats: m.beats?.length })), hits: (G.moves ?? []).find(m => m.id === 'roll')?.hits })) };
+    window.__kinds = {}; for (const G of sc.gestures) if (G.morph) { app.t = G.t1 - G.morph * .5; window.trippee.seek(app.t); window.__kinds[+G.t1.toFixed(1)] = app.lastFrame?.kind; }
+    return { kinds: window.__kinds, duration: A.duration, refused: sc.refused, gestures: sc.gestures.map(G => ({ t0: +G.t0.toFixed(2), t1: +G.t1.toFixed(2), morph: +(G.morph || 0).toFixed(2), id: G.pattern.id, moves: (G.moves ?? []).map(m => m.id), m: (G.moves ?? []).filter(m => m.from != null).map(m => ({ from: m.from, to: m.to, open: m.open, close: m.close, beats: m.beats?.length })), hits: (G.moves ?? []).find(m => m.id === 'roll')?.hits })) };
   }, { song, shots: shotsFor, rehearseIt: !!process.env.REHEARSE });
-  log(`refused ${JSON.stringify(made.refused)}`);
+  log(`refused ${JSON.stringify(made.refused)}  kinds ${JSON.stringify(made.kinds)}`);
   log(made.gestures.map(g => `  ${g.t0}-${g.t1} morph ${g.morph} ${g.id} [${g.moves}] ${JSON.stringify(g.m)} ${g.hits ?? ''}`).join('\n'));
+  if (process.env.AT) {
+    const [a, b] = process.env.AT.split('-').map(Number), every = +(process.env.EVERY || 0.1), N = Math.ceil((b - a) / every), cols = 12, tw = 150, th = 84;
+    const r = await page.eval(async ({ a, every, N, cols, tw, th }) => {
+      const c = document.createElement('canvas'); c.width = cols * tw; c.height = Math.ceil(N / cols) * th; const x = c.getContext('2d'); x.font = '10px monospace'; const means = [];
+      for (let i = 0; i < N; i++) { const t = a + every * i; window.trippee.seek(t); const v = window.__tiles(); means.push(Math.round(v.mean)); x.drawImage(window.trippee.canvas, (i % cols) * tw, (i / cols | 0) * th, tw - 1, th - 1); x.fillStyle = '#f33'; x.fillText(`${t.toFixed(2)} ${Math.round(v.mean)}`, (i % cols) * tw + 2, (i / cols | 0) * th + 10); }
+      return { url: c.toDataURL('image/jpeg', 0.85), means };
+    }, { a, every, N, cols, tw, th });
+    save(`${song}-at-${a}.jpg`, r.url); log('means ' + r.means.join(' ')); return;
+  }
   if (!SKIP.has('sheets')) {
     for (const g of made.gestures) {
       if (g.moves.at(-1) === 'cue' || !g.moves.length) continue;

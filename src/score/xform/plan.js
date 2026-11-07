@@ -16,6 +16,12 @@ const winding = (s, i) => {
 };
 const coef = (s, i) => ['x', 'y', 'r1', 'l1', 'r2', 'l2'].map(n => s[OFF[`f${i}.${n}`]]);
 
+// Mirrors in front of a sheet can't glide away to nothing, but two sheets under the same mirrors can glide into each other, and the mirrors go where they're going as they do.
+const sameFold = (a, b) => {
+  const on = s => s[OFF['sf.on']] > 0.5, shape = s => [s[OFF['sf.n']], s[OFF['sf.reps']], s[OFF['sf.par']], s[OFF['sf.S']] > 0, s[OFF['fan.al']] > 0, s[OFF['lf.b']] > s[OFF['lf.a']], s[OFF['mob.ax']] !== 0 || s[OFF['mob.dx']] !== 0].join();
+  return !on(a) && !on(b) || (on(a) && on(b) && shape(a) === shape(b));
+};
+
 // The partners, and what they allow. Goes to each transformation's plan as ctx.m.
 export function matchFamilies(a, b) {
   const A = [], B = [];
@@ -54,7 +60,7 @@ export function matchFamilies(a, b) {
     allPaired: !close.length && !open.length,
     fewExtras: close.length + open.length <= 2 && pair.some(p => p >= 0),
     // A field draws differently for different numbers, and they snap: gliding across them would be a cut.
-    plain: a[OFF['sf.on']] < 0.5 && b[OFF['sf.on']] < 0.5 && !shaped(a) && !shaped(b) && sameBody && same('fold.n') && a[OFF['droste.lnS']] === 0 && b[OFF['droste.lnS']] === 0 && a[OFF['conf.amt']] === b[OFF['conf.amt']]
+    plain: sameFold(a, b) && !shaped(a) && !shaped(b) && sameBody && same('fold.n') && a[OFF['droste.lnS']] === 0 && b[OFF['droste.lnS']] === 0 && a[OFF['conf.amt']] === b[OFF['conf.amt']]
       && same('field.kind') && same('field.a') && same('field.b')
       // ...and so does how a sheet's cut into bands: gliding into a dial that's come apart would keep the old cuts to the last frame, and then the whole picture jumps.
       && same('slip.kind') && same('slip.n'),
