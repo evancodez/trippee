@@ -141,9 +141,9 @@ export const pool = [
   poster({ id: 'flyer.flames', name: 'Flame Job', group: 'op', kind: 1, extra: 3.2, k: 1.9, n: 1, a: 2.8, kappa: 0.7, swell: 1.1, poles: [[-1, 0, 0.6, 0], [1, 0, 0.6, 0]], orbit: 0, spin: 0, screen: 7, edition: 9,
     over: { bend1: { a: 0.11, f: 1.7, ph: 0, ang: 1.57 }, bend2: { a: 0.05, f: 3.7, ph: 1, ang: 1.57 } }, flow: { 'bend1.ph': -4, 'bend2.ph': -3 },
     arcs: [{ path: 'rot', from: -0.05, to: 0.05 }], ph: PH }),
-  poster({ id: 'flyer.pulsar', name: 'Pulsar', group: 'op', kind: 2, k: 2.8, n: 1.1, a: 0.55, kappa: 0.45, swell: 1.05, poles: [[0, 0, 1, 0]], orbit: 0, spin: 0, screen: 7,
+  poster({ id: 'flyer.pulsar', name: 'Pulsar', group: 'op', kind: 2, k: 2.6, n: 1.1, a: 0.42, kappa: 0.45, swell: 1.05, poles: [[0, 0, 1, 0]], orbit: 0, spin: 0, screen: 7,
     arcs: [{ path: 'scale', from: 1, to: 1.15, log: true }, { path: 'rot', from: -0.05, to: 0.05 }], ph: PH }),
-  poster({ id: 'flyer.scope', name: 'Scope', group: 'op', kind: 2, k: 2.5, n: 1.4, a: 0.32, kappa: 0.25, swell: 0, poles: [[0, 0, 1, 0]], orbit: 0, spin: 0, screen: 7,
+  poster({ id: 'flyer.scope', name: 'Scope', group: 'op', kind: 2, k: 2.4, n: 1.4, a: 0.24, kappa: 0.25, swell: 0, poles: [[0, 0, 1, 0]], orbit: 0, spin: 0, screen: 7,
     arcs: [{ path: 'rot', from: 0.35, to: 0.65 }, { path: 'scale', from: 1, to: 1.2, log: true }], ph: PH }),
   // ---------------------------------------------------------------- the film's, in this world's inks
   film('checks.vega', 'vega', 'Op Art Night'),

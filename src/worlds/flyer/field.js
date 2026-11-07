@@ -65,7 +65,8 @@ float worldField(int b,vec2 X,vec4 f){
   if(kind>1.5){
     // Ridges: lines up the frame, each one the wave, and the wave's stood up where the middle of the frame is, as far as the frame's edges take it away again. Every line is what's sounding now.
     float en=f2.w>0.?exp(-X.x*X.x/(f2.w*f2.w)):1.;
-    return X.y+f.w*en*wFlyWave(f.y*X.x+.5*sin(1.3*X.x+.7)+f2.y*X.y)-lines;
+    float wx=f.y*X.x+.5*sin(1.3*X.x+.7)+f2.y*X.y;
+    return X.y+f.w*en*(wFlyWave(wx-.05)+wFlyWave(wx)+wFlyWave(wx+.05))/3.-lines;      // a little rounded: a wall that's straight up would send every line in the frame up it, in hairlines
   }
   if(kind>.5){
     // Flame job: a flower laid on its side, its petals licking up the frame. Bigger on one side.

@@ -24,7 +24,12 @@ export default async ({ page, log, save, sleep }) => {
   await page.send('Emulation.setDeviceMetricsOverride', { width: size[0], height: size[1], deviceScaleFactor: 1, mobile: false });
   if (song) await dropSong(page, song, { resolvePath: resolve, sleep });
   // FAST: not waiting for the rehearsal, for a look at what's composed.
-  if (process.env.FAST && song) {
+  if (stages.includes('clicks')) {
+    // The way a person gets there, in real time: the change of world, frames running, nothing stepped by hand.
+    await page.eval(`app.governor.enabled=false;document.querySelector('#hints [data-ok]')?.click();app.stage.setWorld('flyer')`);
+    for (let k = 0; k < 200; k++) { await sleep(300); if (await page.eval(`app.stage.world?.id==='flyer'&&!app.stage.score.handover`)) break; }
+    log('in', await page.eval(`app.stage.world?.id+' '+app.t.toFixed(1)`));
+  } else if (process.env.FAST && song) {
     await page.eval(async () => { const T = window.trippee, stage = app.stage; let began = null; stage.setWorld('flyer', { dur: 1 }).then(v => { began = v; }); for (let i = 0; i < 4000 && began === null; i++) { T.step(1 / 60); await new Promise(r => setTimeout(r, 5)); } const wp = app.R.worldPrograms.get(stage.world); await wp.whenAll; stage.score.handover = null; app.manual = true; app.governor.enabled = false; app.R.drawScale = 1; app.song.pause?.(); T.seek(0); });
   } else await enterWorld(page, 'flyer', log);
   const errs = () => page.logs.filter(l => /\[error\]|\[exception\]/.test(l));
@@ -112,21 +117,22 @@ export default async ({ page, log, save, sleep }) => {
 
   if (stages.includes('clicks')) {
     // The library, opened by its own key or button, and every tile clicked with real input.
-    await page.eval(`app.manual=false;app.governor.enabled=false;document.querySelector('#hints [data-ok]')?.click();`);
-    const n = await page.eval(async () => { const L = app.ui?.library ?? app.library; L.show(true); await new Promise(r => setTimeout(r, 500)); return app.stage.world._pool.length; });
+    log('frames run', await page.eval(async () => { const a = app.t; await new Promise(r => setTimeout(r, 1000)); return [a, app.t]; }));
+    const n = await page.eval(async () => { const L = app.ui.library; L.show(true); await new Promise(r => setTimeout(r, 800)); return app.stage.world._pool.length; });
     const tile = i => page.eval(i => { const L = app.ui?.library ?? app.library, p = app.stage.world._pool[i], t = L.tiles.get(p.id); if (!t) return null; t.b.scrollIntoView({ block: 'center' }); const r = t.b.getBoundingClientRect(); return { id: p.id, x: r.x + r.width / 2, y: r.y + r.height / 2, vis: r.width > 0 }; }, i);
     let ok = 0; const bad = [];
     for (let i = 0; i < n; i++) {
       const t = await tile(i);
       if (!t?.vis) { bad.push(`${i} no tile`); continue; }
+      if (i === 0) { log('under the pointer', await page.eval(({ x, y }) => { const e = document.elementFromPoint(x, y); return `${e?.tagName}.${e?.className} manual ${app.manual} t ${app.t}`; }, t)); await page.shot('clicks0'); }
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: t.x, y: t.y });
       await sleep(40);
       await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: t.x, y: t.y, button: 'left', clickCount: 1 });
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: t.x, y: t.y, button: 'left', clickCount: 1 });
       let landed = false, was = null;
-      for (let k = 0; k < 260 && !landed; k++) { await sleep(60); was = await page.eval(id => { const f = app.lastFrame, G = app.stage.score.handover?.to ?? f?.G; return { on: f?.G?.pattern?.id, wait: !!app.stage.score.handover, kind: f?.kind }; }, t.id); landed = was.on === t.id && !was.wait; }
+      for (let k = 0; k < 260 && !landed; k++) { await sleep(60); was = await page.eval(id => { const f = app.lastFrame; return { on: f?.G?.pattern?.id, wait: !!app.stage.score.handover, kind: f?.kind, t: +app.t.toFixed(1) }; }, t.id); landed = was.on === t.id && !was.wait; }
       if (landed) ok++; else bad.push(`${t.id}: ${JSON.stringify(was)}`);
-      if (i % 8 === 0) log('clicked', i, t.id, landed, was?.kind);
+      if (i % 8 === 0) log('clicked', i, t.id, landed, JSON.stringify(was));
     }
     log(`clicks: ${ok}/${n} landed`, bad.slice(0, 10));
     log(errs().slice(0, 6));
