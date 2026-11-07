@@ -8,7 +8,7 @@
 // A flight between two gestures can go either way, in or out. Where the way it chose spends too long in noise or a flat shape, the other way is tried, and the better one kept.
 //
 // Then the film is played through for jumps. A jump in brightness is the one thing that must never reach the screen, so a pattern that makes one sits out too.
-import { Renderer } from '../gl/renderer.js';
+import { Renderer, TIME } from '../gl/renderer.js';
 import { frame } from '../score/frame.js';
 import { flag, hearing } from '../score/flags.js';
 import { fillSlot, noHorizon, withTravel } from '../score/slot.js';
@@ -49,7 +49,7 @@ const FLASH_SWING = 22, FLASH_SWING_WHOLE = 19, FLASH_WHOLE = 0, FLASH_TILE = 2,
 const JUDGE_SWING = 25.5, JUDGE_WITHIN = 1.15;
 // A film's looks. The whole film small and quick, at 30 a second, for anywhere that might be flashing; then whatever that finds is looked at again at twice the size again, the way the judge counts, and only a flash that's still there gets anything done about it.
 // Reads are batched (Eyes), which is why this can look so much more often than a read a look could and take less time: GPU_BATCH looks to one wait for the GPU.
-const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, FILM_SWING_WHOLE = 19, REAL_SWING_WHOLE = 21.5, GUARD_LOOKS = 80, SCAN_LOOK = 0.4, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 8;     // GUARD_LOOKS: close looks, per second of film, for it to spend, so a film with twice the changes takes no longer. A coarse look costs SCAN_LOOK of one.
+const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, FILM_SWING_WHOLE = 19, REAL_SWING_WHOLE = 21.5, GUARD_LOOKS = 30, SCAN_LOOK = 0.4, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 8;     // GUARD_LOOKS: close looks, per second of film, for it to spend, so a film with twice the changes takes no longer. A coarse look costs SCAN_LOOK of one.
 // What it may do. A loud stretch never drops below half its flow, however stubborn the flash; a quiet one, a quarter. Both only for the seconds it flashes, easing there and back.
 const SLOW_LOUD = 2, SLOW_QUIET = 4, SLOW_RAMP = 1.2, SLOW_AROUND = 0.6, LONGER_MOST = 1.35;
 // How long a song's film takes to fly in, as song.js has it unless the flight needs longer: a first gesture's morph can't start before that, or stage._clearRunway cuts it short after it's been looked at.
@@ -250,7 +250,8 @@ const horizon = G => Math.max((G.arcEnd ?? G.t1) - G.t0, 1e-3);
 const worldOf = score => (score.world ? { world: score.world, tables: score.tables } : null);
 const when = (G, u) => G.t0 + horizon(G) * u;
 // The gesture alone, on the film's clock, with no song on it and nothing to morph into. A copy, so that nothing on screen can see it stopped.
-const alone = (G, over) => ({ ...G, freezeEase: null, thaw: null, morph: 0, plan: null, planning: null, ...over });
+// ...and with none of src/score/woah.js's tricks, which aren't what's being asked about here: is this pattern any good to ride, as itself.
+const alone = (G, over) => ({ ...G, freezeEase: null, thaw: null, morph: 0, plan: null, planning: null, ...(G.moves?.some(m => m.woah) ? { moves: G.moves.filter(m => !m.woah) } : null), ...over });
 // At one point of its long move, whatever the clock says
 const lookAt = (R, score, G, u, { W, H, px }, ph = 0) => {
   shot(R, { gestures: [alone(G, { freezeU: u })], phi: (t, g) => score.phi(t, g) + ph, ...worldOf(score) }, when(G, u), W, H, px);
@@ -418,7 +419,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
   const R = await getRig();
   // A world's programs on this renderer too, all of them: as with the film's, anything not built yet would be judged as a different picture. If it fails to build it draws as the film, as it would on screen.
   if (score.world) { await R.prepareWorld(score.world); await R.worldPrograms.get(score.world).whenAll; }
-  if (score.gestures.some(G => G.moves?.some(m => FOLD_SET[m.id]))) await R.whenFoldReady();      // the same for a film with a fold in it
+  if (score.world && score.gestures.some(G => G.moves?.some(m => FOLD_SET[m.id]))) await R.whenFoldReady();      // the same for a film with a fold in it
   const aspect = score.aspect ?? (globalThis.app?.canvas?.width && app.canvas.height ? app.canvas.width / app.canvas.height : 16 / 9);
   const stage = globalThis.app?.stage, live = () => stage?.score === score;
 
@@ -438,6 +439,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
 
   const task = () => new Promise(r => { wake = r; ch.port2.postMessage(0); });
   const gestures = score.gestures, rides = [], ways = [];
+  if (!opening && !score.world) await buildFor(R, score, until, breathe);
   // What will be morphed into soon has its plan already, and what's showing is showing. Only what's still ahead changes.
   const nowT = () => globalThis.app?.pictureT?.() ?? globalThis.app?.t ?? 0;
   const firstSeen = G => { const k = gestures.indexOf(G); return k > 0 ? gestures[k - 1].t1 - (gestures[k - 1].morph || 0) : k === 0 ? G.t0 : -Infinity; };
@@ -504,11 +506,19 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
     }
   }
   const ctxG = { W, H, px, breathe, task, mayChangeFor, opening, aspect, batch };
+  const clocked = { scan: (performance.now() - t0) / 1000 - rangeSeconds }, lap = (k, was) => { clocked[k] = +((performance.now() - was) / 1000).toFixed(2); };
+  let was = performance.now();
+  // A jump inside a trick is the trick's, and it's the trick that goes, not the pattern and a whole new film
+  if (batched && onFilm && jumps.length && score.woah && !opening) await swapForJumps(R, score, seen, jumps, ctxG);
   const flash = guard && (!jumps.length || lastTry) ? await (onFilm ? guardFilm : guardFlashes)(R, score, seen, ctxG) : null;
+  lap('guard', was); was = performance.now();
+  if (flash && onFilm && score.woah && !opening) flash.swaps = await guardWoah(R, score, seen, flash, ctxG);
+  lap('swaps', was); was = performance.now();
   if (flash && score.hear && hearing.on) await guardHeard(R, score, until, colour, ctxG);
+  lap('heard', was);
   ch.port1.close();
   const sitOut = [...new Set(rides.filter(r => r.sitsOut).map(r => r.id))];
-  return { jumps, bad: [...new Set([...sitOut, ...jumps.map(j => j.id)])], rides, ways, flash, sitOut, rangeSeconds, seconds: (performance.now() - t0) / 1000 };
+  return { jumps, bad: [...new Set([...sitOut, ...jumps.map(j => j.id)])], rides, ways, flash, sitOut, rangeSeconds, clocked, seconds: (performance.now() - t0) / 1000 };
 }
 
 // ---------------------------------------------------------------- flashes
@@ -610,8 +620,8 @@ const forget = G => { if (G) G.plan = G.planFor = G.planning = null; };
 
 // ---------------------------------------------------------------- the layer that follows the song
 // Everything above looks at the film with this layer off. So here it's on: the film as it's seen, and for the second or so around whatever's still flashing, the layer itself gives way (score.hear.ease), a little more each time it doesn't clear, and nowhere else. It takes nothing from the rest of the song. What flashes with it all the way down is the film's own.
-const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 2;
-const CAM_TRIES = 5, CAM_RATE = 0.3;
+const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 2, HEAR_LOOKS = 14;      // HEAR_LOOKS: close looks it has to spend, per second of film
+const CAM_TRIES = 3, CAM_RATE = 0.3;
 async function guardHeard(R, score, until, colour, ctx) {
   const H = score.hear, g = score.gestures, edits = { hear: 1 }, fps = (colour ? HEAR_SUB_WORLD : FILM_SUB) / STEP, HH = colour ? FLASH_H : FLASH_H_FILM, W = Math.max(8, Math.round(HH * ctx.aspect)), n = Math.ceil(until * fps);
   const seen = new FlashSeen(n + 1, W, HH, fps, colour, !colour);
@@ -626,6 +636,9 @@ async function guardHeard(R, score, until, colour, ctx) {
     await eyes.flush();
   };
   await look(0, n + 1);
+  // What it's got to look with. Past that, whatever's left is said by the judge and not by this, and a film's load time doesn't depend on how much it has going on.
+  let spent = 0;
+  const allowed = HEAR_LOOKS * until, count = k => { spent += k; }, close = (a, b, strict = false) => (spent > allowed ? { at: [], whole: 0 } : lookClose(R, score, a, b, ctx, count, edits, strict));
   const dips = H.dips = [];
   const dip = (a, b, to) => { for (let i = Math.max(0, Math.floor((a - HEAR_EDGE) * H.hz)), e = Math.min(H.n - 1, Math.ceil((b + HEAR_EDGE) * H.hz)); i <= e; i++) { const t = i / H.hz, k = smoother((t - (a - HEAR_EDGE)) / HEAR_EDGE) * smoother((b + HEAR_EDGE - t) / HEAR_EDGE); H.ease[i] = Math.min(H.ease[i], 1 - (1 - to) * k); } };
   const fine = new Set();
@@ -636,7 +649,7 @@ async function guardHeard(R, score, until, colour, ctx) {
     for (const w of stretches(seen.over(0, seen.n, colour), fps)) {
       const key = w.b.toFixed(1);
       if (fine.has(key)) continue;
-      const at = colour ? [w.b - 0.5] : (await lookClose(R, score, w.a, w.b, ctx, () => {}, edits)).at;
+      const at = colour ? [w.b - 0.5] : (await close(w.a, w.b)).at;
       if (!at.length) { fine.add(key); continue; }
       left++;
       H.ease ??= new Float32Array(H.n).fill(1);
@@ -650,7 +663,7 @@ async function guardHeard(R, score, until, colour, ctx) {
   // What's still flashing by the judge's own count with the layer nearly gone is the film's own. Giving way there has done nothing but leave a dead second, so the layer has it back.
   if (left) {
     const stuck = [];
-    for (const w of stretches(seen.over(0, seen.n, colour), fps)) if (!fine.has(w.b.toFixed(1))) stuck.push(...(colour ? [w.b - 0.5] : (await lookClose(R, score, w.a, w.b, ctx, () => {}, edits, true)).at));      // what the judge itself would count: anything less and the dip's doing its job
+    for (const w of stretches(seen.over(0, seen.n, colour), fps)) if (!fine.has(w.b.toFixed(1))) stuck.push(...(colour ? [w.b - 0.5] : (await close(w.a, w.b, true)).at));      // what the judge itself would count: anything less and the dip's doing its job
     const keep = dips.filter(d => !stuck.some(t => d.b > t - 1.3 && d.a < t + 0.2));
     if (keep.length < dips.length) { H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
   }
@@ -660,18 +673,103 @@ async function guardHeard(R, score, until, colour, ctx) {
     H.camSlowed = [];
     for (const w of stretches(seen.over(0, seen.n, false), fps)) {
       if (tried >= CAM_TRIES || fine.has(w.b.toFixed(1))) continue;
-      const was = await lookClose(R, score, w.a, w.b, ctx, () => {}, edits);
+      const was = await close(w.a, w.b);
       if (!was.at.length) continue;
       tried++;
       const a = Math.min(...was.at) - 1, b = Math.max(...was.at) + 0.2, kept = score.camera.lag?.slice() ?? null;
       slowCamera(score.camera, a, b, CAM_RATE);
       for (const G of g) if (G.t0 < b + 8 && G.t1 > a - 8) forget(G);
-      const now = await lookClose(R, score, w.a, w.b, ctx, () => {}, edits);
+      const now = await close(w.a, w.b);
       if (now.at.length < was.at.length || now.whole < was.whole) { H.camSlowed.push({ a: +a.toFixed(2), b: +b.toFixed(2), was: was.at.length, now: now.at.length }); await look(Math.floor((a - 1.5) * fps), Math.ceil((b + 8) * fps)); }
       else { score.camera.lag = kept; for (const G of g) if (G.t0 < b + 8 && G.t1 > a - 8) forget(G); }
     }
   }
   return dips;
+}
+
+// ---------------------------------------------------------------- what a film will draw with
+// Each trick's program is only built when it's first asked for, which on screen would be a hitch. So the film's walked, with nothing drawn, for what it's going to ask for: both renderers build those, and neither has to stop for one.
+async function buildFor(R, score, until, breathe) {
+  const want = new Set(), t0 = performance.now();
+  R.resize(16, 9, 1);
+  for (let t = 0; t < until; t += 0.25) {
+    for (const edits of [FILM_ONLY, null]) { frame(score, t, R, edits); want.add(R._variantOf(R.frame) | (R.timeOn ? TIME : 0)); }
+    await breathe();
+  }
+  const list = [...want], shown = globalThis.app?.R;
+  shown?.whenBuilt?.(list);
+  await R.whenBuilt(list);
+  score.woahPrograms = { list, seconds: +((performance.now() - t0) / 1000).toFixed(2) };
+}
+
+// ---------------------------------------------------------------- a trick the guard can't clear
+// It's swapped for the next thing that could go there, and what clears it most is kept. Nothing's dropped unless nothing else can go there, and all of it's in score.refused.
+const SWAP_TRIES = 4;
+function swapLooks(R, score, seen, ctx) {
+  const g = score.gestures, fps = seen.fps;
+  const scan = async ([a, b]) => {
+    const eyes = Eyes.of(R, seen.W, seen.H, ctx.batch, ctx.task);
+    for (let i = a; i < b; i++) {
+      const f = drawn(R, score, i / fps, seen.W, seen.H), o = { from: f.from, G: f.G, kind: f.kind };
+      if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
+      await ctx.breathe();
+    }
+    await eyes.flush();
+  };
+  const frames = (a, b) => [Math.max(0, Math.floor(a * fps)), Math.min(seen.n, Math.ceil(b * fps) + 1)];
+  return { scan, frames };
+}
+async function swapForJumps(R, score, seen, jumps, ctx) {
+  const W = score.woah, sub = FILM_SUB, { scan, frames } = swapLooks(R, score, seen, ctx), done = new Set();
+  const jumpsIn = ([a, b]) => { const out = []; for (let i = Math.max(a, sub); i < b; i += sub) if (Math.abs(seen.mean[i] - seen.mean[i - sub]) / 255 >= JUMP) out.push(i); return out; };
+  for (const j of [...jumps]) {
+    const slot = W.slots.find(s => j.t >= s.from - 0.5 && j.t <= s.to + 0.5);
+    if (!slot || done.has(slot)) continue;
+    done.add(slot);
+    const range = frames(slot.from - 1, slot.to + 1), before = jumpsIn(range).length, was = slot.id;
+    let cleared = false;
+    for (const alt of slot.alts) {
+      const undo = W.swap(slot, alt);
+      if (!undo) continue;
+      const kept = seen.keep(range);
+      await scan(range);
+      if (jumpsIn(range).length < before) { cleared = true; (score.refused ??= []).push({ t: +j.t.toFixed(2), what: `${was} became ${alt}`, why: 'a jump in brightness' }); break; }
+      undo();
+      seen.back(range, kept);
+    }
+    if (cleared) for (let i = jumps.length - 1; i >= 0; i--) if (jumps[i].t >= slot.from - 1 && jumps[i].t <= slot.to + 1) jumps.splice(i, 1);
+  }
+}
+async function guardWoah(R, score, seen, flash, ctx) {
+  const W = score.woah, { scan, frames } = swapLooks(R, score, seen, ctx), refused = (score.refused ??= []), swaps = [], g = score.gestures, fps = seen.fps;
+  const realIn = async range => { const out = { at: [], whole: 0 }; for (const w of stretches(seen.over(...range), fps)) { const r = await lookClose(R, score, w.a, w.b, ctx); out.at.push(...r.at); out.whole += r.whole; } return out; };
+  const worse = r => r.whole * 100 + r.at.length;
+  const at = t => flash.left.some(x => x >= t.a && x <= t.b);
+  const slots = W.slots.map(slot => ({ slot, a: slot.from - 1, b: slot.to + 1 })).filter(at);
+  let tries = 0;
+  for (const { slot, a, b } of slots) {
+    const range = frames(a, b);
+    let best = await realIn(range), cur = slot.id;
+    if (!worse(best)) continue;
+    const first = cur;
+    for (const alt of slot.alts) {
+      if (!worse(best) || tries >= SWAP_TRIES) break;
+      if (alt === cur) continue;
+      const undo = W.swap(slot, alt);
+      if (!undo) continue;
+      tries++;
+      const kept = seen.keep(range);
+      await scan(range);
+      const now = await realIn(range);
+      if (worse(now) < worse(best)) { best = now; cur = alt; }
+      else { undo(); seen.back(range, kept); }
+    }
+    if (cur !== first) { swaps.push({ t: +slot.from.toFixed(2), was: first, now: cur, left: best.at.length }); refused.push({ t: +slot.from.toFixed(2), what: `${first} became ${cur}`, why: best.at.length ? `it flashed, and this flashes less (${best.at.length} left)` : 'it flashed, and this does not' }); }
+    else if (slot.alts.length) refused.push({ t: +slot.from.toFixed(2), what: first, why: `flash left: ${best.at.length}, ${tries >= SWAP_TRIES ? 'out of tries' : 'nothing that could go here was better'}` });
+    else refused.push({ t: +slot.from.toFixed(2), what: first, why: `flash left: ${best.at.length}, and nothing else can go here` });
+  }
+  flash.left = [...new Set([...flash.left.filter(x => !slots.some(s => x >= s.a && x <= s.b)), ...(await realIn([0, seen.n])).at.map(t => +t.toFixed(1))])].sort((a, b) => a - b);
+  return swaps;
 }
 
 // ---------------------------------------------------------------- is it really flashing?
@@ -825,8 +923,9 @@ async function guardFilm(R, score, seen, ctx) {
     };
     // For those seconds only, the song lifts the sheet less
     const calmer = () => {
-      if (G.calm) return false;
-      return change(frames(first - 3.5, last + 3.5), () => { G.calm = FLASH_CALM; G.calmWin = [first - 1.5, last + 1.5]; }, () => { delete G.calm; delete G.calmWin; }, 'calmer', `the song's push at ${FLASH_CALM} from ${first.toFixed(1)} to ${last.toFixed(1)}`);
+      if (G.calm != null && G.calm < 1) return false;      // 1 is a move saying the song carries on as it was
+      const was = G.calm;
+      return change(frames(first - 3.5, last + 3.5), () => { G.calm = FLASH_CALM; G.calmWin = [first - 1.5, last + 1.5]; }, () => { if (was == null) delete G.calm; else G.calm = was; delete G.calmWin; }, 'calmer', `the song's push at ${FLASH_CALM} from ${first.toFixed(1)} to ${last.toFixed(1)}`);
     };
     if (!kind) {
       // Its flow, there and only there. A pattern that breathes on the clock pays the time back afterwards if it has room, so it's at its whitest on the breath again, and one that remembers its clock when it lets go isn't touched.
@@ -873,7 +972,7 @@ async function guardFilm(R, score, seen, ctx) {
       const p = G.peak;
       if (still && p?.q) await change(across(1), () => { G.peak = { hit: p.hit, q: 0 }; }, () => { G.peak = p; }, 'softened to q 0', `off its hit at ${p.hit.toFixed(2)}`);
       // A transformation only goes where it's quiet, or where the whole frame's flashing and nothing else cleared it: a whole-frame flash is the one thing with no allowance at all.
-      if (still && G.xform && (!loud || spot.whole)) {
+      if (still && G.xform && !G.xform.woah && (!loud || spot.whole)) {      // a trick isn't taken away here: it gets swapped for another (guardWoah)
         const was = { xform: G.xform, carry: N.carry }, end = frames(0, N.t1)[1];
         await change([across(1)[0], end], () => { delete G.xform; delete N.carry; }, () => { G.xform = was.xform; if (was.carry) N.carry = was.carry; }, `no ${was.xform.id}`, `no ${was.xform.id}`);
       }

@@ -13,6 +13,7 @@ import { buildReact, surgedBeats, makeWalk } from './react.js';
 import { buildHear, hearRates, flowLagAt, HEAR_FLOOR } from './hear.js';
 import { wearCamera } from './camera.js';
 import { wearFolds } from './moves/foldfilm.js';
+import { castWoah } from './woah.js';
 import { buildTime } from './time.js';
 import { direct } from './direct.js';
 import { applyCut } from './cut.js';
@@ -820,7 +821,10 @@ export function compose(A, seed = 1, opts = {}) {
   film.walk = walk;
   film.heard = heard;
   film.hear = buildHear(A, heard, { hits: film.sheet?.hits ?? [] });
-  if (directing.folds && !opts.cut && !W) wearFolds(film, G => ({ score: film, A, M, G, shot: null, at: film.time ?? (x => x), bar: M.bar, beat: M.beat, meter: A.meter || 4, tau: film.tau }), { A, bar: M.bar, seed });      // ?folds=1: everything's where it's going to be by here
+  // src/score/woah.js: what a film goes through, by the music. ?woah=0 is the film without it. Everything's where it's going to be by here
+  const worn = G => ({ score: film, A, M, G, shot: null, at: film.time ?? (x => x), bar: M.bar, beat: M.beat, meter: A.meter || 4, tau: film.tau });
+  if (directing.woah && !opts.cut && P && (!W || W.woah)) { film.woah = castWoah(film, A, react.M, { seed, songHash, world: W ?? null, ctxOf: worn }); if (film.woah) film.stats.woah = film.woah.stats; }
+  if (!directing.woah && directing.folds && !opts.cut && !W) wearFolds(film, G => ({ score: film, A, M, G, shot: null, at: film.time ?? (x => x), bar: M.bar, beat: M.beat, meter: A.meter || 4, tau: film.tau }), { A, bar: M.bar, seed });      // ?folds=1: everything's where it's going to be by here
   // Stop ducking the song. A hero can step the song back only so far, while the layer's up: the picture keeps answering through it.
   if (film.ambient) { const raw = film.ambient; film.ambient = t => { const a = raw(t), k = walk.on ?? 0; return k > 0 ? a + (Math.max(a, HEAR_FLOOR) - a) * k : a; }; }
   if (hearing.on && !opts.cut && !W) hearRates(film, film.hear);      // a hand cut's flow is as it was cut

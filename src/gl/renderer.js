@@ -87,6 +87,19 @@ export class Renderer {
     this.order = [...this.order, ...more];
     if (!this._pending && !this._warming) this._next();
   }
+  // These programs, built and warmed behind the picture. A film says what it's going to draw with while it rehearses, so that nothing's first asked for on screen.
+  whenBuilt(list) {
+    const more = list.filter(v => !this.progs[v] && !this.order.includes(v));
+    if (more.length) this.order = [...this.order, ...more];
+    return new Promise(res => {
+      const wait = () => {
+        if (list.every(v => this.progs[v] && this._warm?.has(v))) { res(); return; }
+        if (!this._pending && !this._warming) this._next();
+        setTimeout(wait, 16);
+      };
+      wait();
+    });
+  }
   _next() { const next = this.order.find(n => !this.progs[n]); if (next !== undefined) { this._start(next); this._poll(); } else this._warmAll(); }
 
   _start(v) {

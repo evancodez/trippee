@@ -24,6 +24,7 @@ export const MOVES = { slip, star, coin, snap, cue, moire, vertigo, confocal, mi
 export function runMoves(out, ctx) {
   for (const m of ctx.G.moves) {
     const move = MOVES[m.id];
+    if (m.gate && (ctx.t < m.from || ctx.t > m.to)) continue;      // src/score/woah.js: at either end of its time it's the plain sheet, so outside that it needn't be drawn with what it's drawn with
     if (move && flag(m.id)) move.write(out, { ...ctx, m });
   }
 }
