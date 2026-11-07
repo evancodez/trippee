@@ -1,7 +1,7 @@
 // What Flower Power hears. One flow clock for the whole film, in rings, locked to the beat: so a line's number never jumps at a landing, and every line was born at one moment of the song.
 import { clockOf } from '../../score/compose.js';
 import { surgedBeats } from '../../score/react.js';
-import { groundOf } from './inks.js';
+import { groundOf, SETS } from './inks.js';
 import { FLOW } from './patterns.js';
 
 const RING_MOST = 1.25;         // rings a second. The plan's limit is 1.5, but where bands are as big as a tile each ring going by is a flash there, and a Bud's push comes on top. Any higher reads two a second on tiles all through the film.
@@ -69,9 +69,41 @@ export function hearSong(A, M) {
     const g = groundOf(fifths(relMajor(home.c), relMajor(c)), (c & 1) !== 0);
     for (let i = b; i < Math.min(rings, b + BLOCK); i++) ground[i] = g;
   }
-  const out = { bloom, ground, when, rings, N, inks, on: on.map(o => o.pc), id: A.hash ?? String(A.duration), ...buzzOf(A, M) };
+  const out = { bloom, ground, when, rings, N, inks, on: on.map(o => o.pc), id: A.hash ?? String(A.duration), set: setsOf(A, M, when, rings), ...buzzOf(A, M) };
+  // The whoa: the buzz stops dead, and the next ring out is in another set altogether.
+  const w = whoaOf(out, M);
+  if (w) { const at = when.findIndex(x => x >= w.t), was = out.set[at], to = was === 4 ? 1 : 4; for (let i = at; at >= 0 && i < Math.min(rings, at + 16) && out.set[i] === was; i++) out.set[i] = to; }
   memo.set(A, out);
   return out;
+}
+
+// Which set of inks each ring is born in. A new set comes in where the song arrives somewhere, the bigger the arrival the stronger the set, and it's never long without one. It's the ring that's born in it, so it comes out of the flowers and takes a few seconds to reach the corners.
+const APART = 16, LONGEST = 40;       // seconds between one set and the next
+const BY_SIZE = [4, 1, 0, 3, 5, 2];     // acid and pop for the biggest arrivals, candy for the least
+function setsOf(A, M, when, rings) {
+  const set = new Int8Array(rings), end = A.duration, picked = [];
+  for (const a of M?.arrivals?.(0.25) ?? []) if (a.t > 8 && a.t < end - 8 && picked.every(p => Math.abs(p.t - a.t) >= APART)) picked.push(a);
+  const bars = M?.bars ?? [];
+  picked.sort((p, q) => p.t - q.t);
+  const all = [{ t: 0, a: 0 }, ...picked, { t: end, a: 0 }], plan = [];
+  all.forEach((p, i) => {
+    plan.push(p);
+    const n = all[i + 1];
+    if (!n) return;
+    const gaps = Math.floor((n.t - p.t) / LONGEST);
+    for (let k = 1; k <= gaps; k++) { const want = p.t + (k * (n.t - p.t)) / (gaps + 1), bar = bars.length ? bars.reduce((b, x) => (Math.abs(x - want) < Math.abs(b - want) ? x : b), bars[0]) : want; plan.push({ t: bar, a: 0.2 }); }
+  });
+  // The strength of an arrival picks the set, but never the one that's up, or the one before it.
+  let cur = 0, prev = -1;
+  const onSet = plan.map((p, i) => {
+    if (i === 0) return { t: 0, s: 0 };
+    const order = p.a >= 0.6 ? BY_SIZE : p.a >= 0.35 ? [1, 3, 5, 0, 4, 2] : [2, 5, 0, 3, 1, 4], s = order.find(x => x !== cur && x !== prev) ?? 0;
+    prev = cur; cur = s;
+    return { t: p.t, s };
+  });
+  let k = 0;
+  for (let i = 0; i < rings; i++) { while (k + 1 < onSet.length && onSet[k + 1].t <= when[i]) k++; set[i] = Math.min(onSet[k].s, SETS.length - 1); }
+  return set;
 }
 
 // The buzz: harmony's pull as how close the inks' luminances are. It builds slowly, and a cadence stills it, dead, on the chord. It's never held for long: past HOLD bars on one chord it eases off, because held, it hurts.

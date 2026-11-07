@@ -1,6 +1,10 @@
 // Flower Power: what docs/MODES.md section 8 asks of it that no other test does. Muted, like every browser here.
 //   STAGE=stills                       every pattern in the pool, calm and buzzing, as a sheet. No song.
 //   STAGE=buds                         every Bud in the pool, as sheets, and a line's ink carried through it, by numbers. No song.
+//   STAGE=sheet                        every pattern on one sheet, to judge them against each other. TIMES=20,21,22 for several moments, NAME=file
+//   STAGE=lands                        landings as sheets: LANDS=daisy>hearts:bud,hearts>check:melt,check>dart:tide3 (tide3 is a straight tide), D=seconds. No song.
+//   STAGE=clicks                       every pattern in the library by a real click on its tile. On its own: the others stop the clock
+//   STAGE=steps SONG=... AT=t,t        frames either side of moments in the film, and what changed
 //   STAGE=film SONG=media/mgmt.mp3     the world's whole film as a person gets it: what it hears, what it lands on, a 20 s sheet and slices across a Bud.
 //   STAGE=change                       from the film into the world and back, as a sheet, with the byte check at the middle.
 //   STAGE=cost                         GPU ms per program at 3024x1964, governor off. Say what else was running.
@@ -74,6 +78,97 @@ async function stages({ page, log, save, sleep }) {
     save('stills.jpg', r.sheet);
     log('stills', r.ids.join(' '), 'variant', r.variant);
   }
+  if (want.includes('sheet')) {
+    // Every pattern on one sheet, so they can be judged against each other. EVERY=seconds apart for the columns.
+    const r = await page.eval(async ts => {
+      const W = await F_.enter();
+      const cv = document.createElement('canvas'), P = W._pool, cols = 4, w = 480, h = 270, rows = Math.ceil(P.length * ts.length / cols);
+      cv.width = cols * w; cv.height = rows * h;
+      const g = cv.getContext('2d'); let i = 0;
+      for (const p of P) for (const t of ts) { F_.show(p, t); const x = (i % cols) * w, y = Math.floor(i / cols) * h; g.drawImage(trippee.canvas, x, y, w, h); g.fillStyle = '#000'; g.fillRect(x, y, 150, 18); g.fillStyle = '#fff'; g.font = '13px monospace'; g.fillText(p.id.slice(7), x + 4, y + 13); i++; }
+      return { sheet: cv.toDataURL('image/jpeg', 0.9), n: P.length };
+    }, (process.env.TIMES || '6').split(',').map(Number));
+    save(process.env.NAME || 'sheet.jpg', r.sheet);
+    log('sheet', r.n, 'patterns');
+  }
+  if (want.includes('lands')) {
+    // Landings of every kind, as sheets: LANDS=a>b:kind,... with no song, so the clock's steady. D seconds each.
+    const list = (process.env.LANDS || 'daisy>bloom:bud,daisy>hearts:bud,daisy>check:melt,hearts>stars:melt,check>dart:melt,moddaisy>bloom:bud,bloom>mandala:tide,hearts>peace:tide,peace>check:tide,check>chevron:melt,chevron>dart:tide,dart>burst:bud,circles>poppy:bud,bloom>check:dive,check>hearts:iris').split(',').map(s => s.split(/[>:]/));
+    const r = await page.eval(async (list, D) => {
+      const W = await F_.enter(), by = id => W._pool.find(p => p.id === 'flower.' + id), out = [];
+      const N = 10, w = 256, h = 144, cv = document.createElement('canvas'); cv.width = w * N; cv.height = h * list.length;
+      const g = cv.getContext('2d');
+      for (let k = 0; k < list.length; k++) {
+        const [a, b, kind] = list[k], st = app.stage;
+        st.score.handover = null;
+        st.score.gestures = [{ t0: -20, t1: 2 + D, arcEnd: 2 + D, pattern: by(a), morph: D, xform: kind === 'tide3' ? { id: 'tide', dir: 3, ang: 0.6 } : { id: kind, chosen: true } }, { t0: 2 + D, t1: 3600, arcEnd: 2 + D + 26, pattern: by(b) }];
+        st.hold = true; app.t = 0; trippee.seek(0);
+        for (let i = 0; i < 400 && !st.score.gestures[0].plan; i++) { trippee.seek(2.5); await new Promise(r => setTimeout(r, 4)); }
+        let kinds = new Set(), V = new Set();
+        for (let i = 0; i < N; i++) { const t = 1.5 + i * (D + 1) / (N - 1); trippee.seek(t); kinds.add(app.lastFrame.kind); V.add(app.R.variant); g.drawImage(trippee.canvas, i * w, k * h, w, h); g.fillStyle = '#000'; g.fillRect(i * w, k * h, 150, 15); g.fillStyle = '#fff'; g.font = '11px monospace'; g.fillText(`${a}>${b} ${t.toFixed(1)} ${app.lastFrame.kind ?? ''}`, i * w + 3, k * h + 11); }
+        out.push(`${a}>${b} wanted ${kind}: ${[...kinds].join(',')} programs ${[...V].join(',')}`);
+      }
+      return { sheet: cv.toDataURL('image/jpeg', 0.9), out };
+    }, list, +(process.env.D || 8));
+    save(process.env.NAME || 'lands.jpg', r.sheet);
+    log('lands\n  ' + r.out.join('\n  '));
+  }
+  if (want.includes('clicks')) {
+    // Every pattern in the library, by a real click on its tile, on the wander. Each has to land, with no error.
+    const mouse = (type, x, y, o = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, button: o.button ?? 'none', buttons: o.buttons ?? 0, clickCount: o.clickCount ?? 0 });
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+    const ids = await page.eval(async () => {
+      try { document.querySelector('#hints [data-ok]').click(); } catch {}
+      await app.stage.setWorld('flower');
+      app.ui.library.show(true);
+      window.__tile = id => { const t = app.ui.library.tiles.get(id); t.b.scrollIntoView({ block: 'center' }); const r = t.b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2 - 8]; };
+      return app.stage.world._pool.map(p => p.id);
+    });
+    for (let i = 0; i < 300; i++) { if (await page.eval('!app.stage.score.handover?.change')) break; await sleep(100); }
+    await sleep(400);
+    const shown = await page.eval(() => [...document.querySelectorAll('#library .tile')].filter(b => b.offsetParent).map(b => b.title));
+    log('library shows', shown.length, 'tiles of', ids.length);
+    let good = 0;
+    const order = ids.map((_, k) => ids[(k * 11 + 3) % ids.length]);
+    for (const id of order) {
+      const [x, y] = await page.eval(`__tile(${JSON.stringify(id)})`);
+      await sleep(30);
+      await mouse('mouseMoved', x, y); await mouse('mousePressed', x, y, { button: 'left', buttons: 1, clickCount: 1 }); await mouse('mouseReleased', x, y, { button: 'left', clickCount: 1 });
+      let landed = null; const t0 = Date.now(), kinds = new Set();
+      while (Date.now() - t0 < 16000) { await sleep(120); const st = await page.eval(() => ({ p: app.lastFrame.G.pattern.id, k: app.lastFrame.kind, m: !!app.lastFrame.N })); if (st.k) kinds.add(st.k); if (st.p === id && !st.m) { landed = Date.now() - t0; break; } }
+      if (landed != null) good++;
+      log(landed != null ? 'ok  ' : 'FAIL', id, landed != null ? `${(landed / 1000).toFixed(1)} s` : 'never landed', [...kinds].join(','));
+    }
+    log(`clicks: ${good}/${ids.length} landed`);
+  }
+  if (want.includes('steps')) {
+    // Frames just either side of moments in the film, and the difference between them: AT=t,t,... SONG=...
+    const songPath = process.env.SONG || 'media/mgmt.mp3';
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+    await sleep(400);
+    await dropSong(page, songPath, { resolvePath: resolve, sleep });
+    await enterWorld(page, 'flower', log);
+    const ats = (process.env.AT || '').split(',').map(Number);
+    const r = await page.eval(async ats => {
+      app.manual = true;
+      const g0 = app.stage.score.gestures.map(G => `${G.pattern.id.slice(7)} ${G.t0.toFixed(2)}-${G.t1.toFixed(2)} m${(G.morph ?? 0).toFixed(1)} ${G.xform?.id ?? '-'} ${(G.moves ?? []).map(m => m.id).join('+')} ${G.run ?? ''}`);
+      const w = 320, h = 180, cv = document.createElement('canvas'); cv.width = w * 4; cv.height = h * ats.length;
+      const g = cv.getContext('2d', { willReadFrequently: true }), small = document.createElement('canvas'); small.width = w; small.height = h; const sg = small.getContext('2d', { willReadFrequently: true });
+      const out = [];
+      for (let k = 0; k < ats.length; k++) {
+        const t = ats[k], grab = T => { trippee.seek(T); sg.drawImage(trippee.canvas, 0, 0, w, h); return sg.getImageData(0, 0, w, h); };
+        trippee.seek(t - 2); for (let i = 0; i < 60; i++) { trippee.seek(t - 2 + i * 0.02); if (app.lastFrame.N && !app.stage.score.gestures.find(G => G.t1 > t - 1)?.plan) await new Promise(r => setTimeout(r, 4)); }
+        const a = grab(t - 1 / 60), f = app.lastFrame, was = { kind: f.kind, p: f.G.pattern.id, x: +(f.T || 0).toFixed(3) }, b = grab(t + 1 / 60), f2 = app.lastFrame, now = { kind: f2.kind, p: f2.G.pattern.id }, c = grab(t + 3 / 60);
+        const dm = (p, q) => { let s = 0; for (let i = 0; i < p.data.length; i += 4) s += Math.abs(p.data[i] - q.data[i]) + Math.abs(p.data[i + 1] - q.data[i + 1]) + Math.abs(p.data[i + 2] - q.data[i + 2]); return +(s / (w * h * 3)).toFixed(2); };
+        const d = new ImageData(w, h); for (let i = 0; i < d.data.length; i += 4) { const v = Math.min(255, 3 * (Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 1] - b.data[i + 1]) + Math.abs(a.data[i + 2] - b.data[i + 2]))); d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+        g.putImageData(a, 0, k * h); g.putImageData(b, w, k * h); g.putImageData(c, 2 * w, k * h); g.putImageData(d, 3 * w, k * h);
+        out.push({ t, was, now, across: dm(a, b), next: dm(b, c) });
+      }
+      return { sheet: cv.toDataURL('image/jpeg', 0.92), out, g0 };
+    }, ats);
+    save(process.env.NAME || 'steps.jpg', r.sheet);
+    log(r.g0.join('\n')); log(JSON.stringify(r.out));
+  }
   if (want.includes('buds')) {
     const r = await page.eval(async () => {
       const W = await F_.enter(), P = W._pool, out = [];
@@ -104,7 +199,8 @@ async function stages({ page, log, save, sleep }) {
       const s = app.stage.score, T = s.tables, g = s.gestures;
       return {
         bpm: s.song?.bpm, meter: s.song?.meter, N: T?.N, rings: T?.rings, cadences: T?.cadences?.map(c => ({ t: +c.t.toFixed(2), from: +c.from.toFixed(2), to: +c.to.toFixed(2), held: +c.held.toFixed(1) })),
-        gestures: g.map(G => `${G.pattern.id.slice(7)} ${G.t0.toFixed(1)}-${G.t1.toFixed(1)} m${(G.morph ?? 0).toFixed(1)}`),
+        gestures: g.map(G => `${G.pattern.id.slice(7)} ${G.t0.toFixed(1)}-${G.t1.toFixed(1)} m${(G.morph ?? 0).toFixed(1)} ${G.xform?.id ?? '-'} ${(G.moves ?? []).map(m => m.id).join('+')}`),
+        sets: Array.from(T?.set ?? []).join('').replace(/(.)\1+/g, (m, c) => `${c}x${m.length} `),
         inks: T?.inks, on: T?.on, blooms: Array.from(T?.bloom ?? []).slice(0, 64).join(''), grounds: Array.from(T?.ground ?? []).slice(0, 64).join(''),
         guard: app.song.rehearsal?.flash ?? null, refused: s.refused ?? null,
         ringsPerS: (s.phi(60, g[0]) - s.phi(50, g[0])) * 6 / 10, buzzMean: T ? +(T.buzz.reduce((a, b) => a + b, 0) / T.buzz.length).toFixed(3) : null, buzzMax: T ? +Math.max(...T.buzz).toFixed(2) : null,

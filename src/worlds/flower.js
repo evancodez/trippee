@@ -2,108 +2,51 @@
 // A line's ink is what was sounding when it was born: its note on one side, its chord on the other. So the rings going out are the last bars of the song.
 import { OFF } from '../pattern/layout.js';
 import { pool, FLOW } from './flower/patterns.js';
-import { ROWS, paint, chips } from './flower/inks.js';
+import { FIELD, PHASE, COLOR } from './flower/field.js';
+import { ROWS, paint, chips, SETS } from './flower/inks.js';
 import { flowClock, hearSong, buzzAt, whoaOf } from './flower/song.js';
-import bud, { giveWay } from './flower/bud.js';
+import bud, { giveWay, melt, tide } from './flower/bud.js';
+import { cast, landings, moves } from './flower/direct.js';
+import './flower/moves.js';
 
-const FIELD = `
-// A petal: round on top, with a cusp in each valley. soft rounds the cusp, which is what lets it go far from the flower, where cusps would only throw thorns at each other.
-float wFlowerPetal(float x,float fat,float soft){ return pow((.5+.5*cos(x)+soft)/(1.+soft),.5*fat); }
-vec4 wFlowerPole(int b,int i){ return i==0?uG[b+I_mBlobA]:i==1?uG[b+I_mBlobB]:i==2?uG[b+I_mBlobC]:i==3?uG[b+I_p1]:uG[b+I_p2]; }
-// The flowers.
-float wFlowerBlooms(int b,vec2 X,vec4 f,vec4 f2,float e){
-  float a=f.w,n=f.y,kap=f2.y,be=f2.z,fat=f2.w,fade=uG[b+I_star2].y,sum=0.;
-  for(int i=0;i<5;i++){
-    vec4 P=wFlowerPole(b,i);
-    float r=abs(P.z);
-    if(r<1e-4||P.z<0.) continue;
-    vec2 d=X-P.xy;
-    float q=dot(d,d),er=e*r,D=q+er*er;
-    // Each flower gives birth a little out of step with the others (.16 of a unit of S is about .4 of a ring), or the whole frame's share of each ink goes up and down together at the rate of the rings, and that's a whole-frame flash in the chroma.
-    float l=.5*log(D)-log(r)+.16*mod(float(i)*2.,5.);
-    // The petals: none at the very centre, so it's a bold round cap, and letting go far out, so the echoes melt together.
-    if(a!=0.){ float qr=q/(r*r),u=q/D; l-=log(1.+a*u*u/(1.+qr*fade)*wFlowerPetal(n*(atan(d.y,d.x)+P.w)+kap*.5*log(q+1e-5),fat,.006+.012*qr)); }
-    sum+=exp(-be*l);
-  }
-  float S=sum>0.?-log(sum)/be:0.;
-  return S+f2.x*exp(S);                 // bands swell going out, but not without end: there are more of them far from a flower, and the gaps fill
-}
-// Whiplash and Flames, and what's on the way to or from them: only in the programs that draw them (W.fuller). With them in every program a Daisy paid up to 2.6 ms at 3024x1964 for code it never ran.
-#ifdef WORLD_FULL
-// Whiplash: the sheet is dragged round each pole, so what would be ovals sweeps into long S-curves between them.
-vec2 wFlowerCurl(int b,vec2 X,float curl){
-  for(int i=0;i<5;i++){
-    vec4 P=wFlowerPole(b,i);
-    if(P.z==0.) continue;
-    vec2 d=X-P.xy; X=P.xy+rot(clamp(P.z*5.,-1.,1.)*curl*exp(-dot(d,d)/(1.2*P.z*P.z)))*d;
-  }
-  return X;
-}
-// Whiplash's lines: every pole adds, and the sinks take away. Lines pinch at the saddles.
-float wFlowerWhip(int b,vec2 X,float e){
-  float wh=0.;
-  for(int i=0;i<5;i++){
-    vec4 P=wFlowerPole(b,i);
-    float r=abs(P.z);
-    if(r<1e-4) continue;
-    vec2 d=X-P.xy;
-    float er=e*r;
-    wh+=clamp(P.z*5.,-1.,1.)*.5*log(dot(d,d)+er*er+.0064);
-  }
-  return wh;
-}
-// Flames: a flower unrolled, so its radius runs up the frame and its petals along it, the cusps pointing up.
-float wFlowerFlame(int b,vec2 X,float a,float kap,float fat,float lobes){ return X.y+log(1.+a*(.55+.45*sin(1.7*X.x+1.3))*wFlowerPetal(lobes*X.x+kap*X.y,fat,.004)); }
-#endif
-float worldField(int b,vec2 X,vec4 f){
-  vec4 f2=uG[b+I_field2],sp=uG[b+I_spare];
-  float lines=dot(uG[b].xy,X*uG[b+I_tune].x)/uG[b+I_star2].w;      // the stripes under the field, which it takes away. See patterns.js
-#ifdef WORLD_FULL
-  float curl=uG[b+I_star2].z;
-  if(curl!=0.) X=wFlowerCurl(b,X,curl);
-  if(sp.z>=1.) return wFlowerFlame(b,X,f.w,f2.y,f2.w,sp.w)-lines;
-  if(sp.x>=1.) return wFlowerWhip(b,X,sp.y)-lines;
-#endif
-  float S=wFlowerBlooms(b,X,f,f2,sp.y);
-#ifdef WORLD_FULL
-  if(sp.x!=0.) S=mix(S,wFlowerWhip(b,X,sp.y),sp.x);
-  if(sp.z!=0.) S=mix(S,wFlowerFlame(b,X,f.w,f2.y,f2.w,sp.w),sp.z);
-#endif
-  return S-lines;
-}
-`;
-// Most pixels are one ink: only an edge has both to fetch. A texture fetch for a colour nobody's using cost a whole millisecond at 3024x1964.
-const COLOR = `vec3 worldColor(int k0,int k1,float c){ ivec2 n=lineRows(k0,k1); if(c>=1.) return gamma(inkRow(n.x,0)); if(c<=0.) return gamma(inkRow(n.y,1)); return gamma(mix(inkRow(n.y,1),inkRow(n.x,0),c)); }
-`;
-
-// With no song, a made-up tune and slow changes.
+// With no song, a made-up tune and slow changes. It goes through the sets on its own.
 const TUNE = [0, 1, 2, 0, 1, 7, 0, 2, 1, 0, 3, 1, 0, 2, 1, 2];
 const CHANGES = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 3, 3, 5, 5, 1, 1];
-const made = n => [TUNE[((n % 16) + 16) % 16], CHANGES[(((n >> 1) % 16) + 16) % 16]];
-const inkOf = song => {
-  if (!song) { made.id = 'made'; return made; }
-  if (song.inkAt) return song.inkAt;
-  const f = n => { const i = -n; return i >= 0 && i < song.rings ? [song.bloom[i], song.ground[i]] : made(n); };
-  f.id = song.id;
-  return song.inkAt = f;
+const LINES_PER_SET = 28, NO_SONG_RATE = FLOW * 0.25, RUN_LEAD = 4;       // lines a second with no song. A pattern's run starts a few seconds ahead of it, so what's showing by the time it arrives is the run.
+const made = n => [TUNE[((n % 16) + 16) % 16], CHANGES[(((n >> 1) % 16) + 16) % 16], (((Math.floor(-n / LINES_PER_SET)) % SETS.length) + SETS.length) % SETS.length];
+const runAt = (g, t) => { if (!g?.length) return null; let lo = 0, hi = g.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (g[m].t0 <= t) lo = m; else hi = m - 1; } return g[lo].run ?? g[lo].pattern.run ?? null; };
+// What line n wears. The tune and the changes when it was born, unless what was on then, or what was just about to be, wears a run.
+const inkOf = (song, score) => {
+  const g = score?.gestures;
+  const f = n => {
+    const i = -n;
+    if (song && i >= 0 && i < song.rings) return [song.bloom[i], song.ground[i], song.set[i], runAt(g, song.when[i] + RUN_LEAD), 2 * i];
+    return [...made(n), song ? null : runAt(g, (3 - n) / NO_SONG_RATE + RUN_LEAD), 2 * i];
+  };
+  f.id = song?.id ?? 'made';
+  return f;
 };
 const clamp01 = x => Math.max(0, Math.min(1, x));
+const POLE_SIZES = ['blobs.r1', 'blobs.r2', 'blobs.r3', 'p1.q', 'p2.q'].map(n => OFF[n]);
+const PH0 = 3;      // about where a pattern's rings sit before the flow
+const BULGE = OFF['bulge.a'], TEETH = OFF['zig.a'], BEND = OFF['bend1.a'];
 const SWEEP = 1.2, SWEEP_LINES = 6;      // seconds from the line being born to the farthest showing: bands this bold are only about this many lines out from a flower to the corner
 
 export default {
   id: 'flower', name: 'Flower Power', chips, pool, borrow: [], needs: ['voices'],
-  glsl: { field: FIELD, color: COLOR },
+  glsl: { field: FIELD, phase: PHASE, color: COLOR },
   ink: { R: ROWS, fams: [0], roll: false, weights: [1, 0, 0, 0] },
-  fuller: S => S[OFF['spare.a']] !== 0 || S[OFF['spare.c']] !== 0 || S[OFF['star._2']] !== 0,      // Whiplash's lines, Flames', and the curl
+  fuller: S => S[OFF['spare.a']] !== 0 || S[OFF['spare.c']] !== 0 || S[OFF['star._2']] !== 0 || (S[OFF['field.kind']] === 4 && S[OFF['field.b']] !== 0) || S[OFF['blobs.beta']] !== 0 || S[OFF['blobs.k']] !== 0 || S[OFF['ribbon.a']] !== 0,      // Whiplash's lines, Flames', the curl, the motifs, tiles, and what goes inside a band
   table: {
     h: 2,
     fill(tex, ctx) {
       // The window of lines that can be showing: one flight's clock ahead of what's being born now, and everything out to the far corner. Read off what's drawn, so a change of world's old clock counts too.
-      const S = ctx.change && ctx.x >= 0.5 ? ctx.B : ctx.A, nNow = Math.floor(S[OFF['f0.ph']]) - 4;
+      // In a film everything's on the one clock, so it's the clock that says, whichever slot's showing: in a flight the slot flown out of has come to rest, and going by that the buzz's sweep would jump at the landing.
+      const S = ctx.change && ctx.x >= 0.5 ? ctx.B : ctx.A, clockOn = ctx.score.phi && ctx.score.tables && !ctx.change, nNow = Math.floor(clockOn ? PH0 - FLOW * ctx.score.phi(ctx.t, ctx.G) : S[OFF['f0.ph']]) - 4;
       // The buzz stops from the flowers out, over about a second. All at once it's the whole frame's chroma stepping, one half of a whole-frame flash, and the eye can't follow it anyway.
       // With no song it comes and goes on its own, more often gone.
       const song = ctx.tables, none = Math.pow(clamp01(0.5 + 0.5 * Math.sin(ctx.t * 0.13 - 1.2)), 3);
-      return paint(tex, nNow - 12, song ? n => buzzAt(song, ctx.t - SWEEP * clamp01((n - nNow - 1) / SWEEP_LINES)) : () => none, inkOf(song));
+      return paint(tex, nNow - 12, song ? n => buzzAt(song, ctx.t - SWEEP * clamp01((n - nNow - 1) / SWEEP_LINES)) : () => none, inkOf(song, ctx.score));
     },
   },
   tables: (A, M) => hearSong(A, M),
@@ -113,7 +56,7 @@ export default {
     if (!score.tau || !score.react) return score;
     const clock = flowClock(score, A);
     score.phi = t => clock(t);
-    const g = score.gestures;
+    const g = cast(score, A, M);
     // The whoa has nothing but rings moving: no landing in the bars before it. A landing there comes earlier if there's room, or else the gesture carries on through.
     const w = whoaOf(hearSong(A, M), M), QUIET = 10;
     if (w) for (let i = 0; i + 2 < g.length; i++) {
@@ -123,22 +66,38 @@ export default {
       if (bar - G.t0 - (G.morph || 0) >= 8) { G.t1 = bar; G.arcEnd = bar; N.t0 = bar; }
       else { G.t1 = N.t1; G.arcEnd = N.t1; G.morph = N.morph; g.splice(i + 1, 1); i--; }
     }
-    // Every landing is a Bud (motion.xform), and a rehearsal can't take one away (motion.keep): a flight in these bold inks is the one ugly thing this world can do, so a flash in a Bud has to be fixed in the Bud. tests/flashworld.mjs holds it to the limit.
-    for (const G of g) delete G.xform;
+    // Who's on, how they get to the next, and what they do. A rehearsal can't take a landing away (motion.keep): what it has instead is what the landing offers, then taking longer. A flash in one has to be fixed in that one. tests/flashworld.mjs holds it to the limit.
+    landings(score);
+    moves(score, A, M);
     return score;
   },
   // Lung: petal depth.
   uniforms(U, ctx) {
-    // In a Bud the rings don't ease to rest and catch up, as other transformations' clocks do: they run on the one clock, right through it.
-    if (ctx.kind === 'bud' && ctx.from && ctx.to) {
-      const a = ctx.from.pattern.g.fams[0].ph, b = ctx.to.pattern.g.fams[0].ph;
-      // A rehearsal that's watched a Bud flash can ask the rings to give way (bud.js, its levers): behind at the middle, where everything else is moving fastest, and paying it back at the ends, where nothing is. They land exactly on the clock.
-      ctx.A[OFF['f0.ph']] = a + (b - a) * ctx.T - FLOW * ctx.score.phi(ctx.t, ctx.to) - (ctx.from.budRest ?? 0) * giveWay(ctx.x);
+    const { A, B, kind, from, to, t, score } = ctx;
+    // In a world's landing the rings don't ease to rest and catch up, as other transformations' clocks do: they run on the one clock, right through it.
+    if (from && to && (kind === 'bud' || kind === 'melt')) {
+      const a = from.pattern.g.fams[0].ph ?? 0, b = to.pattern.g.fams[0].ph ?? 0;
+      // A rehearsal that's watched one flash can ask the rings to give way (bud.js, its levers): behind at the middle, where everything else is moving fastest, and paying it back at the ends, where nothing is. They land exactly on the clock.
+      A[OFF['f0.ph']] = a + (b - a) * ctx.T - FLOW * score.phi(t, to) - (from.budRest ?? 0) * giveWay(ctx.x);
+    } else if (from && to && kind === 'tide') {
+      const now = FLOW * score.phi(t, to) + (from.budRest ?? 0) * giveWay(ctx.x);
+      A[OFF['f0.ph']] = (from.pattern.g.fams[0].ph ?? 0) - now; B[OFF['f0.ph']] = (to.pattern.g.fams[0].ph ?? 0) - now;
+      U.e[15] = ctx.plan.ang ?? 0;      // the way a straight tide goes
     }
     const s = ctx.at(ctx.c);
-    if (s) { const k = 1 + 0.3 * Math.min(s.lung, 1.2); ctx.A[OFF['field.ph']] *= k; ctx.B[OFF['field.ph']] *= k; }
+    if (s) {
+      // Lung and the strong beats: petal depth. A flower opens on the beat, and with the phrase.
+      const k = 1 + 0.3 * Math.min(s.lung, 1.2) + 0.18 * Math.min(s.pulse, 1.2);
+      A[OFF['field.ph']] *= k; B[OFF['field.ph']] *= k;
+      // What has no petals takes the beat in whatever shape it has: a check's bulge, a chevron's teeth, a wave's bend.
+      const p = 1 + Math.min(s.pulse, 1.2);
+      for (const S of [A, B]) { S[BULGE] *= 1 + 0.5 * (p - 1); S[TEETH] *= 1 + 0.3 * (p - 1); S[BEND] *= 1 + 0.4 * (p - 1); }
+      // The tune: whichever flower it's singing to swells, and the rest make room. Each pole has its place on the scale.
+      const m = s.voiced * Math.min(1, s.gains?.tune ?? 1) * 0.16;
+      if (m > 0.002) for (const S of [A, B]) POLE_SIZES.forEach((p, i) => { if (S[p] > 0) { const d = s.melody * 0.32 - (i - 1.5) * 1.2; S[p] *= Math.exp(m * (Math.exp(-d * d) - 0.4)); } });
+    }
   },
-  pace: { bars: [14, 11, 9, 7, 6], morph: [7.5, 11] },       // src/score/pace.js: bars between changes by the song's level, and how long a Bud takes. ?pace=0: motion's len and morph
-  motion: { len: [18, 30], morph: [9, 12], xforms: { bud }, xform: 'bud', keep: ['bud'] },
+  pace: { bars: [12, 9, 7, 6, 5], morph: [6, 9] },       // src/score/pace.js: bars between changes by the song's level, and how long a landing takes. ?pace=0: motion's len and morph
+  motion: { len: [13, 22], morph: [6, 9], xforms: { bud, melt, tide }, xform: 'bud', keep: ['bud', 'melt', 'tide'], front: true },
   hear: { pulse: 1, melody: 1, tone: 0.4, harmony: 0.7, lung: 1 },
 };

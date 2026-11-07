@@ -515,7 +515,7 @@ export default async ({ page, log, save, out, sleep }) => {
     const heroes = []; for (const G of seq) for (const k of G.kinds) heroes.push({ t: G.t0, k });
     const planKinds = rec?.kind ? [...new Set(rec.kind.filter(Boolean))] : [];
     // A world that names one kind of landing (motion.xform) means it: that's its film, and a director's variety isn't what it's after. Anything else it does is still counted.
-    const oneKind = WORLD ? await page.eval(() => app.stage.world?.motion?.xform ?? null) : null;
+    const oneKind = WORLD && WORLD !== 'flower' ? await page.eval(() => app.stage.world?.motion?.xform ?? null) : null;
     if (oneKind && heroes.every(h => h.k === oneKind)) add(row('Variety', 'PASS', `one kind of landing, ${oneKind}, and the world says so`, `motion.xform; plan kinds: ${planKinds.join(' ') || '?'}`));
     else if (!heroes.length) add(row('Variety', 'PENDING', `plan kinds: ${planKinds.join(' ') || '?'}`, 'no gesture has moves or a transformation yet'));
     else {
