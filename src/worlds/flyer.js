@@ -129,7 +129,8 @@ export default {
       const G = from, n = plan.strips ?? STRIPS, t0 = G.t1 - G.morph, D = G.morph, hits = (G.xform?.hits?.filter(h => h >= t0 && h <= G.t1) ?? []).slice(-n);
       const each = hits.length >= 3 ? hits : (song ? song.hits.concat(song.snares).sort((p, q) => p - q).filter(h => h >= t0 + 0.05 && h <= G.t1 - 0.05) : []);
       a[84] = n; a[85] = plan.ang ?? 0; a[86] = plan.reach ?? 1.9; a[87] = 0;
-      const STEP = Math.max(0.42, D * 0.28);
+      // A strip goes over in most of a second: in less, two patterns far apart in phase whip every line in it past, and that's a strobe in one strip (mgmt 208 s, red 13 a second on a tile, at 0.42 s).
+      const STEP = Math.max(0.95, D * 0.4);
       for (let i = 0; i < n; i++) {
         const order = plan.order === 1 ? n - 1 - i : plan.order === 2 ? (i * 3) % n : i, frac = (order + 0.5) / n;
         const when = each.length >= 3 ? each[Math.min(each.length - 1, Math.floor(frac * each.length))] : t0 + frac * (D - STEP);

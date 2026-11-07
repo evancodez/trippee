@@ -80,7 +80,7 @@ export const feed = {
 };
 
 // Strips over a frame this wide. The word for how far along each is goes straight to the shader, through uniforms (src/worlds/flyer.js): it's the world's own numbers.
-export const STRIPS = 8;
+export const STRIPS = 6;
 export const fill = {
   id: 'fill', enter: glideEnter,
   levers: {},
