@@ -140,7 +140,7 @@ function linesAt(s, x, y) {
 
 // ---------------------------------------------------------------- the operator's languages
 // One phrase each. Called with where it'll arrive, adds a knot to each track. way is which way round this visit goes; P how big this section is, more each time it comes back.
-const LANG = {
+export const LANG = {
   // A quiet passage: one slow curve that still goes somewhere. The sheet leans a little and the lean goes round.
   drift(h, { i, way, P }, s) {
     s.dir += way * 0.75; s.spin += way * 0.16 * P; s.head += way * 0.55;
@@ -230,7 +230,7 @@ function buildHands(film, A, M, H, seed, only = null) {
   // Each kind of section gets its own routine of languages, from the pool its size allows: mostly one, and then a turn at another, so that a long section isn't one thing for minutes. A song uses as many as it has kinds of section.
   const used = new Set();
   for (const l of order) {
-    const r = rank(l), mean = kinds.get(l).e / Math.max(kinds.get(l).c, 1), pool = POOL[r < 0.3 && mean < 0.55 ? 'quiet' : r > 0.62 || mean > 0.72 ? 'loud' : 'mid'];
+    const r = rank(l), mean = kinds.get(l).e / Math.max(kinds.get(l).c, 1), pool = (film.world?.camera?.pool ?? POOL)[r < 0.3 && mean < 0.55 ? 'quiet' : r > 0.62 || mean > 0.72 ? 'loud' : 'mid'];
     const pick = () => { const open = pool.filter(x => !used.has(x)), lang = random.pick(open.length ? open : pool); used.add(lang); return lang; };
     const a = only ?? pick();
     let b = only ?? pick(), c = only ?? pick();

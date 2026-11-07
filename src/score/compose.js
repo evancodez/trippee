@@ -805,6 +805,12 @@ export function compose(A, seed = 1, opts = {}) {
   if (W) {
     film.world = W;
     film.tables = W.tables?.(A, react.M) ?? null;
+    const kept = new Map([[W, film.tables]]);
+    film.tablesOf = w => {      // a world on its way out still reads its own tables through a change: this film's are the next world's. Worked out once a world, not once a frame
+      if (!w?.tables) return null;
+      if (!kept.has(w)) kept.set(w, w.tables(A, react.M) ?? null);
+      return kept.get(w);
+    };
     const m = W.motion;
     if (m?.slower) { const phi = film.phi; film.phi = (t, G, now, rho) => phi(t, G, now, rho) / m.slower; }
     if (m) for (const G of film.gestures) { if (m.glide === false) G.noGlide = true; if (m.rise != null) G.rise = m.rise; }

@@ -327,7 +327,7 @@ function writeWorld(st, score, R, edits) {
     E[13] = roll;
   }
   if (W.uniforms || W.table || wp.trace) {
-    const ctx = { t: st.t, c: st.c, x: st.x, T: st.T, kind: st.kind, G: st.G, from: st.from, to: st.to, plan: st.plan, geo, score, A, B, F, R, edits, tables: score.world === W ? score.tables : null,      // a world on its way out has no tables: the film's been made again, for the world coming in, and those are that world's
+    const ctx = { t: st.t, c: st.c, x: st.x, T: st.T, kind: st.kind, G: st.G, from: st.from, to: st.to, plan: st.plan, geo, score, A, B, F, R, edits, tables: W === score.world ? score.tables : score.tablesOf?.(W) ?? null,      // a world on its way out reads its own tables if the song kept them, else none
       at: c => (score.react ? reactAt(score.react, c) : null), change: ch };
     W.uniforms?.(U, ctx);
     if (W.table && W.table.fill(wp.table, ctx) !== false) wp.tableDirty = true;      // after uniforms, or a table that goes by what's in the slot reads a number uniforms is about to change
