@@ -209,7 +209,7 @@ export default async ({ page, log }) => {
   }
 
   if (want('song')) {
-    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true})`);
+    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true}).then(() => true)`);
     for (let i = 0; i < 400; i++) { if (await page.eval('app.song.playing')) break; await sleep(100); }
     await sleep(3000);
     const st = () => page.eval(() => ({ heard: +app.song.time().toFixed(1), on: app.stage.staticOn, held: !!app.stage.staticG, pat: app.lastFrame.G.pattern.id, two: !!app.lastFrame.N, T: +app.lastFrame.T.toFixed(2) }));

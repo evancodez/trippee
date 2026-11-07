@@ -1,6 +1,7 @@
 // A song: decode it, listen to it once in a worker, compose a film, and hold the picture to the audio's output clock.
 // Without a song none of this runs and the stage wanders.
 import { compose } from '../score/compose.js';
+import { planAhead } from '../score/frame.js';
 import { ANALYSIS_VERSION, SR, analyse } from './analysis.js';
 import { rehearse, warmRehearsal, getRig, drawn, Eyes, FlashSeen } from './rehearse.js';
 import { flag, hearing } from '../score/flags.js';
@@ -144,6 +145,9 @@ export function init(app) {
     song.score = score;
     return score;
   };
+  // Each of these is a long piece of work all at once (writing the analysis down, composing a film, starting a rehearsal), and run back to back they were one frame of a quarter of a second. A frame goes by between them.
+  const PLAN_AHEAD = new URLSearchParams(location.search).get('planahead') !== '0';      // ?planahead=0: the plans as they were worked out before, for comparing
+  const aFrame = () => new Promise(res => { let done = false; const go = () => { if (!done) { done = true; res(); } }; requestAnimationFrame(() => setTimeout(go)); setTimeout(go, 50); });
   // Play it through once out of sight. A pattern that jumps sits this song out, and the film is composed again without it.
   // arriving: this film is about to fly in. What that does to its opening (stage._clearRunway) is done first, so what's rehearsed is what's shown.
   const rehearseNow = async (onProgress, stale = null, gentle = false, arriving = false) => {
@@ -153,6 +157,8 @@ export function init(app) {
       let r;
       const last = guarded && tries === tryN - 1;
       if (arriving && guarded && !score.world) app.stage._clearRunway(0, ARRIVE, score);
+      // The film's plans, a look at a time, before the rehearsal's first walk through it would work each out all at once (src/score/frame.js planAhead). Only where that walk is the first to: a world's film waits for its own programs first.
+      if (score.woah && !score.world && PLAN_AHEAD) { try { await planAhead(score, await getRig(), Math.min(analysis.duration, 1200), aFrame); } catch (e) { console.warn('planning ahead skipped:', e); } }
       try { r = await rehearse(score, Math.min(analysis.duration, 1200), onProgress, { lastTry: last, stale, gentle, keep: typeof opts.pattern === 'string' ? opts.pattern : opts.pattern?.id ?? null }); }
       catch (e) { if (e.message !== 'stale') console.warn('rehearsal skipped:', e); return; }
       song.rehearsal = r;
@@ -162,7 +168,9 @@ export function init(app) {
       console.warn('rehearsal: sitting out ' + JSON.stringify(r.jumps.slice(0, 6)));
       for (const id of fresh) sitOut.add(id);
       // the same family: one bad pattern shouldn't change what kind of film this is
+      await aFrame();
       composeNow({}, score.family);
+      await aFrame();
     }
   };
 
@@ -317,14 +325,18 @@ export function init(app) {
       opts = { seed, family, pattern };
       if (app.stage.world?.needs?.length) await song.extrasReady().catch(e => console.warn('the extras could not be heard:', e));      // a world that's on and hears them
       if (token !== loadToken) return null;
+      await aFrame();
+      if (token !== loadToken) return null;
       composeNow(opts);
       app.governor?.quiet(3);    // the rehearsal holds up the frame loop for a moment; that's not the pixels' fault
+      await aFrame();
+      if (token !== loadToken) return null;
       await rehearseNow(p => onProgress(0.98 + 0.02 * p), null, false, true);
       if (token !== loadToken) return null;
       const cut = await cutFor(hash).catch(e => { console.warn('the hand cut could not be loaded:', e); return null; });
       if (token !== loadToken) return null;
       // Here, not behind the picture: composing takes a moment all at once, and nothing's waiting yet.
-      if (cut) { const made = composeCut(cut); if (made) { films = { auto: score, cut: made }; cutComing = true; } }
+      if (cut) { await aFrame(); if (token !== loadToken) return null; const made = composeCut(cut); if (made) { films = { auto: score, cut: made }; cutComing = true; } await aFrame(); if (token !== loadToken) return null; }
       // Something on its way somewhere gets there first. A film has to come out of one pattern, or it would pop.
       if (!app.manual && app.stage.morphing(app.pictureT())) await new Promise(res => app.stage.settle(app.pictureT(), res, 2.5));
       if (token !== loadToken) return null;
@@ -376,7 +388,7 @@ export function init(app) {
       if (was) startSource();
       else tEst = offset;
       if (app.manual) { app.t = offset; }
-      else app.edits.hearJumped = true;     // the song's camera doesn't jump with it: src/score/hear.js
+      else { app.edits.hearJumped = true; app.reclock = true; }     // the song's camera doesn't jump with it: src/score/hear.js. And the frame that's drawn next is at the new time (main.js render)
     },
     // A seek by hand, in the middle of the film: a jump in the music. The song lets go of the sheet first and comes back over the flight, as D does. The last click wins.
     jump(t) {

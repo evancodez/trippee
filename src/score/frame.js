@@ -92,6 +92,33 @@ function songInFlight(st, score, edits) {
   st.moveA = moveA; st.moveB = moveB; st.solid = solid;
 }
 
+// Every transformation's plan in a film, a look at a time with the picture going on between them, before anything else draws the film. The first thing to walk a film
+// (the rehearsal's list of what it will draw with, src/music/rehearse.js buildFor) used to work each one out all at once, every look a wait for the GPU: a plan is up to eight,
+// and the frame stood still for up to a quarter of a second. This is the same plan: the same two moments, the same renderer at the same aspect, the same looks, only not waited for.
+// Its flow is the film's with the layer that follows the song off, as the first look of that walk has it (walk.on 0).
+export async function planAhead(score, R, until, breathe, aspect = 16 / 9) {
+  const g = score.gestures, walk = score.walk, was = walk?.on;
+  const phiOf = (gg, tt, sc = score, rho) => (sc.phi ? (rho == null ? sc.phi(tt, gg) : sc.phi(tt, gg, tt, rho)) : tt * 0.25);
+  let left = [];
+  for (let i = 0; i + 1 < g.length; i++) {
+    const G = g[i], N = g[i + 1];
+    if (!G.morph) continue;
+    const t0 = G.t1 - G.morph;
+    if (t0 - LOOK_AHEAD >= until) break;
+    if (G.plan && G.planFor === N) continue;
+    left.push({ m: { from: G, to: N, t0, D: G.morph, holder: G, handover: false, phiFrom: null }, stop: Math.min(G.morph * 0.4, 3.5) });
+  }
+  // All of them at once, a step each a frame for as long as a few milliseconds go, so their looks are on the GPU together
+  while (left.length) {
+    const t1 = performance.now();
+    try {
+      if (walk) walk.on = 0;
+      left = left.filter(({ m, stop }) => performance.now() - t1 > 8 || !planFor(m, 0, stop, phiOf, R, aspect, false, score.world));
+    } finally { if (walk) walk.on = was; }
+    if (left.length) await breathe();
+  }
+}
+
 export function frame(score, t, R, edits) {
   const tReal = t, beyond = edits?.beyond;
   const tFilm = score.time ? score.time(t) : t;       // the film's own stops: it freezes while the band stops, and pays the time back

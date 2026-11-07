@@ -85,7 +85,15 @@ export class Renderer {
     const more = add.filter(n => !this.order.includes(n));
     if (!more.length) return;
     this.order = [...this.order, ...more];
-    if (!this._pending && !this._warming) this._next();
+    this._soon();
+  }
+  // Start building on a frame of its own. Asked for from the middle of composing a film, a build starting there made that one long frame longer by what the GPU takes to begin it.
+  _soon() {
+    if (this._soonAsked) return;
+    this._soonAsked = true;
+    const go = () => { if (!this._soonAsked) return; this._soonAsked = false; if (!this._pending && !this._warming) this._next(); };
+    setTimeout(() => requestAnimationFrame(() => setTimeout(go)), 250);      // a moment later: what asked is usually followed by more long work (a rehearsal starting), and a build beginning on top of that was one long frame
+    setTimeout(go, 400);      // a hidden page has no frames
   }
   // These programs, built and warmed behind the picture. A film says what it's going to draw with while it rehearses, so that nothing's first asked for on screen.
   whenBuilt(list) {
@@ -155,16 +163,22 @@ export class Renderer {
     if (!list.length) { done(); return; }
     const gl = this.gl, c = this.canvas;
     let i = 0;
-    const one = () => {
-      if (i >= list.length) { done(); return; }
-      const low = this._lowTarget(0.5);
-      gl.useProgram(list[i++]);
+    // The two targets in two different frames: each first draw is a build on the GPU, and two of them together were one long frame
+    const pixel = (p, low) => {
+      gl.useProgram(p);
       gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
       gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, low.fbo); gl.viewport(0, 0, low.w, low.h); gl.drawArrays(gl.TRIANGLES, 0, 3);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, c.width, c.height); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (low) { gl.bindFramebuffer(gl.FRAMEBUFFER, low.fbo); gl.viewport(0, 0, low.w, low.h); }
+      else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, c.width, c.height); }
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.SCISSOR_TEST);
-      setTimeout(one, 60);
+    };
+    const one = () => {
+      if (i >= list.length) { done(); return; }
+      const p = list[i++];
+      pixel(p, this._lowTarget(0.5));
+      setTimeout(() => { pixel(p, null); setTimeout(one, 60); }, 40);
     };
     one();
   }

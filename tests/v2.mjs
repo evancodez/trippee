@@ -124,7 +124,7 @@ export default async ({ page, log, save }) => {
   if (want('static')) {
     await sleep(2000);
     await staticStage('wander');
-    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true})`);
+    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true}).then(() => true)`);
     for (let i = 0; i < 600; i++) { if (await page.eval('app.song.playing')) break; await sleep(100); }
     await sleep(8000);
     await page.eval('app.song.seek(40)'); await sleep(1000);
@@ -158,7 +158,7 @@ export default async ({ page, log, save }) => {
     await sleep(5000);
     await page.eval('app.beyond.snap(null)'); await key('b'); await sleep(7000);
     // during a song, in a song's morph, and with its colour
-    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true})`);
+    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true}).then(() => true)`);
     for (let i = 0; i < 600; i++) { if (await page.eval('app.song.playing')) break; await sleep(100); }
     await sleep(8000);
     await handHere('song');
@@ -196,7 +196,7 @@ export default async ({ page, log, save }) => {
     log('record, then music: the file', JSON.stringify(await page.eval('__stopRec()'))); await page.eval(`document.querySelector('#rec').hidden=true`);
     await key('g'); await sleep(400);
     // A song. Music pauses it, off brings it back where it was
-    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true})`);
+    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true}).then(() => true)`);
     for (let i = 0; i < 600; i++) { if (await page.eval('app.song.playing')) break; await sleep(100); }
     await sleep(3000);
     const h0 = await page.eval('app.song.time()');
@@ -250,7 +250,7 @@ export default async ({ page, log, save }) => {
     log('after: the picture carries on', +(await page.eval('app.t') - a0).toFixed(2), JSON.stringify(await sound()), 'score has song', await page.eval('!!app.stage.score.song'));
     // A song dropped with the music on: the song wins, the music steps aside
     await key('g'); await sleep(1000);
-    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true})`);
+    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true}).then(() => true)`);
     for (let i = 0; i < 600; i++) { if (await page.eval('app.song.playing')) break; await sleep(100); }
     await sleep(1500);
     log('song after music', JSON.stringify(await sound()), 'clock vs heard', await page.eval('+(app.t-app.song.time()).toFixed(3)'));
