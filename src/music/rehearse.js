@@ -49,7 +49,7 @@ const FLASH_SWING = 22, FLASH_SWING_WHOLE = 19, FLASH_WHOLE = 0, FLASH_TILE = 2,
 const JUDGE_SWING = 25.5, JUDGE_WITHIN = 1.15;
 // A film's looks. The whole film small and quick, at 30 a second, for anywhere that might be flashing; then whatever that finds is looked at again at twice the size again, the way the judge counts, and only a flash that's still there gets anything done about it.
 // Reads are batched (Eyes), which is why this can look so much more often than a read a look could and take less time: GPU_BATCH looks to one wait for the GPU.
-const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, FILM_SWING_WHOLE = 19, REAL_SWING_WHOLE = 21.5, GUARD_LOOKS = 30, SCAN_LOOK = 0.4, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 8;     // GUARD_LOOKS: close looks, per second of film, for it to spend, so a film with twice the changes takes no longer. A coarse look costs SCAN_LOOK of one.
+const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, FILM_SWING_WHOLE = 19, REAL_SWING_WHOLE = 21.5, GUARD_LOOKS = 30, GUARD_MOST = 7000, SCAN_LOOK = 0.4, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 8;     // GUARD_LOOKS: close looks, per second of film, for it to spend, so a film with twice the changes takes no longer. A coarse look costs SCAN_LOOK of one.
 // What it may do. A loud stretch never drops below half its flow, however stubborn the flash; a quiet one, a quarter. Both only for the seconds it flashes, easing there and back.
 const SLOW_LOUD = 2, SLOW_QUIET = 4, SLOW_RAMP = 1.2, SLOW_AROUND = 0.6, LONGER_MOST = 1.35;
 // How long a song's film takes to fly in, as song.js has it unless the flight needs longer: a first gesture's morph can't start before that, or stage._clearRunway cuts it short after it's been looked at.
@@ -625,7 +625,7 @@ const forget = G => { if (G) G.plan = G.planFor = G.planning = null; };
 
 // ---------------------------------------------------------------- the layer that follows the song
 // Everything above looks at the film with this layer off. So here it's on: the film as it's seen, and for the second or so around whatever's still flashing, the layer itself gives way (score.hear.ease), a little more each time it doesn't clear, and nowhere else. It takes nothing from the rest of the song. What flashes with it all the way down is the film's own.
-const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 2, HEAR_LOOKS = 14;      // HEAR_LOOKS: close looks it has to spend, per second of film
+const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 2, HEAR_LOOKS = 8, HEAR_MOST = 2000;      // HEAR_LOOKS: close looks it has to spend, per second of film
 const CAM_TRIES = 3, CAM_RATE = 0.3;
 async function guardHeard(R, score, until, colour, ctx) {
   const H = score.hear, g = score.gestures, edits = { hear: 1 }, fps = (colour ? HEAR_SUB_WORLD : FILM_SUB) / STEP, HH = colour ? FLASH_H : FLASH_H_FILM, W = Math.max(8, Math.round(HH * ctx.aspect)), n = Math.ceil(until * fps);
@@ -643,7 +643,7 @@ async function guardHeard(R, score, until, colour, ctx) {
   await look(0, n + 1);
   // What it's got to look with. Past that, whatever's left is said by the judge and not by this, and a film's load time doesn't depend on how much it has going on.
   let spent = 0;
-  const allowed = HEAR_LOOKS * until, count = k => { spent += k; }, close = (a, b, strict = false) => (spent > allowed ? { at: [], whole: 0 } : lookClose(R, score, a, b, ctx, count, edits, strict));
+  const allowed = Math.min(HEAR_LOOKS * until, HEAR_MOST), count = k => { spent += k; }, close = (a, b, strict = false) => (spent > allowed ? { at: [], whole: 0 } : lookClose(R, score, a, b, ctx, count, edits, strict));
   const dips = H.dips = [];
   const dip = (a, b, to) => { for (let i = Math.max(0, Math.floor((a - HEAR_EDGE) * H.hz)), e = Math.min(H.n - 1, Math.ceil((b + HEAR_EDGE) * H.hz)); i <= e; i++) { const t = i / H.hz, k = smoother((t - (a - HEAR_EDGE)) / HEAR_EDGE) * smoother((b + HEAR_EDGE - t) / HEAR_EDGE); H.ease[i] = Math.min(H.ease[i], 1 - (1 - to) * k); } };
   const fine = new Set();
@@ -661,7 +661,8 @@ async function guardHeard(R, score, until, colour, ctx) {
       const a = Math.min(...at) - 1.05, b = Math.max(...at) + 0.1;
       dip(a, b, to);
       dips.push({ a: +a.toFixed(2), b: +b.toFixed(2), to });
-      await look(Math.floor((a - 1.5) * fps), Math.ceil((b + 1.5) * fps));
+      const f0 = Math.floor((a - 1.5) * fps), f1 = Math.ceil((b + 1.5) * fps);
+      await look(f0, f1); count((f1 - f0) * SCAN_LOOK);
     }
     if (!left) break;
   }
@@ -710,7 +711,7 @@ const drawnNot = (R, score, t, edits) => { const h = score.world ? score.handove
 
 // ---------------------------------------------------------------- a trick the guard can't clear
 // It's swapped for the next thing that could go there, and what clears it most is kept. Nothing's dropped unless nothing else can go there, and all of it's in score.refused.
-const SWAP_TRIES = 4, SWAP_FOR = 8;
+const SWAP_TRIES = 3, SWAP_FOR = 8;
 function swapLooks(R, score, seen, ctx) {
   const g = score.gestures, fps = seen.fps;
   const scan = async ([a, b]) => {
@@ -785,9 +786,11 @@ async function guardWoah(R, score, seen, flash, ctx) {
   const slots = W.slots.map(slot => ({ slot, a: slot.from - 1, b: slot.to + 1 })).filter(at);
   let tries = 0;
   for (const { slot, a, b } of slots) {
-    const range = frames(a, b);
-    let best = await realIn(range), cur = slot.id;
+    let best = await realIn(frames(a, b)), cur = slot.id;
     if (!best.whole && best.at.length < SWAP_FOR) continue;       // a tile a little over isn't worth another trick, and it's reported as it is
+    // Only around what's wrong: what it's swapped for has the rest of its time looked at with everything else, by guardHeard
+    const range = frames(Math.max(a, Math.min(...best.at) - 3.2), Math.min(b, Math.max(...best.at) + 1.5));
+    best = await realIn(range);
     const first = cur;
     for (const alt of slot.alts) {
       if (!worse(best) || tries >= SWAP_TRIES) break;
@@ -818,7 +821,6 @@ async function guardWoah(R, score, seen, flash, ctx) {
     else if (slot.alts.length) refused.push({ t: +slot.from.toFixed(2), what: first, why: `flash left: ${best.at.length}, ${tries >= SWAP_TRIES ? 'out of tries' : 'nothing that could go here was better'}` });
     else refused.push({ t: +slot.from.toFixed(2), what: first, why: `flash left: ${best.at.length}, and nothing else can go here` });
   }
-  flash.left = [...new Set([...flash.left.filter(x => !slots.some(s => x >= s.a && x <= s.b)), ...(await realIn([0, seen.n])).at.map(t => +t.toFixed(1))])].sort((a, b) => a - b);
   return swaps;
 }
 
@@ -898,7 +900,7 @@ const smootherArea = u => u * u * u * u * (u * (u - 3) + 2.5);
 
 async function guardFilm(R, score, seen, ctx) {
   const { breathe, mayChangeFor, opening = 0 } = ctx, g = score.gestures, t0 = performance.now(), fixes = [], refused = score.refused ??= [], tau = score.tau ?? (t => t), isLoud = loudness(score), fps = seen.fps;
-  const allowed = Math.round(GUARD_LOOKS * seen.n / fps);
+  const allowed = Math.min(Math.round(GUARD_LOOKS * seen.n / fps), GUARD_MOST);
   let looks = allowed, falseAlarms = 0, unlooked = false;
   const spent = n => { looks -= n; }, tried = [];
   const lands = opening || FLASH_ARRIVAL;
@@ -937,7 +939,11 @@ async function guardFilm(R, score, seen, ctx) {
   const say = (t, what, why) => refused.push({ t: +t.toFixed(2), what, why });
 
   const todo = [];
-  for (const w of stretches(seen.over(), fps)) {
+  // What might be the whole frame first, then the rest while there's anything left to look with: it's the whole frame that has no allowance
+  const wholeFrames = []; seen.overIn(i => seen.mean[i], FLASH_WHOLE, FILM_SWING_WHOLE, wholeFrames);
+  const flagged = stretches(seen.over(), fps).map(w => ({ ...w, wholeAt: wholeFrames.some(i => i / fps >= w.a && i / fps <= w.b) })).sort((x, y) => y.wholeAt - x.wholeAt || x.a - y.a);
+  for (const w of flagged) {
+    if (looks <= 0.25 * allowed && !w.wholeAt) { unlooked = true; break; }      // ...and some kept back to do something about what it finds
     const r = await lookClose(R, score, w.a, w.b, ctx, spent);
     if (r.at.length) todo.push({ ...w, ...r }); else falseAlarms++;
   }
@@ -1031,6 +1037,7 @@ async function guardFilm(R, score, seen, ctx) {
   // What's left. Nothing's dulled to clear it, and it's said out loud.
   const left = [];
   for (const w of stretches(seen.over(), fps)) {
+    if (looks <= -0.2 * allowed) { unlooked = true; break; }
     const r = await closely(w.a, w.b, true);
     for (const t of r.at) left.push(+t.toFixed(1));
     if (r.at.length) say(r.at[0], g.find(G => G.t0 <= r.at[0] && r.at[0] < G.t1)?.pattern.id ?? '?', `flash left in${r.whole ? ', whole frame' : ''}: ${unlooked ? 'out of looks before getting to it, perhaps' : 'nothing cleared it without dulling the stretch'}`);

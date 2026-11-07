@@ -158,7 +158,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const marches = G => !!G.moves?.some(m => MARCH.has(m.id));
   const nothingElse = G => !G.moves?.some(m => !m.woah && m.id !== 'relay' && !MARCH.has(m.id));
   // A body that can wear a stretch: nothing on it but perhaps a Relay, which can go on under it
-  const wearable = G => (!G.hero || MARCH.has(G.hero)) && nothingElse(G);
+  const wearable = G => (!G.hero || MARCH.has(G.hero) || G.pattern.family === 'riley') && nothingElse(G);
   const absorbable = G => !G.hero && !G.xform && !G.carry && !G.moves?.length && !G.pattern.drive && G.k != null;
   const bodyOf = G => [G.t0, G.t1 - (G.morph || 0)];
   // What it could reach, taking in the plain gestures after it
