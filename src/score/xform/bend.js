@@ -24,7 +24,7 @@ export default {
   plan(a, b, ctx) {
     const { m, D } = ctx;
     const flat = s => s[OFF['surf.kind']] < 0.5;
-    if (!(m.plain && flat(a) && flat(b) && m.allPaired && m.closeEnough && D >= 8)) return null;
+    if (!(m.plain && flat(a) && flat(b) && m.allPaired && m.closeEnough && D >= (ctx.quick ? 3 : 8))) return null;
     const { pair, flip, offset, close, open, ratio } = m;
     return { kind: 'bend', pair, flip, offset, close, open, ratio };
   },

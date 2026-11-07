@@ -66,7 +66,7 @@ export function land(score, A, M, cast = []) {
 
   for (let i = 0; i < last - 1; i++) {
     const G = g[i], N = g[i + 1], id = G.xform?.id;
-    if (!G.morph) continue;
+    if (!G.morph || G.peak) continue;     // pace.js has timed this one already
     if (id === 'fall' || id === 'iris') {
       G.peak = { hit: heroOf(G, id)?.at ?? G.t1, q: 0 };
       landed.push([id, +G.peak.hit.toFixed(2)]);

@@ -101,15 +101,20 @@ export function direct(score, A, M) {
   const lagged = (a, b) => lags.some(w => a < w.paid && b > w.from);
   const landings = score.landings;
   // What the arrival would do to it anyway (stage._clearRunway), done now, so that the film's the same whichever way it starts.
-  while (g.length > 3 && g[0].t1 < OPENING) { const n = g[1]; g[0].t1 = n.t1; g[0].morph = n.morph; g.splice(1, 1); }
+  while (g.length > 3 && g[0].t1 < (score.pace ? 12 : OPENING)) { const n = g[1]; g[0].t1 = n.t1; g[0].morph = n.morph; g.splice(1, 1); }
   if (g[0].morph && g[0].t1 - g[0].morph < 7.5) g[0].morph = Math.max(g[0].t1 - 7.5, 5);
+  // Pace (src/score/pace.js): the same moves, for what they do and not for how long they take over the film
+  const P = score.pace;
+  const PAST_T = P ? Math.max(4 * bar, 6) : PAST, STAR_T = P ? [14, 26] : STAR_LEN, COIN_T = P ? [10, 18] : COIN_SECONDS, ROOM_T = P ? Math.max(1.5 * bar, 2.5) : ROOM, STAR_BODY = P ? 12 : 16, SHOCK_D = P ? clamp(3 * bar, 4, 7) : 10, SHOCK_ROOM = P ? 1 : 4;
   const lastG = () => g.length - 1;      // the film's tail: what carries on after the song, and nothing transforms into it
 
   // Who's on, and when. [a, b]: all the time it holds, so no one else can be put there. [wa, wb]: when everything else steps back for it. at: where it falls, for "never twice running".
   const cast = [];
   const free = (a, b) => !cast.some(h => a < h.b && b > h.a);
   const quiet = (a, b) => !cast.some(h => a < h.wb && b > h.wa);     // nobody's on: their own transformations out of a gesture are free for others to use
-  const put = (kind, G, at, a, b, wa, wb, more = {}) => { const h = { kind, G, at, a, b, wa, wb, gain: QUIET, ...more }; cast.push(h); cast.sort((x, y) => x.at - y.at); return h; };
+  // How much of the film the big moves can have between them, with pace: they're for what they do, and the rest of the film has to get a turn.
+  const budget = (P ? 0.26 : Infinity) * (g.at(-2)?.t1 ?? A.duration), spent = () => cast.reduce((n, h) => n + (h.kind === 'lock' || h.kind === 'riley' || h.kind === 'shock' || h.kind === 'fall' ? 0 : h.b - h.a), 0);
+  const put = (kind, G, at, a, b, wa, wb, more = {}) => { const h = { kind, G, at, a, b, wa, wb, gain: P ? 0.55 : QUIET, ...more }; cast.push(h); cast.sort((x, y) => x.at - y.at); return h; };
   const twiceRunning = (kind, at) => {
     let before = null, after = null;
     for (const h of cast) { if (h.at <= at) before = h; else { after = h; break; } }
@@ -137,14 +142,16 @@ export function direct(score, A, M) {
   // ------------------------------------------------------------- Countdown
   const beatTime = (b, near) => { let lo = near - 120, hi = near + 120; for (let i = 0; i < 48; i++) { const m = (lo + hi) / 2; if (tau(m) < b) lo = m; else hi = m; } return (lo + hi) / 2; };
   const makeCountdown = (L, pat, mirror) => {
-    const b = g.findIndex(x => x.t1 >= L + PAST);
+    let b = g.findIndex(x => x.t1 >= L + PAST_T - (P ? 0.5 : 0));
     if (b < 0 || b >= lastG()) return null;
-    const H = countdown(pat, { L, score, meter, t1: g[b].t1, morph: g[b].morph ?? 0, seed, longest: 24 }), m = H.moves[0], sl = pat.slip;
+    // A long passage isn't swallowed whole by a dial: the board lets go a few bars on, and what's left of the passage goes on from there.
+    const cut = P && g[b].t1 > L + PAST_T + 3 * bar && g[b].t0 < L + PAST_T ? (A.bars.find(t => t >= L + PAST_T) ?? null) : null;
+    const H = countdown(pat, { L, score, meter, t1: cut ?? g[b].t1, morph: cut ? P.leadOf({ level: 2 }, pat, g[b].pattern, cut - L) : g[b].morph ?? 0, seed, longest: 24 }), m = H.moves[0], sl = pat.slip;
     // As many rings as there's room for. The board stays where it is while it comes apart and falls back together, every ring in the frame, and lets go when it's done.
-    const spb = 1 / Math.max(tau(L + 0.5) - tau(L - 0.5), 1e-3), longest = Math.min(24, L - COUNT_OPENING);
+    const spb = 1 / Math.max(tau(L + 0.5) - tau(L - 0.5), 1e-3), longest = Math.min(P ? 18 : 24, L - COUNT_OPENING);
     const W = meter * RING_SURGE, run = (n, st) => (n - 1) * st + meter + W / 2;       // the first surge starts here, in beats to go
     let step = meter, bands = Math.min(sl.bands, 8);
-    if (run(bands, step) * spb < 12) step = 2 * meter;
+    if (!P && run(bands, step) * spb < 12) step = 2 * meter;
     while (bands > 4 && run(bands, step) * spb > longest) bands--;
     if (run(bands, step) * spb > longest) step = meter;
     while (bands > 4 && run(bands, step) * spb > longest) bands--;
@@ -169,19 +176,20 @@ export function direct(score, A, M) {
     }
     m.mirror = false;
     let a = g.findIndex(x => x.t1 > H.t0);
-    while (a > 0 && H.t0 - g[a].t0 < Math.max(10, (g[a].morph ?? 0) * 1.5)) a--;
-    return a < 0 || a >= b || H.t0 - g[a].t0 < 6 || (a === 0 && H.t0 < COUNT_OPENING) ? null : { H, a, b };
+    while (a > 0 && H.t0 - g[a].t0 < (P ? Math.max(2 * bar, (g[a].morph ?? 0) * 1.2) : Math.max(10, (g[a].morph ?? 0) * 1.5))) a--;
+    return a < 0 || a >= b || H.t0 - g[a].t0 < (P ? 3 : 6) || (a === 0 && H.t0 < COUNT_OPENING) ? null : { H, a, b, cut };
   };
   const putCountdown = (L, pat, mirror = false) => {
     if (!pat || !flag('countdown') || !flag('slip') || lagged(L - 24, L + bar)) return null;
     const c = makeCountdown(L, pat, mirror);
     if (!c || L - c.H.t0 < SHORTEST_RUN || !free(c.H.t0 - 10, c.H.t1)) return null;
-    const { H, a, b } = c, P = g[a];
+    const { H, a, b, cut } = c, Pr = g[a];
     // What's before it now ends where the board arrives, with its morph kept, and whatever else lay in the way is gone. The Countdown morphs out as what it replaced would have.
-    P.t1 = H.t0; P.plan = P.planFor = P.planning = null;
-    P.morph = Math.min(P.morph ?? 8, (H.t0 - P.t0) * 0.7);
-    H.label = g[b].label; H.visit = g[b].visit; H.kindIn = 'rise'; H.kindOut = g[b].kindOut;
-    g.splice(a + 1, b - a, H);
+    Pr.t1 = H.t0; Pr.plan = Pr.planFor = Pr.planning = null;
+    Pr.morph = Math.min(Pr.morph ?? 8, (H.t0 - Pr.t0) * 0.7);
+    H.label = g[b].label; H.visit = g[b].visit; H.kindIn = 'rise'; H.kindOut = cut ? 'level' : g[b].kindOut;
+    if (cut) { g[b].t0 = cut; delete g[b].plan; }
+    g.splice(a + 1, cut ? b - a - 1 : b - a, H);
     H.hero = 'countdown'; H.melMode = 0; H.gears = [];
     noSlide(H);
     return put('countdown', H, L, H.t0, H.t1, H.t0, L + bar, { mirror });
@@ -191,8 +199,8 @@ export function direct(score, A, M) {
   // How much the sound grows into L, and over how long, if it does: never dipping far on the way, at least 8 bars of it.
   const buildInto = L => {
     let best = null;
-    const longest = Math.min(COIN_SECONDS[1], L - 12);
-    for (let len = Math.max(COIN_BARS * bar, COIN_SECONDS[0]); len <= longest; len += 2 * bar) {
+    const longest = Math.min(COIN_T[1], L - 12);
+    for (let len = Math.max(P ? 6 * bar : COIN_BARS * bar, COIN_T[0]); len <= longest; len += 2 * bar) {
       const rise = meanE(L, L + 2 * bar) - meanE(L - len - 2 * bar, L - len);
       if (rise > COIN_RISE && (!best || rise > best.rise)) best = { rise, len };
     }
@@ -203,14 +211,15 @@ export function direct(score, A, M) {
     if (!pat || !flag('coin')) return null;
     const { l, build } = c;
     // Better to start where the film already has a landing, if there's one that near: then that arrival still lands.
-    const near = landings.filter(x => x.B < l.B - COIN_SECONDS[0] && l.B - x.B <= COIN_SECONDS[1] && Math.abs(l.B - x.B - build.len) <= 5).sort((x, y) => y.a - x.a)[0];
+    const near = landings.filter(x => x.B < l.B - COIN_T[0] && l.B - x.B <= COIN_T[1] && Math.abs(l.B - x.B - build.len) <= 5).sort((x, y) => y.a - x.a)[0];
     const beats = Math.round((near ? l.B - near.B : build.len) / (beat * meter)) * meter, start = l.B - beats * beat;
     const j = g.findIndex(x => x.t1 >= l.B && x.t1 - (x.morph || 0) >= l.B + 2 * bar);
     if (j < 0 || j >= lastG() || start < OPENING || !free(start - 15, g[j].t1)) return null;
+    if (P && (spent() + g[j].t1 - start > budget || g[j].t1 - l.B > 8 * bar)) return null;
     const dir = rand() < 0.5 ? 1 : -1;
     // It lands broad, so past the landing it draws back as it pours: going the other way, a few big shapes are all that's left of it by the end of a long tail.
     const tail = Math.max(g[j].t1 - (g[j].morph || 0) - l.B, 1), after = -Math.min(0.045, COIN_GROWS / tail);
-    const H = spliceCoin(score, l.B, pat, { beats, dir, w0: rand() * Math.PI * 2, after });
+    const H = spliceCoin(score, l.B, pat, { beats, dir, w0: rand() * Math.PI * 2, after, ...(P ? { least: 3 * bar } : null) });
     return H ? put('coin', H, l.B, H.t0, H.t1, H.t0 + 2 * bar, l.B + bar) : null;
   };
 
@@ -240,17 +249,20 @@ export function direct(score, A, M) {
     const ruling = M.runs.filter(r => r.t1 - r.t0 >= 1.2), places = [];
     for (let a = 0; a < lastG() - 1; a++) for (let b = a + 1; b < lastG(); b++) {
       const t0 = g[a].t1, t1 = g[b].t1, len = t1 - t0;
-      if (len < STAR_LEN[0] || len > STAR_LEN[1] || !free(t0, t1) || lagged(t0, flag('iris') ? t1 - 1 : t1)) continue;     // with an Iris there's less room, and a transformation can land on a stop
-      if (g[a].t1 - g[a].t0 < 6 || t0 < OPENING || t1 - (g[b].morph || 0) - t0 < 16) continue;
+      if (len < STAR_T[0] || len > STAR_T[1] || !free(t0, t1) || lagged(t0, flag('iris') ? t1 - 1 : t1)) continue;     // with an Iris there's less room, and a transformation can land on a stop
+      if ((!P && g[a].t1 - g[a].t0 < 6) || t0 < OPENING || t1 - (g[b].morph || 0) - t0 < STAR_BODY) continue;
       const here = ruling.filter(r => r.t0 >= t0 && r.t0 < t1), kinds = new Set(here.map(r => r.c)).size;
       if (kinds < 2 || here.length < 4) continue;
+      if (P) { let on = 0, n = 0; for (let x = t0; x < t1; x += bar) { n++; if (P.isLoud(x)) on++; } if (on > 0.2 * n) continue; }      // a chorus is a run of quick changes
       // It leaves room for the Countdown to come back
-      const inTheWay = comeback.some(b => t0 < b + PAST && t1 > b - 24);
-      places.push({ t0, t1, s: Math.min(kinds, 6) / 6 + Math.min(here.length / len * 4, 1) + Math.min(len, 55) / 55 + 0.6 * rand() - (inTheWay ? 1.5 : 0) });
+      const inTheWay = comeback.some(b => t0 < b + PAST_T && t1 > b - 24);
+      // ...and with pace it keeps off a section's first visit, or what it wears wouldn't be there to come back to
+      places.push({ t0, t1, s: Math.min(kinds, 6) / 6 + Math.min(here.length / len * 4, 1) + Math.min(len, 55) / 55 + 0.6 * rand() - (inTheWay ? 1.5 : 0) - (P && (P.firstOfMany(t0 + 1) || P.firstOfMany(t1 - 1)) ? 2 : 0) });
     }
     places.sort((x, y) => y.s - x.s);
     const bodies = STAR_BODIES.map(lib).filter(p => p && p.pool !== false);
     for (const p of places.slice(0, 4)) {
+      if (P && spent() + p.t1 - p.t0 > budget) continue;
       const body = pick(bodies.length ? bodies : STAR_BODIES.map(lib).filter(Boolean));
       if (!body || !MOVES.star.needs(base(body))) continue;
       const H = placeStar(score, body, { start: p.t0, end: p.t1, M, seed: seed + 3, mirror: rand() < 0.5, size: STAR_SIZE });
@@ -262,14 +274,14 @@ export function direct(score, A, M) {
   // ------------------------------------------------------------- Iris: the climax, once
   const putIris = () => {
     if (!flag('iris') || A.climax <= OPENING + IRIS_D) return;
-    const D0 = clamp(Math.round(IRIS_D / bar) * bar, 10, 14);
+    const D0 = P ? clamp(Math.round(9.5 / bar) * bar, 9, 10.5) : clamp(Math.round(IRIS_D / bar) * bar, 10, 14);
     const bold = (G, tm) => { fillSlot(slot, G, tm, G.pattern, { phi: phiOf(tm, G) }); return G.pattern.id !== 'checks.target' && canIris(slot) && fineness(slot) <= IRIS_FINE; };      // a target's fine spokes go round the tube as hairlines
-    const fits = (G, L) => { const D = clamp((L - G.t0 - ROOM) / IRIS_HIT, 10, D0); return L - G.t0 >= IRIS_HIT * D + ROOM ? D : 0; };      // it's shorter if it has to be
+    const fits = (G, L) => { const D = clamp((L - G.t0 - ROOM_T) / IRIS_HIT, P ? 9 : 10, D0); return L - G.t0 >= IRIS_HIT * D + ROOM_T ? D : 0; };      // it's shorter if it has to be
     // Gesture i becomes the next one, turning inside out at L. On a sheet it can roll up, and if what's there isn't one, one that is, for the time it has.
     const irisOn = (i, L, D) => {
       let G = g[i];
       const N = g[i + 1], tm = L - IRIS_HIT * D;
-      if (!isPlain(G) || N.moves?.length || N.hero || !free(tm - bar, L + (1 - IRIS_HIT) * D + bar) || lagged(tm, L + D)) return false;
+      if (!isPlain(G) || (P ? N.moves?.some(x => x.id !== 'relay') : N.moves?.length) || (N.hero && !P) || !free(tm - bar, L + (1 - IRIS_HIT) * D + bar) || lagged(tm, L + D)) return false;
       if (!bold(G, tm)) {
         if (!score.remake || G.k == null) return false;
         const swap = IRIS_BODIES.map(lib).filter(p => p && p !== N.pattern && p !== g[i - 1].pattern).map(p => [rand(), p]).sort((a, b) => a[0] - b[0]).map(x => score.remake(G, x[1])).find(x => bold(x, tm));
@@ -288,12 +300,12 @@ export function direct(score, A, M) {
           next = others.map(p => score.remake(N, p)).find(x => seen(x) <= IRIS_NEXT) ?? N;
         }
       }
-      if (!wearIris(G, next, L, { D, aspect, focus, beats: score.react?.pulses ?? null, room: ROOM, way: rand() < 0.5 ? 1 : -1 })) return false;
+      if (!wearIris(G, next, L, { D, aspect, focus, beats: score.react?.pulses ?? null, room: ROOM_T, way: rand() < 0.5 ? 1 : -1 })) return false;
       g[i] = G; g[i + 1] = next;
       put('iris', G, L, G.t1 - D, G.t1, G.t1 - D, G.t1 + bar);
       return true;
     };
-    const places = landings.filter(l => !l.rest && Math.abs(l.B - A.climax) <= IRIS_NEAR).sort((x, y) => (Math.abs(x.B - A.climax) - 16 * x.a) - (Math.abs(y.B - A.climax) - 16 * y.a));
+    const places = landings.filter(l => !l.rest && Math.abs(l.B - A.climax) <= IRIS_NEAR).sort((x, y) => (Math.abs(x.B - (P?.climaxAt ?? A.climax)) - (P ? 0 : 16 * x.a)) - (Math.abs(y.B - (P?.climaxAt ?? A.climax)) - (P ? 0 : 16 * y.a)));
     for (const l of places) {
       let i = g.findIndex(x => Math.abs(x.t1 - l.B) < 0.05);
       if (i < 1 || i + 1 >= lastG()) continue;
@@ -324,7 +336,7 @@ export function direct(score, A, M) {
   // A section that comes back wears it again, the other way round: another dial, turning and locking the other way.
   if (cd) {
     const others = DIALS.map(lib).filter(p => p && p !== dial);
-    for (const L of comeback) putCountdown(L, (flag('lookRuns') && others.length ? others[Math.floor(rand() * others.length) % others.length] : null) ?? dial, true);
+    for (const L of comeback) if (!P || (!P.isLoud(L) && spent() + 20 < budget)) putCountdown(L, (flag('lookRuns') && others.length ? others[Math.floor(rand() * others.length) % others.length] : null) ?? dial, true);
   }
 
   // ------------------------------------------------------------- not too long in one look
@@ -391,7 +403,7 @@ export function direct(score, A, M) {
       if (again) lockOf(again, true);
     }
     // A film with nothing dull in it gets something dull, on the longest gesture that's doing nothing else, because that's what it takes to show a checker nobody drew.
-    if (!n && score.remake) {
+    if (!n && score.remake && !P) {
       const spots = g.slice(1, lastG()).filter(G => isPlain(G) && G.replayOf == null && G.k != null && G.t1 - G.t0 - LOCK_MORPH >= span + 2 && quiet(G.t0, G.t1)).sort((a, b) => (b.t1 - b.t0) - (a.t1 - a.t0));
       const bodies = (score.patterns ?? []).filter(p => realFams(p) <= 2 && p.family !== 'dots' && flatBody(base(p)) && slipFor(base(p))).map(p => [rand(), p]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
       search: for (const G of spots.slice(0, 2)) for (const p of bodies.slice(0, 16)) {
@@ -413,13 +425,13 @@ export function direct(score, A, M) {
     const tm = G.t1 - (G.morph || 0);
     if (tm - G.t0 < 8 || !quiet(G.t0 + 2, tm)) return null;
     G.hero = rileyKind(G.pattern);
-    return put('riley', G, G.t0 + 0.01, G.t0 + 3, tm, G.t0 + 3, tm, { gain: QUIET_BODY });
+    return put('riley', G, G.t0 + 0.01, G.t0 + 3, tm, G.t0 + 3, tm, { gain: P ? 1 : QUIET_BODY });
   };
   if (flag('heroRiley')) {
     let n = 0;
     for (const G of g.slice(0, lastG())) if (n < RILEYS && putRiley(G)) n++;
     // None? One of the plain gestures becomes one. Not at the very start: the film opens in its own family.
-    if (!n && score.remake) {
+    if (!n && score.remake && !P) {
       const spots = g.slice(1, lastG()).filter(G => isPlain(G) && G.replayOf == null && G.k != null && G.t1 - G.t0 >= 16 && free(G.t0, G.t1));
       const G = spots[Math.floor(rand() * spots.length)];
       if (G) {
@@ -440,8 +452,9 @@ export function direct(score, A, M) {
     const fallOn = (l, mirror) => {
       const i = g.findIndex(x => Math.abs(x.t1 - l.B) < 0.05);
       if (i < 0 || i + 1 >= lastG()) return null;
-      const G = g[i], N = g[i + 1], D = clamp(4 * bar, 6, 10);
-      if (G.xform || G.t1 - G.t0 < D + ROOM || !quiet(G.t1 - D, G.t1 + bar) || twiceRunning('fall', G.t1) || clash(i, 'fall')) return null;
+      const G = g[i], N = g[i + 1], D = P ? clamp(3 * bar, 4.5, 8) : clamp(4 * bar, 6, 10);
+      if (P && i === 0 && G.t1 < 14) return null;
+      if (G.xform || G.t1 - G.t0 < D + ROOM_T || !quiet(G.t1 - D, G.t1 + bar) || twiceRunning('fall', G.t1) || clash(i, 'fall')) return null;
       if (N.hero === 'countdown' || N.moves?.some(m => m.id === 'slip') || lagged(G.t1 - D, G.t1 + bar)) return null;
       // It falls into something bold, or all that's seen on the way down is a fine weave
       fillSlot(slot, N, N.t0, N.pattern, { phi: 0 });
@@ -472,12 +485,13 @@ export function direct(score, A, M) {
   const shockOn = (i, landing, dir, mirror, again) => {
     const G = g[i];
     let N = g[i + 1];
+    if (P && i === 0) return null;     // the arrival would fly straight past it, and past the first pattern with it
     if (!N || i + 1 >= lastG() || G.xform || N.carry || G.moves?.some(m => m.id === 'star') || N.hero === 'countdown' || N.moves?.some(m => m.id === 'slip' || m.id === 'snap')) return null;
-    const D = Math.min(G.morph || 10, 10), span = dir === 2 ? D : 0;
-    if (landing - G.t0 < D + 4 || !quiet(landing - D, landing + span + bar) || twiceRunning('shock', landing) || lagged(landing - D, landing + span + bar) || clash(i, 'shock')) return null;
+    const D = P ? SHOCK_D : Math.min(G.morph || 10, 10), span = dir === 2 ? D : 0;
+    if (landing - G.t0 < D + SHOCK_ROOM || !quiet(landing - D, landing + span + bar) || twiceRunning('shock', landing) || lagged(landing - D, landing + span + bar) || clash(i, 'shock')) return null;
     if (!noMatte(base(G.pattern))) return null;
     const c0 = again?.centre ?? focusAt(landing), centre = mirror ? [-c0[0], c0[1]] : c0;
-    const o = { dir, D, aspect, phiOf, centre, beats: score.react?.pulses ?? null };
+    const o = { dir, D, aspect, phiOf, centre, beats: score.react?.pulses ?? null, leave: P ? 3 : 7 };
     let fit = noMatte(base(N.pattern)) && shockFit(G, N, { D, aspect, phiOf, centre });
     if (!fit && score.remake && N.replayOf == null && N.k != null && isPlain(N) && !N.fixedRange) {
       for (const p of nextCandidates(G, N)) {
@@ -509,7 +523,7 @@ export function direct(score, A, M) {
     for (let i = 0; i < lastG() - 1; i++) {
       const G = g[i], N = g[i + 1], l = landings.find(x => Math.abs(x.B - G.t1) < 0.05);
       if (cast.some(h => h.kind === 'shock' && Math.abs(h.at - G.t1) < SHOCK_APART)) continue;
-      if (!l || l.rest || G.xform || l.B - lastShock < SHOCK_APART || !shockFit(G, N, { D: Math.min(G.morph || 10, 10), aspect, phiOf })) continue;
+      if (!l || l.rest || G.xform || l.B - lastShock < SHOCK_APART || !shockFit(G, N, { D: P ? SHOCK_D : Math.min(G.morph || 10, 10), aspect, phiOf })) continue;
       if (shockOn(i, l.B, l.dE < -0.1 ? 2 : 1, false, null)) lastShock = l.B;
     }
   }
@@ -604,6 +618,7 @@ export function direct(score, A, M) {
   score.cast = cast.map(h => ({ kind: h.kind === 'riley' ? h.G.hero : h.kind, at: +h.at.toFixed(2), t0: +h.a.toFixed(2), t1: +h.b.toFixed(2), id: h.G.pattern.id, mirror: !!h.mirror, gain: h.gain }));
   score.stats = { ...score.stats, gestures: g.length - 1, cast: score.cast.map(h => `${h.kind}@${h.at.toFixed(0)}`).join(' ') };
   score.kit = { cast, putCountdown, makeCountdown, rand, lib };     // what a hand cut places with (docs/DIRECTION.md section 7)
+  score.pace?.timeHits(score, cast);
   land(score, A, M, cast);     // last of all. Behind directing.peak
   return score;
 }

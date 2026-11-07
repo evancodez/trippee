@@ -13,7 +13,8 @@ import { buildReact, surgedBeats, makeWalk } from './react.js';
 import { buildTime } from './time.js';
 import { direct } from './direct.js';
 import { applyCut } from './cut.js';
-import { flag, flags, hearing, hearOn } from './flags.js';
+import { flag, flags, hearing, hearOn, directing } from './flags.js';
+import { readPace } from './pace.js';
 import { understand } from '../music/understand.js';
 import { base } from './slot.js';
 import { OFF, SLOT_FLOATS } from '../pattern/layout.js';
@@ -155,7 +156,7 @@ function whitestPhase(pat, G) {
 export function compose(A, seed = 1, opts = {}) {
   // A world may go about things at its own pace. All of these are a film's own otherwise.
   const pace = opts.world?.motion;
-  const { TARGET, LMIN, LMAX } = pace?.len ? { TARGET: (pace.len[0] + pace.len[1]) / 2, LMIN: pace.len[0], LMAX: pace.len[1] } : LENGTHS;
+  let { TARGET, LMIN, LMAX } = pace?.len ? { TARGET: (pace.len[0] + pace.len[1]) / 2, LMIN: pace.len[0], LMAX: pace.len[1] } : LENGTHS;
   const { MORPH_SHORTEST, MORPH_LONGEST } = pace?.morph ? { MORPH_SHORTEST: pace.morph[0], MORPH_LONGEST: pace.morph[1] } : MORPHS;
   // The seed and the song together: the same seed on two songs shouldn't pick the same things.
   let songHash = 0;
@@ -168,6 +169,9 @@ export function compose(A, seed = 1, opts = {}) {
   ears.depth = opts.world?.hear?.depth ?? 1;        // docs/MODES.md's table: how deep this world walks
   const M = understand(A, ears), form = flag('form') && !M.neutral && M.breath.beats > 0, spread = flag('spread');
   const time = buildTime(M);
+  // Pace (src/score/pace.js). A hand cut says all this for itself. With it off, nothing below has changed.
+  const P = form && directing.pace && !opts.cut ? readPace(A, M, { seed, songHash, library: opts.patterns ?? globalThis.app?.patterns ?? [], world: opts.world }) : null;
+  if (P) { LMIN = P.least; LMAX = P.most; }
   const library = opts.patterns ?? globalThis.app?.patterns ?? [];
   // pool:false stays in the library to be picked by hand, and out of films
   const inPool = library.filter(p => p.pool !== false);
@@ -264,6 +268,7 @@ export function compose(A, seed = 1, opts = {}) {
   const eOverall = form ? Array.from({ length: Math.floor(tEnd * 2) }, (_, i) => Eat(i / 2)) : [], eMin = percentile(eOverall, 0.1), eMax = percentile(eOverall, 0.9);
   const lengthWanted = (t0, t1) => {
     if (!form) return TARGET;
+    if (P) return P.want((t0 + t1) / 2);
     const q = clamp((Eat((t0 + t1) / 2) - eMin) / Math.max(eMax - eMin, 1e-3));
     return TARGET * lerp(LONG_WHEN_QUIET, SHORT_WHEN_LOUD, q);
   };
@@ -275,7 +280,7 @@ export function compose(A, seed = 1, opts = {}) {
         for (let i = 0; i < j; i++) {
           const L = nodes[j].t - nodes[i].t;
           if (L < LMIN / Math.min(widen, 2) || L > LMAX * widen || !Number.isFinite(best[i])) continue;
-          const c = best[i] + (Math.log(L / lengthWanted(nodes[i].t, nodes[j].t)) / 0.35) ** 2 - 1.5 * nodes[j].S - bonus[j] + (form ? ONE_MORE : 0);
+          const c = best[i] + (Math.log(L / lengthWanted(nodes[i].t, nodes[j].t)) / (P?.stiff ?? 0.35)) ** 2 - 1.5 * nodes[j].S - bonus[j] + (form ? P?.oneMore ?? ONE_MORE : 0);
           if (c < best[j]) { best[j] = c; from[j] = i; }
         }
       }
@@ -284,7 +289,7 @@ export function compose(A, seed = 1, opts = {}) {
     for (let j = n - 1; j > 0 && from[j] >= 0; j = from[j]) pick.push(j);
     return pick.reverse();
   };
-  const bonus = nodes.map(n => (n.boundary && n.S >= mandatory ? 8 : 0) + (form ? 8 * clamp((n.peak ?? 0) / 0.5) : 0));
+  const bonus = nodes.map(n => (n.boundary && n.S >= mandatory ? 8 : 0) + (form ? 8 * clamp((n.peak ?? 0) / 0.5) : 0) + (P ? P.dropWorth(n.dE ?? 0, n.bar) : 0));
   // A rest is somewhere to land: the next world arrives and the film stops on it, until the band comes back.
   if (form) for (const r of M.rests) {
     let best = -1, d = 1.5 * M.bar;
@@ -331,19 +336,22 @@ export function compose(A, seed = 1, opts = {}) {
       const r = j > 0 && j < land.length - 1 ? lags.find(l => t >= l.a - 1.5 * M.bar && t <= Math.max(l.b + 1.5 * M.bar, l.paid)) : null;
       const to = r ? time(r.a) : t, last = moved[moved.length - 1];
       if (last === undefined) { moved.push(to); return; }
-      if (to - last >= REST_ROOM) { moved.push(to); return; }
+      if (to - last >= (P ? P.least : REST_ROOM)) { moved.push(to); return; }
       // Too close to the last one to be a gesture. The one at the rest stays, unless the other's the start of the film, and the film's end is the film's end.
       if ((r || j === land.length - 1) && moved.length > 1) moved[moved.length - 1] = to;
     });
     land = moved;
   }
 
+  // A way of changing runs its stretch of landings together into one gesture, whose steps are those landings
+  if (P) land = P.passages(land, segAt, time);
+
   // ----- 3. Which earlier gesture does each gesture replay?
   const nG = land.length - 1, spec = [];
   for (let k = 0; k < nG; k++) {
     const a = land[k], b = land[k + 1], mid = (a + b) / 2, seg = segAt(mid);
     const out = { k, a, b, seg, replayOf: null };
-    if ((seg.visit || 0) > 0) {
+    if (!P && (seg.visit || 0) > 0) {
       const d = canonTime(mid) - mid, ia = a + d, ib = b + d;
       let bestO = 0, bestK = null;
       for (let q = 0; q < k; q++) {
@@ -407,6 +415,7 @@ export function compose(A, seed = 1, opts = {}) {
         s -= 1.5 * (uses.get(p) || 0);
         if (p === prev) s -= 10;
         if (A.climax >= q.a && A.climax < q.b) s += 1.5 * clamp(scaleTravel(p) / Math.log(8));
+        if (P) s += (prev && P.glides(prev, p) ? 1.2 : 0) - P.fineCost(p, P.parts[q.k].level);
         s += 0.5 * pick2();
         if (s > top) { top = s; best = p; }
       }
@@ -414,6 +423,12 @@ export function compose(A, seed = 1, opts = {}) {
     };
     let prev = null, prev2 = null;
     for (const q of spec) {
+      if (P) {
+        q.pat = P.wear(q, P.parts[q.k], prev, () => (q.k === 0 && given ? given : choose(q, prev, prev2))) ?? choose(q, prev, prev2);
+        count(q);
+        prev2 = prev; prev = q.pat;
+        continue;
+      }
       const src = q.replayOf !== null ? spec[q.replayOf] : null;
       // A section can come back wearing what it wore, but not for ever: after that, something new from the same world.
       const crowded = src && ((prev?.family === src.pat.family && prev2?.family === src.pat.family) || ((spent.get(src.pat.family) || 0) + q.b - q.a) / total > (src.pat.family === family ? SHARE.primary : SHARE.family) + 0.1);
@@ -548,6 +563,11 @@ export function compose(A, seed = 1, opts = {}) {
   })() : [];
   const morphFor = (a, b, want, pat) => {
     if (!form) return want;
+    if (P) {
+      let start = b - want;
+      for (const l of lags) if (start > l.from && start < l.paid) start = b - l.paid >= P.least ? l.paid : l.from - 0.05;
+      return b - start;
+    }
     // A Snap turns over on the breath, all at once. A transformation starts between two of those, not on top of one.
     const turns = pat.drive && whitestPhase(pat, { t0: a }) === 0;
     const room = Math.min(MORPH_LONGEST, 0.7 * (b - a));
@@ -581,7 +601,7 @@ export function compose(A, seed = 1, opts = {}) {
     const srcG = !over && s.replayOf !== null ? gestures[s.replayOf] : null;
     const pat = over?.pattern ?? s.pat;
     // It has become the next pattern exactly on the boundary. Where the music falls away it takes longer over it; where it rises it's quicker.
-    const morph = morphFor(a, b, clamp(len * (l1.kind === 'fall' || l1.kind === 'break' ? 0.5 : l1.kind === 'rise' ? 0.3 : 0.4), 7, 13), pat);
+    const morph = morphFor(a, b, P ? P.leadOf(P.parts[k], pat, spec[k + 1]?.pat, len, l1.kind) : clamp(len * (l1.kind === 'fall' || l1.kind === 'break' ? 0.5 : l1.kind === 'rise' ? 0.3 : 0.4), 7, 13), pat);
     // Its clock comes to rest in the transformation out of it (frame.js), so that's where its long move should end, or the last third of the ride would never be seen and the rest would be slow.
     const seen = form ? len - morph + Math.min(morph * 0.4, 3.5) / 2 : len;
     let arcs, flowOver, change = null;
@@ -590,6 +610,7 @@ export function compose(A, seed = 1, opts = {}) {
       arcs = c.arcs; flowOver = c.flow; change = c.what;
     } else {
       arcs = journey(pat, seen, zoomWay(a, b));
+      if (P) arcs = P.shrinkArcs(arcs, seen);
     }
     // Triangles close by area, so they spend longer nearly solid: a shorter sweep keeps the solid moment the same length
     const tight = (pat.solid ?? 1) < 1 ? 0.75 : 1;
@@ -608,6 +629,7 @@ export function compose(A, seed = 1, opts = {}) {
       G.arrival = M.arrivalAt(b);
     }
     if (flowOver) { G.flow = flowOver; G.flowOver = flowOver; }
+    if (P) { G.part = P.parts[k]; G.quick = true; }
 
     // Gears: one element passes per N beats, N from lambda and the scale of the moment. Closed form: a track in tau.
     // The rehearsal may yet narrow the part of the long move this gesture rides, or add to it, so it can ask what the gears would then be. x is how far through the gesture.
@@ -713,6 +735,7 @@ export function compose(A, seed = 1, opts = {}) {
   const react = buildReact(A, seed, ears);
   const surged = t => surgedBeats(react, tau, t);
   let walk = ears[1] ? makeWalk(react, time) : null;
+  if (P) P.dress(gestures, { time, react, tau, meter });
   const landings = L.slice(1).map((l, j) => {
     const out = { B: +l.B.toFixed(3), kind: l.kind, form: l.form, pol: l.pol, holdOut: l.holdOut, holdIn: l.holdIn, dE: +(l.dE ?? 0).toFixed(3) };
     if (!form) return out;
@@ -754,6 +777,7 @@ export function compose(A, seed = 1, opts = {}) {
   const film = (W?.direct ?? direct)({
     gestures, landings, stats, tau, rate, family, pool: pool.map(p => p.id), patterns, seed, aspect,
     library, remake: (G, pattern) => gestureFor(G.k, { pattern, a: G.t0, b: G.t1 }),
+    pace: P,
     // Flow surges on the strong beats and glides between, so it stays locked and never jolts
     phi: walk || ears[11]
       // Hearing 1 and 11. Told how much of the clock's speed is left (rho) and what the time really is, it walks to the beats you can hear while that clock slows into a transformation. Asked with neither, it's just walking.

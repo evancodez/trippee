@@ -79,7 +79,7 @@ export function spliceCoin(score, land, pattern, o = {}) {
   if (!flag('coin')) return null;
   const g = score.gestures, m = coinMove(score, land, o), bar = m.meter * m.spb, start = land - m.beats * m.spb;
   let i = g.findIndex(x => x.t1 > start);
-  if (i >= 0 && start - g[i].t0 < 14) i--;      // too little would be left of that one: the one before runs on to the coin instead
+  if (i >= 0 && start - g[i].t0 < (o.least ?? 14)) i--;      // too little would be left of that one: the one before runs on to the coin instead
   let j = g.findIndex(x => x.t1 >= land);
   while (j >= 0 && j < g.length && g[j].t1 - (g[j].morph || 0) < land + 2 * bar) j++;     // the next transformation starts after the landing has had two bars to itself
   if (i < 0 || j < 0 || j >= g.length - 1 || start <= g[i].t0) return null;

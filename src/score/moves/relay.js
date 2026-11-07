@@ -201,7 +201,7 @@ export function timedRelay(out, seq, m, t, phi) {
   if (lo >= 0) {
     const e = w[lo];
     if (t >= e.b) i = first + lo + 1;
-    else { i = first + lo; T = e.b > e.hit ? crossT((t - e.a) / (e.b - e.a), e.h) : smoother((t - e.a) / (e.b - e.a)); }
+    else { i = first + lo; T = e.b > e.hit ? crossT((t - e.a) / (e.b - e.a), e.h, m.q ?? 2) : smoother((t - e.a) / (e.b - e.a)); }
   }
   writeRelay(out, seq, i, T, evalTrack(track, t), phi);
 }

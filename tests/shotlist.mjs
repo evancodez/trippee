@@ -139,11 +139,11 @@ export const collect = async ({ F, W, H }) => {
     segments: A.segments.map(x => ({ t0: x.t0, t1: x.t1, label: x.label, visit: x.visit || 0, rot: x.rot || 0 })),
     arrivals: M.arrivals(0.3).map(p => ({ bar: p.bar, t: p.t, a: p.a, s: p.s })), arrival: Array.from(M.arrival), rests: M.rests, windows: time.windows ?? [],
     runs: M.runs.map(r => ({ t0: r.t0, t1: r.t1, c: r.c, name: chordName(r.c) })), conductor: M.conductor.map(c => ({ t: c.t, lead: c.lead, second: c.second, margin: c.margin })),
-    family: S.family, stats: S.stats, seed: S.seed, sitOut: rh?.sitOut ?? [], rehearsal: rh?.seconds, handoverFrom: S.handover?.G?.pattern?.id ?? null,
+    family: S.family, stats: S.stats, seed: S.seed, sitOut: rh?.sitOut ?? [], rehearsal: rh?.seconds, rangeSeconds: rh?.rangeSeconds, guardSeconds: rh?.flash?.seconds, fixes: rh?.flash?.fixes ?? [], flashLeft: rh?.flash?.left ?? [], register: S.pace?.register ?? null, handoverFrom: S.handover?.G?.pattern?.id ?? null,
     cast: (S.cast ?? []).map(h => ({ ...h, sAt: songAt(h.at), s0: songAt(h.t0), s1: songAt(h.t1) })), samples: s,
     per, directing, sheet: S.sheet ?? null, refused: S.refused ?? null,
     gestures: g.map((G, i) => ({
-      i, t0: G.t0, t1: G.t1, s0: songAt(G.t0), s1: songAt(G.t1), sm: G.morph ? songAt(G.t1 - G.morph) : null, hitS: G.peak ? songAt(G.peak.hit) : null, id: G.pattern.id, fam: G.pattern.family, look: lookOf(G.pattern), drive: !!G.pattern.drive, morph: G.morph || 0,
+      i, t0: G.t0, t1: G.t1, s0: songAt(G.t0), s1: songAt(G.t1), steps: (G.moves ?? []).flatMap(m => (m.id === 'relay' && m.on ? m.on.map(songAt) : [])), way: G.part?.way ?? null, sm: G.morph ? songAt(G.t1 - G.morph) : null, hitS: G.peak ? songAt(G.peak.hit) : null, id: G.pattern.id, fam: G.pattern.family, look: lookOf(G.pattern), drive: !!G.pattern.drive, morph: G.morph || 0,
       kindIn: G.kindIn ?? null, kindOut: G.kindOut ?? null, label: G.label ?? null, visit: G.visit ?? 0, replayOf: G.replayOf ?? null, change: G.change ?? null, hero: G.hero ?? null, moves: (G.moves ?? []).map(m => m.id), xform: G.xform?.id ?? null,
       into: G.plan ? (G.plan.fall ? 'fall' : G.plan.kind) : G.xform?.id ?? null, rise: G.rise ?? null, range: G.range ?? null, gears: G.gears ?? [], noGlide: !!G.noGlide, calm: G.calm ?? null, phiScale: G.phiScale ?? null, ride: i < g.length - 1 ? sweep(G, G.t0, G.t1) : [],
     })),
@@ -279,6 +279,8 @@ export function changesOf(d) {
     if (on) on.type += `+${h.kind}`;
     else changes.push({ s: t, end: t, sm: null, type: `hit:${h.kind}`, from: h.id, to: h.id, D: 0, G: null });
   }
+  // A Relay's steps are a pattern becoming another pattern, inside one gesture
+  for (const G of real) for (const t of G.steps ?? []) changes.push({ s: t, end: t, sm: null, type: 'step:relay', from: G.id, to: G.id, D: 0, G: null });
   changes.sort((a, b) => a.s - b.s);
   return changes;
 }
@@ -411,7 +413,8 @@ export function report(song, d, tags) {
   p(`falls, the song dropping away by .08 or more over 4 bars: ${falls.map(x => `${x.t.toFixed(1)} (${dot(x.v)})`).join('  ') || 'none'}`);
   p(`climax (the analysis's pick): ${d.climax.toFixed(1)} s`);
   p();
-  p(`the film: seed ${d.seed}, named for family ${d.family}, ${real.length} gestures, arriving from the wander's ${d.handoverFrom ?? '?'}. Rehearsal ${fx(d.rehearsal, 1)} s, sat out: ${d.sitOut.join(', ') || 'nothing'}`);
+  p(`the film: seed ${d.seed}, named for family ${d.family}, ${real.length} gestures, arriving from the wander's ${d.handoverFrom ?? '?'}. Rehearsal ${fx(d.rehearsal, 1)} s (looking at rides ${fx(d.rangeSeconds, 1)}, the guard ${fx(d.guardSeconds, 1)}), sat out: ${d.sitOut.join(', ') || 'nothing'}. Register: ${d.register ?? '-'}`);
+  p(`the guard changed: ${d.fixes.map(f => `${f.t} ${f.id} ${f.kind}: ${f.did}`).join('; ') || 'nothing'}. Left flashing: ${d.flashLeft.join(', ') || 'nothing'}`);
   p(`cast: ${d.cast.map(h => `${h.kind}${h.mirror ? '(mirrored)' : ''} at ${h.at.toFixed(1)} on ${h.id} [${h.t0.toFixed(1)}..${h.t1.toFixed(1)}]`).join('; ') || 'nobody'}`);
   p(`composer's stats: ${JSON.stringify({ medianLen: d.stats.medianLen, minLen: d.stats.minLen, maxLen: d.stats.maxLen, kinds: d.stats.kinds, replays: d.stats.replays, boundaryLanded: d.stats.boundaryLanded, onBreath: d.stats.onBreath, arrivalsLanded: d.stats.arrivalsLanded, restsLanded: d.stats.restsLanded })}`);
   p();
@@ -523,6 +526,13 @@ export function report(song, d, tags) {
   p(`  no structural change: ${longestGap.toFixed(1)} s, ${gapA.toFixed(1)} to ${gapB.toFixed(1)}, sections ${[...new Set(d.segments.filter(x => x.t0 < gapB && x.t1 > gapA).map(secName))].join(' ')}, mean E ${dot(eOf(gapA, gapB))} (song's mean ${dot(eOf(0, dur))}). In it: ${[...new Set(real.filter(G => G.s0 < gapB && G.s1 > gapA).map(G => G.id))].join(', ')}`);
   p(`  no transformation under way: ${(holdB - holdA).toFixed(1)} s, ${holdA.toFixed(1)} to ${holdB.toFixed(1)}, mean E ${dot(eOf(holdA, holdB))}`);
   p(`  one pattern on screen: ${(longG.s1 - longG.s0).toFixed(1)} s, ${longG.id}, ${longG.s0.toFixed(1)} to ${longG.s1.toFixed(1)}, mean E ${dot(eOf(longG.s0, longG.s1))}`);
+  // A plain hold: on one pattern with nothing but its ordinary flow. Not its transformation, not a named move or a hero, and not a pattern whose whole being is a move (relay, riot, still).
+  const plainOf = G => { const named = G.moves.some(m => m !== 'cue') || ['relay', 'riot', 'still'].includes(G.fam) || G.drive; return named ? 0 : (G.sm ?? G.s1) - G.s0; };
+  const longPlain = [...real].sort((x, y) => plainOf(y) - plainOf(x))[0], plainHold = plainOf(longPlain);
+  p(`  plain hold: ${plainHold.toFixed(1)} s (${(plainHold / bar).toFixed(1)} bars), ${longPlain.id}, from ${longPlain.s0.toFixed(1)}, mean E ${dot(eOf(longPlain.s0, longPlain.sm ?? longPlain.s1))}`);
+  const toPat = []; for (const G of real) { toPat.push({ t: G.s0, id: G.id }); }
+  const longOn = (() => { let b = 0, id = ''; for (const G of real) { const pts = [G.s0, ...(G.steps ?? []), G.s1]; for (let i = 1; i < pts.length; i++) if (pts[i] - pts[i - 1] > b) { b = pts[i] - pts[i - 1]; id = G.id; } } return { b, id }; })();
+  p(`  longest with one picture (a Relay's steps count as new ones): ${longOn.b.toFixed(1)} s, ${longOn.id}`);
   p();
 
   p('3. Does the picture follow the song? Pearson r over the breaths (rows of at least half a breath). Change rate is structural changes in the 30 s around each row, per minute. Fineness is on a log scale.');
@@ -614,14 +624,14 @@ export function report(song, d, tags) {
   p();
 
   const glance = {
-    'duration, s': dur.toFixed(0), 'tempo, bpm': d.bpm.toFixed(0), 'breath, s': d.breath.seconds.toFixed(1), gestures: real.length, 'changes per minute': perMin.toFixed(2), 'slowest section, per minute': Math.min(...secStats.map(x => x.rate)).toFixed(1), 'fastest section, per minute': Math.max(...secStats.map(x => x.rate)).toFixed(1),
+    'duration, s': dur.toFixed(0), 'tempo, bpm': d.bpm.toFixed(0), 'breath, s': d.breath.seconds.toFixed(1), gestures: real.length, 'relay steps': real.reduce((n, G) => n + (G.steps?.length ?? 0), 0), 'changes per minute': perMin.toFixed(2), 'plain hold, s': plainHold.toFixed(1), 'plain hold, bars': (plainHold / bar).toFixed(1), 'longest one pattern, s': (longG.s1 - longG.s0).toFixed(1), 'longest one picture, s': longOn.b.toFixed(1), 'slowest section, per minute': Math.min(...secStats.map(x => x.rate)).toFixed(1), 'fastest section, per minute': Math.max(...secStats.map(x => x.rate)).toFixed(1),
     'longest with no change, s': longestGap.toFixed(1), 'time transforming, %': Math.round(movingShare * 100), 'median edge speed, %W/s': fx(medOf(edge), 1), 'median optical flow, px/s at 320': fx(medOf(s.of), 0), 'r energy/change rate': sign(rE['change rate']), 'r energy/flow': sign(rE['flow (its own)']), 'r energy/edge speed': sign(rE['edge speed']), 'r energy/fineness': sign(rE.fineness),
     'quiet third change rate': meanOf(quiet.map(x => x.rate)).toFixed(1), 'loud third change rate': meanOf(loud.map(x => x.rate)).toFixed(1), 'quiet third edge speed': meanOf(quiet.map(x => x.edge)).toFixed(1), 'loud third edge speed': meanOf(loud.map(x => x.edge)).toFixed(1),
     'on a strong moment, %': Math.round(tierShare('strong') * 100), '...any bar line, %': Math.round(chanceStrong * 100), 'on a phrase only, %': Math.round(tierShare('phrase') * 100), 'on nothing in particular, %': Math.round((tierShare('bar') + tierShare('off')) * 100),
     'median |bar| of a change, s': fx(medOf(changes.map(c => Math.abs(c.dBar)))), 'median peak before hit, s': fx(peakMed, 1), 'peak within a beat of hit, %': Math.round(landed.filter(c => Math.abs(c.peakOff) <= beat).length / Math.max(landed.length, 1) * 100), 'changes visible on their moment, %': Math.round(changes.filter(c => c.show >= VIS).length / Math.max(changes.length, 1) * 100),
     'falls: how much they show': byKind.fall ? medOf(byKind.fall).toFixed(1) : '-', 'all other kinds: how much they show': fx(medOf(changes.filter(c => c.G?.into !== 'fall').map(c => c.show)), 1),
     'strongest moments': strongest.length, '...change exactly on it, %': Math.round(share(m => m.exact) * 100), '...change within a beat, %': Math.round(share(m => m.onBeat) * 100), '...visible, %': Math.round(share(m => m.show >= VIS) * 100), '...any bar line visible, %': Math.round(chanceShow * 100),
-    'different patterns': useCount.size, 'sections coming back': backs.length, '...wearing what they wore': wore.length, 'commonest transformation': topKind ? `${topKind[0]} ${topKind[1]}/${kinds.length}` : '-', 'same kind running, %': Math.round(same / Math.max(kinds.length - 1, 1) * 100), 'gesture length spread': fx(sdLen / meanOf(lens)), 'lengths within 15% of median, %': Math.round(near15 / lens.length * 100), 'morphs within 15% of median, %': Math.round(ms.filter(v => Math.abs(v - medM) <= 0.15 * medM).length / ms.length * 100),
+    'different patterns': useCount.size, 'sections coming back': backs.length, '...wearing what they wore': wore.length, '...half or more of it, by time': backs.filter(x => { const first = d.segments.find(y => y.label === x.label && y.visit === 0), had = new Set(real.filter(G => G.s0 < first.t1 && G.s1 > first.t0).map(G => G.id)); let same = 0, all = 0; for (const G of real) { const o = Math.min(G.s1, x.t1) - Math.max(G.s0, x.t0); if (o > 0) { all += o; if (had.has(G.id)) same += o; } } return same >= 0.5 * all; }).length, 'commonest transformation': topKind ? `${topKind[0]} ${topKind[1]}/${kinds.length}` : '-', 'same kind running, %': Math.round(same / Math.max(kinds.length - 1, 1) * 100), 'gesture length spread': fx(sdLen / meanOf(lens)), 'lengths within 15% of median, %': Math.round(near15 / lens.length * 100), 'morphs within 15% of median, %': Math.round(ms.filter(v => Math.abs(v - medM) <= 0.15 * medM).length / ms.length * 100),
   };
   return { text: out.join('\n') + '\n', glance };
 }
