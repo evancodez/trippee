@@ -1,13 +1,13 @@
 // A world's flashes, in real pixels, through three channels per tile: gamma luma as tools/look.mjs counts it, WCAG's saturated red, and red minus cyan for equal-luminance alternation. And the Dark check.
 // docs/MODES.md section 7. A world reads 0 on the whole frame and at most 1 a second on any tile, in every channel. The film's limits stay in tests/judge.mjs, and the film is only read here as a control.
 //
-//   node tools/lab.mjs tests/flashworld.mjs --out lab-out/<lane>                                 STAGE=selftest,dark: made-up flashes and dark frames on the real canvas, each of which must be caught or passed. No song.
+//   node tools/lab.mjs tests/flashworld.mjs --out lab-out/<lane>                                 STAGE=selftest,tiles,dark: made-up flashes and dark frames on the real canvas, each of which must be caught or passed. No song. tiles is every tile measure against a real flash and a false one from fine lines.
 //   STAGE=film SONG=media/mgmt.mp3 node tools/lab.mjs tests/flashworld.mjs --out lab-out/<lane>  the colour watch on a film reads exactly what the plain watch reads, and red and cyan are still
 //   STAGE=world WORLD=mirror SONG=media/mgmt.mp3 ...                                             the world's whole film at 12 fps and 60 fps around its landings, plus Dark
 //
 // A synthetic flash is painted with gl.clear straight after the frame is drawn, in the same task, so it goes through exactly what a world's frame goes through: the canvas, the 320 x 180 copy, the channels, the count.
 import { resolve, basename } from 'node:path';
-import { watch, analyse, flashThree, dropSong, enterWorld, WORLD_FLASH, CHANNELS } from '../tools/look.mjs';
+import { watch, analyse, flashThree, flashesIn, dropSong, enterWorld, WORLD_FLASH, CHANNELS } from '../tools/look.mjs';
 
 const r2 = x => +(+x).toFixed(2);
 
@@ -16,9 +16,16 @@ const paintSetup = c => `(() => {
   const app = window.trippee.app, gl = app.R.gl, c = ${JSON.stringify(c)}, W = () => window.trippee.canvas.width, H = () => window.trippee.canvas.height;
   window.__paintOff?.();
   const on = t => {
-    const up = c.hz ? Math.floor(t * c.hz * 2 + 1e-6) % 2 === 0 : true, ink = (up ? c.A : c.B).map(v => v / 255);
+    const up = c.hz ? Math.floor(t * c.hz * 2 + 1e-6) % 2 === 0 : true, ink = c.stripes ? null : (up ? c.A : c.B).map(v => v / 255);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     const back = (c.back ?? [128, 128, 128]).map(v => v / 255);
+    if (c.stripes) {
+      const { period, on, shift = 0 } = c.stripes, wide = up ? on[0] : on[1], off = up ? 0 : shift;
+      gl.disable(gl.SCISSOR_TEST); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.SCISSOR_TEST); gl.clearColor(1, 1, 1, 1);
+      for (let x = off - period; x < W(); x += period) { gl.scissor(x, 0, wide, H()); gl.clear(gl.COLOR_BUFFER_BIT); }
+      gl.disable(gl.SCISSOR_TEST);
+      return;
+    }
     if (c.tile != null) { gl.disable(gl.SCISSOR_TEST); gl.clearColor(back[0], back[1], back[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); const tx = c.tile % 4, ty = 3 - (c.tile >> 2); gl.enable(gl.SCISSOR_TEST); gl.scissor(Math.floor(tx * W() / 4), Math.floor(ty * H() / 4), Math.ceil(W() / 4), Math.ceil(H() / 4)); }
     gl.clearColor(ink[0], ink[1], ink[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.disable(gl.SCISSOR_TEST);
   };
@@ -39,6 +46,14 @@ const CASES = [
   { name: 'nothing changes', A: [255, 40, 0], B: [255, 40, 0], hz: 3, want: { bad: false } },
 ];
 
+// What a tile measure must and mustn't count. Run at 640 x 360, so a line period of 6 pixels is 3 on the 320 x 180 copy every measure reads: the old sampler, reading every third pixel, lands on the same stripe all the way across.
+const TILE_CASES = [
+  { name: 'a real flash on one tile, black and white, 3 a second', A: [255, 255, 255], B: [0, 0, 0], hz: 3, tile: 5, real: true },
+  { name: 'a real flash of a whole bold area, two tiles wide, 3 a second', stripes: { period: 320, on: [160, 0] }, hz: 3, real: true },
+  { name: 'a real flash in fine lines: every line really widens and narrows, 3 a second', stripes: { period: 6, on: [1, 5] }, hz: 3, real: true },
+  { name: 'a false one: fine upright lines going by, each tile the same brightness throughout', stripes: { period: 6, on: [2, 2], shift: 2 }, hz: 3, real: false, fooledOld: true },
+];
+
 const checkCase = (res, want) => {
   const fails = [];
   if (res.bad !== want.bad) fails.push(`bad is ${res.bad}, want ${want.bad}`);
@@ -49,7 +64,7 @@ const checkCase = (res, want) => {
 };
 
 export default async ({ page, log, save, sleep }) => {
-  const stages = (process.env.STAGE || 'selftest,dark').split(',');
+  const stages = (process.env.STAGE || 'selftest,tiles,dark').split(',');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 640, height: 360, deviceScaleFactor: 1, mobile: false });
   await sleep(400);
   await page.eval(`app.governor.enabled=false;app.R.drawScale=1;app.manual=true`);
@@ -77,6 +92,35 @@ export default async ({ page, log, save, sleep }) => {
       return out;
     }, { CASES: CASES.map(c => c.name), setups: CASES.map(paintSetup) });
     CASES.forEach((c, i) => { say((seen[i].world > 0) === (c.guard ?? c.want.bad), `FlashSeen's world path, ${c.name}: ${seen[i].world} over its limits (the film's path, reading green at the film's limits: ${seen[i].film})`); });
+  }
+
+  if (stages.includes('tiles')) {
+    for (const fps of [12, 60]) for (const c of TILE_CASES) {
+      const r = await page.eval(async ({ setup, fps }) => {
+        const { FlashSeen } = await import(new URL('src/music/rehearse.js', location.href).href);
+        (0, eval)(setup);
+        const T = window.trippee, gl = app.R.gl, W = 320, H = 180, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const x = cv.getContext('2d', { willReadFrequently: true });
+        const NW = T.canvas.width, NH = T.canvas.height, px = new Uint8Array(NW * NH * 4), n = 4 * fps, seen = new FlashSeen(n, NW, NH, fps), thirds = [], whole = [];
+        for (let i = 0; i < n; i++) {
+          T.step(1 / fps);
+          x.drawImage(T.canvas, 0, 0, W, H); const d = x.getImageData(0, 0, W, H).data;
+          const at = step => { const o = []; for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) { let s = 0, m = 0; for (let y = (ty * H / 4) | 0; y < ((ty + 1) * H / 4 | 0); y += step) for (let X = (tx * W / 4) | 0; X < ((tx + 1) * W / 4 | 0); X += step) { const k = (y * W + X) * 4; s += (d[k] * 0.2126 + d[k + 1] * 0.7152 + d[k + 2] * 0.0722) | 0; m++; } o.push(+(s / m).toFixed(1)); } return o; };
+          thirds.push(at(3)); whole.push(at(1));
+          gl.readPixels(0, 0, NW, NH, gl.RGBA, gl.UNSIGNED_BYTE, px); seen.take(i, px, app.lastFrame, []);
+        }
+        window.__paintOff?.();
+        return { thirds, whole, guard: seen.over().length };
+      }, { setup: paintSetup(c), fps });
+      const worst = rows => Math.max(...Array.from({ length: 16 }, (_, k) => flashesIn(rows.map(v => v[k]), 25.5, fps).worst));
+      const w = await watch(page, () => {}, { name: 'tile', seconds: 4, fps, cols: 4, rows: 1, setup: paintSetup(c) });
+      await page.eval(`window.__paintOff?.()`);
+      const judge = analyse(w).flashesPerSecondAnyTile, old = worst(r.thirds), now = worst(r.whole), fails = [];
+      if (c.real ? !(now > 2) : now !== 0) fails.push(`every pixel reads ${now}`);
+      if (c.real ? !(judge > 2) : judge !== 0) fails.push(`the judge reads ${judge}`);
+      if (c.real ? !r.guard : r.guard) fails.push(`the guard's eyes read ${r.guard}`);
+      if (c.fooledOld && !(old > 2)) fails.push(`the old sampler should have been fooled, and read ${old}`);
+      say(!fails.length, `${fps} fps, ${c.name}: every pixel ${now}, the judge ${judge}, the guard's eyes ${r.guard}, the old every third pixel ${old}${fails.length ? ' [' + fails.join('; ') + ']' : ''}`);
+    }
   }
 
   if (stages.includes('dark')) {
