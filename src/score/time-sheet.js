@@ -7,6 +7,7 @@ import { OFF, SLOT_FLOATS, FRAME, FAMILIES } from '../pattern/layout.js';
 import { fillSlot } from './slot.js';
 import { writeHear } from './hear.js';
 import { MOVES } from './moves/index.js';
+import { XFORMS } from './xform/index.js';
 import { T_N, T_B, T_C, T_R, T_G, T_ALL, CAPS, BUMPS } from '../gl/chunks/time.js';
 
 const now = new Float32Array(SLOT_FLOATS), tmp = new Float32Array(SLOT_FLOATS), T = new Float32Array(T_ALL * 4);
@@ -51,10 +52,11 @@ function table(want, st, score, edits, tReal, phiOf, walkT, G, t) {
 
 export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
   R.timeOn = false;
-  const G = st.from ?? st.G;
+  const G = st.from ?? st.G, xf = st.kind && XFORMS[st.kind]?.time;
+  if (xf) { T.fill(0, 0, T_B * 4); xf(T, st); R.timeT = T; R.timeOn = true; }
   let m = G.pattern.time ?? null;
   if (G.moves) for (const w of G.moves) if (MOVES[w.id]?.sheet) { m = w; break; }
-  if (!m) return;
+  if (!m || xf) return;
   const mv = MOVES[m.id];
   if (!mv?.sheet) return;
   const t = st.t, aspect = R.canvas ? R.canvas.width / R.canvas.height : 16 / 9;
@@ -62,6 +64,7 @@ export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
   const out = st.kind ? 1 - Math.min(1, st.x / 0.3) : 1;
   const want = {};
   mv.sheet(want, m, { t, tReal, st, score, edits, G, aspect, fade: out * out * (3 - 2 * out), hand: m === G.pattern.time, begin: handBegin(G, score), phi: phiOf(G, t) });
+  if (want.echo) writeEcho(want.echo, st, score, edits, tReal, phiOf, walkT, G, t);
   if (!want.map && !want.ghost && !want.fringe && !want.snakes) return;
   T.fill(0, 0, T_B * 4);
   if (want.map) {
@@ -89,6 +92,15 @@ export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
   const k = want.snakes;
   if (k) { T[28] = k.amt; T[29] = k.dark ?? 0.1; T[30] = k.light ?? 0.5; T[31] = k.way ?? 0; T[32] = k.along; T[33] = k.across; }
   R.timeT = T; R.timeOn = true;
+}
+
+// A copy of the sheet as it was a moment ago, XOR-ed on top (the hand's moire: uF[7]). It needs no time program, and where nothing's moved the two agree, so all that shows is a small turn of its own and what's moved since.
+function writeEcho(e, st, score, edits, tReal, phiOf, walkT, G, t) {
+  const fill = (out, tt) => fillSlot(out, G, tt, G.pattern, { phi: phiOf(G, tt), uT: walkT ? walkT(tt) : undefined });
+  fill(now, t); fill(tmp, t - e.lag);
+  const F = st.F, So = FRAME.sheetOfs * 4;
+  // A point of the sheet that's at p now was at rot(now - then) p a moment ago, near enough. Never less of a turn than its own: at none at all the XOR is solid black
+  F[So] = tmp[OFF.tx] - now[OFF.tx]; F[So + 1] = tmp[OFF.ty] - now[OFF.ty]; F[So + 2] = e.turn + Math.abs(tmp[OFF.rot] - now[OFF.rot]); F[So + 3] = e.amt;
 }
 
 // When a hand-picked pattern has finished arriving: what it's picked by flies for a while first.

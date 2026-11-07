@@ -132,21 +132,22 @@ function sheetGhost(want, m, c, s) {
 
 // ---------------------------------------------------------------- Fringe
 // The face lies in the sheet: a shallow mask, with parts above it and parts sunk below, and no round skull. Each bump: x, y, rx, ry, height, how far forward it stands (which is how far it goes as the head turns).
+// Nothing here can be steeper than the lines are fine, height times 6.5 over radius, or the moire gives up and it goes to checks.
 const FACE = [
   [0, 0.05, 0.7, 0.96, 0.95, 0.15],        // the mask
-  [-0.3, 0.33, 0.2, 0.07, 0.07, 0.5], [0.3, 0.33, 0.2, 0.07, 0.07, 0.5],      // brows
-  [-0.29, 0.14, 0.15, 0.09, -0.4, 0.2], [0.29, 0.14, 0.15, 0.09, -0.4, 0.2],    // sockets
-  [-0.29, 0.135, 0.075, 0.055, 0.2, 0.4], [0.29, 0.135, 0.075, 0.055, 0.2, 0.4],       // lids
-  [0, 0.1, 0.05, 0.17, 0.13, 0.7], [0, -0.14, 0.09, 0.085, 0.32, 1],                 // the nose
-  [-0.1, -0.18, 0.05, 0.05, 0.1, 0.7], [0.1, -0.18, 0.05, 0.05, 0.1, 0.7],
-  [-0.42, -0.16, 0.16, 0.18, 0.14, 0.35], [0.42, -0.16, 0.16, 0.18, 0.14, 0.35],     // cheeks
-  [0, -0.4, 0.18, 0.04, 0.17, 0.7], [0, -0.5, 0.14, 0.05, 0.2, 0.7], [0, -0.45, 0.2, 0.022, -0.2, 0.6],     // lips
-  [0, -0.63, 0.12, 0.05, -0.08, 0.5], [0, -0.79, 0.17, 0.1, 0.2, 0.55],       // under the lip, the chin
+  [-0.3, 0.34, 0.2, 0.08, 0.06, 0.5], [0.3, 0.34, 0.2, 0.08, 0.06, 0.5],      // brows
+  [-0.29, 0.14, 0.15, 0.1, -0.37, 0.2], [0.29, 0.14, 0.15, 0.1, -0.37, 0.2],    // sockets
+  [-0.29, 0.135, 0.08, 0.06, 0.15, 0.4], [0.29, 0.135, 0.08, 0.06, 0.15, 0.4],       // lids
+  [0, 0.1, 0.06, 0.18, 0.1, 0.7], [0, -0.14, 0.11, 0.11, 0.26, 1],                 // the nose
+  [-0.11, -0.18, 0.06, 0.06, 0.07, 0.7], [0.11, -0.18, 0.06, 0.06, 0.07, 0.7],
+  [-0.42, -0.16, 0.17, 0.2, 0.14, 0.35], [0.42, -0.16, 0.17, 0.2, 0.14, 0.35],     // cheeks
+  [0, -0.4, 0.19, 0.055, 0.12, 0.7], [0, -0.52, 0.15, 0.06, 0.15, 0.7], [0, -0.46, 0.21, 0.035, -0.12, 0.6],     // lips
+  [0, -0.65, 0.13, 0.06, -0.08, 0.5], [0, -0.81, 0.18, 0.11, 0.2, 0.55],       // under the lip, the chin
 ];
 // open: how far the mouth has opened, 0..1. rise: the brows.
 export function faceBumps(yaw, nod, open = 0, rise = 0) {
   return FACE.map(([x, y, rx, ry, a, z], i) => {
-    if (i === 15) { ry += 0.1 * open; a -= 0.5 * open; rx *= 1 - 0.28 * open; y -= 0.05 * open; }       // the mouth
+    if (i === 15) { ry += 0.09 * open; a -= 0.36 * open; rx *= 1 - 0.3 * open; y -= 0.05 * open; }       // the mouth
     else if (i === 13) y += 0.012 * open;
     else if (i === 14 || i === 17 || i === 16) y -= (i === 14 ? 0.11 : 0.08) * open;       // the lower lip and the jaw go with it
     else if (i === 1 || i === 2) y += 0.05 * rise;
@@ -170,7 +171,7 @@ const fringe = {
 };
 function writeFringe(out, m, s) {
   // Two line sets a little out of step. A whole number of bands in the frame's height, so it holds its brightness whatever they do: 3
-  const k = m.k ?? 17;
+  const k = m.k ?? 19;
   out[OFF['f0.x']] = 0; out[OFF['f0.y']] = k; out[OFF['f1.x']] = 0; out[OFF['f1.y']] = k + (m.bands ?? 1.5);
   out[OFF['f1.ph']] += (m.dir ?? 1) * (m.perBeat ?? 0.5) * s;     // half a fringe to each strong beat, everything travelling up the head. A whole one takes every part of the frame from black to white and back on each
 }
@@ -245,5 +246,63 @@ const snakes = {
   },
 };
 
-export { writeSlit, writeFringe, writeWater };
-export default { slit, ghost, fringe, waterfall, snakes };
+// ---------------------------------------------------------------- Ouchi
+// A disc in a field of long bricks, turned a quarter turn from it. It's all one flat sheet and it moves as one, and the disc floats and slides about on it all the same. It only comes when it's turning, and a second quarter turn sends it away: half a turn about the sheet's own middle is no change at all.
+//   { id: 'ouchi', R: .62, on: 8, off: 4, beats: 'strong' }   on, off: strong beats it stays and it's gone. It turns on a hit.
+function ouchiTurn(s, on, off, w) {
+  const P = on + off, n = Math.floor(s / P), x = s - n * P;     // a hit at x = 0 brings it, a hit at x = on sends it
+  const e = u => smoother(clamp(u / w + 0.5));
+  return (Math.PI / 2) * (2 * n + e(x) + (x > on / 2 ? e(x - on) : 0) + (x > P - w ? e(x - P) - 0 : 0) * 0 + (x > P - w / 2 ? e(x - P) : 0));
+}
+const ouchi = {
+  id: 'ouchi',
+  needs(slot) { return !!openPair(slot); },
+  cue: cueTime,
+  write() {},
+  sheet(want, m, c) {
+    if (c.st.kind) return;
+    const s = beatsAt(c, m), turn = ouchiTurn(s, m.on ?? 8, m.off ?? 4, m.width ?? 1.6), q = turn / (Math.PI / 2), near = Math.abs(q - 2 * Math.round(q / 2));
+    if (near < 1e-3) return;      // a whole half turn: it isn't there
+    want.ghost = { capsules: [[m.cx ?? 0, m.cy ?? 0, m.cx ?? 0, m.cy ?? 0, m.R ?? 0.62]], turn: turn, zoom: 0, about: [m.cx ?? 0, m.cy ?? 0] };
+  },
+};
+
+// ---------------------------------------------------------------- Echo
+// The sheet XOR-ed with itself a moment ago, and a small turn: a rosette no line is drawing. When the sheet surges, its own echo is left behind, the rosette closes up, and it opens as the echo catches up: the beat runs through the moire, and the lines themselves hardly move.
+//   { id: 'echo', lag: .35, turn0: .2, turn: .4, beats: 'strong', amp: [[t, x], ...] }   turn0: the small turn. turn: how far the sheet surges on each strong beat. amp: the echo comes up from nothing by thinning, never fading.
+const echo = {
+  id: 'echo',
+  needs() { return true; },
+  cue: cueTime,
+  write(out, c) { writeEchoMove(out, c.m, surged(evalTrack(clockOf(c.m), c.t))); },
+  sheet(want, m, c) {
+    const a = ampAt(c, m, 5) * c.fade;
+    if (a <= 0.001) return;
+    want.echo = { lag: m.lag ?? 0.35, turn: (m.turn0 ?? 0.2) * a, amt: a >= 1 ? 1 : a };
+  },
+};
+function writeEchoMove(out, m, s) { out[OFF.rot] += (m.turn ?? 0.4) * s; }
+
+// ---------------------------------------------------------------- Rewind
+// A tape going back. Over a build the picture's clock turns round: everything you've just watched happens backward, faster and faster, every morph un-happening, and it comes forward again at a rush and lands on the hit with the song, at speed. The song's own reactions don't go with it: they're on the song's seconds.
+//   { id: 'rewind', times: { hit: 192.95 }, back: 8, bars: 4 }   back: seconds of film it goes back over. bars: how long the whole thing takes, ending on the hit.
+export function rewindTrack({ hit, back, len, turn = 0.55, land = 2, tail = 2 }) {
+  const a = hit - len, m = a + len * turn, low = a - back, V = Math.min(land * (hit - low) / (hit - m), 6);
+  return [{ t: a, x: a, v: 1 }, { t: m, x: low, v: 0 }, { t: hit, x: hit, v: V }, { t: hit + tail, x: hit + tail, v: 1 }];
+}
+export const rewindClock = list => t => { for (const k of list) if (t > k[0].t && t < k.at(-1).t) return evalTrack(k, t); return t; };
+const rewind = {
+  id: 'rewind',
+  needs() { return true; },
+  cue(m, { score, bar }) {
+    if (m.hit == null) return null;
+    const k = rewindTrack({ hit: m.hit, back: m.back ?? 4 * bar, len: (m.bars ?? 4) * bar, tail: (m.tail ?? 1) * bar, land: m.land ?? 1.4 });
+    (score.rewinds ??= []).push(k);
+    score.rewind = rewindClock(score.rewinds);
+    return m;
+  },
+  write() {},
+};
+
+export { writeSlit, writeFringe, writeWater, writeEchoMove };
+export default { slit, ghost, fringe, waterfall, snakes, ouchi, echo, rewind };

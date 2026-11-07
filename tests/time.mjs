@@ -4,10 +4,11 @@
 export default async ({ page, save, log }) => {
   const env = process.env, ids = (env.IDS || 'time.shutter').split(','), from = +(env.FROM ?? 6), secs = +(env.SECS ?? 8), every = +(env.EVERY ?? 0.2), cols = +(env.COLS ?? 5);
   for (const id of ids) {
-    const r = await page.eval(async ({ id, from, secs, every, cols, tile, patch }) => {
+    const r = await page.eval(async ({ id, from, secs, every, cols, tile, patch, morph }) => {
       const t = window.trippee, app = t.app; app.governor.enabled = false; app.R.drawScale = 1;
       if (patch) (0, eval)(`(p, app) => { ${patch} }`)(app.byId[id], app);
-      t.load(id, { arcs: true });
+      if (morph) { const [a, b, D, x] = morph.split(','); t.morph(a, b, +D, 1); const G0 = app.stage.score.gestures[0]; G0.xform = (0, eval)(`(${x || "{id:'span'}"})`); delete G0.plan; delete G0.planFor; delete G0.planning; app.t = 0; }
+      else t.load(id, { arcs: true });
       app.manual = true; app.t = from; t.step(0.016);
       // let the time program build if it's wanted
       app.R._wantTime(0); for (let i = 0; i < 400 && !app.R.progs[64]; i++) await new Promise(r => setTimeout(r, 25));
@@ -23,7 +24,7 @@ export default async ({ page, save, log }) => {
         t.step(every - 0);
       }
       return { sheet: sheet.toDataURL('image/jpeg', 0.85), vars: [...new Set(rec)] };
-    }, { id, from, secs, every, cols, tile: +(env.TILE ?? 320), patch: env.PATCH });
+    }, { id, from, secs, every, cols, tile: +(env.TILE ?? 320), patch: env.PATCH, morph: env.MORPH });
     save(`${id}.jpg`, r.sheet);
     log(id, 'programs', JSON.stringify(r.vars));
   }

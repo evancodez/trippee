@@ -16,7 +16,6 @@
 export const T_N = 64, T_B = 10, T_C = T_B + 2 * T_N, CAPS = 40, T_R = T_C + CAPS, T_G = T_R + 10, BUMPS = 24, T_ALL = T_G + 2 * BUMPS;
 
 export default `#ifdef TIME
-uniform vec4 uT[${T_ALL}];
 vec4 gTimePh=vec4(0.);
 float gGhost=0.,gFringe=0.;
 float tSmin(float a,float b,float k){ float h=max(k-abs(a-b),0.)/k; return min(a,b)-h*h*k*.25; }

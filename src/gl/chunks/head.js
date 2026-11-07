@@ -1,5 +1,6 @@
 // The top of the fragment shader: the block, and the few small functions everything uses.
 import { GLSL_INDEX, GLSL_SLOT } from '../../pattern/layout.js';
+import { T_ALL } from './time.js';
 
 export default `#version 300 es
 precision highp float;
@@ -8,6 +9,9 @@ ${GLSL_SLOT}
 ${GLSL_INDEX}
 layout(std140) uniform Block { vec4 uG[NSLOTS*SLOT]; vec4 uF[FRAMEV]; };
 uniform sampler2D uPush;
+#ifdef TIME
+uniform vec4 uT[${T_ALL}];
+#endif
 in vec2 vUv;
 out vec4 outColor;
 const float TAU=6.28318530718, PI=3.14159265359;

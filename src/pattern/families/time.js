@@ -1,7 +1,9 @@
 // Tricks with when and how the eye sees, to click. None is in the pool: a film only wears these when a cut asks for them. See src/score/moves/time.js.
 import { logring, spokes, plane } from '../kit.js';
 import { surged } from '../../score/moves/surge.js';
-import { writeSlit, writeFringe, writeWater, timeClock } from '../../score/moves/time.js';
+import { writeSlit, writeFringe, writeWater, writeEchoMove, timeClock } from '../../score/moves/time.js';
+import { SEQS, handRelay, compile } from '../../score/moves/relay.js';
+import { evalTrack, smoother } from '../../score/curves.js';
 
 const AXES = [{ id: 'zoom', name: 'zoom', path: 'scale', min: 0.4, max: 3, log: true }, { id: 'turn', name: 'turn', path: 'rot', min: -1.6, max: 1.6 }];
 const item = (id, name, g, more = {}) => ({ id: `time.${id}`, name, family: 'time', pool: false, g, arcs: [], flow: {}, axes: AXES, lambda: 0.2, ...more });
@@ -12,6 +14,13 @@ const slit = (id, name, g, opts, more) => item(id, name, g, {
   drive(out, c) { if (c.G.moves?.some(m => m.id === 'slit')) return; writeSlit(out, opts, surged(timeClock(c)), c.t); },
   ...more,
 });
+
+// One step of the relay to every 4 seconds. Nine seconds on, then in three seconds back over six of them: what's just happened un-happens.
+const backAndForth = t => {
+  const P = 12, n = Math.floor(t / P), e = t - n * P, base = n * 3;
+  const K = [{ t: 0, x: 0, v: 1 }, { t: 8, x: 8, v: 1 }, { t: 10, x: 3.4, v: -3 }, { t: 12, x: 3, v: 1 }];
+  return (base + evalTrack(K, e)) / 4;
+};
 
 export default [
   // A rolling shutter. A board of spokes and rings turns, and each row of the frame sees it a little later than the one above, as a phone's camera sees a propeller.
@@ -43,6 +52,24 @@ export default [
 
   // A still picture that turns.
   item('snakes', 'Rotating Snakes', { fams: [logring(13 / (2 * Math.PI)), spokes(26)] }, { time: { id: 'snakes' } }),
+
+  // Ouchi's disc: it floats on a sheet that's all one piece. It only comes and goes by turning.
+  item('ouchi', 'Floating Disc', { fams: [plane(9, 0), plane(2.25, 90)] }, { fine: true, time: { id: 'ouchi' } }),
+
+  // The sheet XOR-ed with itself a moment ago.
+  item('echo', 'Echo', { fams: [plane(3.4, 0), plane(3.4, 90)] }, {
+    time: { id: 'echo' },
+    drive(out, c) { if (c.G.moves?.some(m => m.id === 'echo')) return; writeEchoMove(out, { turn: 0.4 }, surged(timeClock(c))); },
+  }),
+
+  // Rewind, by itself: a relay, and every 12 seconds it goes back over the last few changes. In a film it goes back over whatever's been showing.
+  item('rewind', 'Rewind', { ...SEQS.tour.g, fams: Array.from({ length: compile(SEQS.tour).slots }, () => ({ x: 1, d: -1 })) }, {
+    fine: false, arcs: SEQS.tour.arcs ?? [],
+    drive(out, c) { handRelay(out, SEQS.tour, backAndForth(c.t)); },
+  }),
+
+  // Past on one side of the frame and the future on the other: click this from anything flat, and it crosses over 20 seconds.
+  item('span', 'Span', { fams: [plane(2.2, 45), plane(2.2, -45)] }, { arrive: { id: 'span' } }),
 
   // Dead steady for 24 seconds, and then it stops for six. What you see then isn't on the screen.
   item('waterfall', 'Waterfall', { fams: [{ l1: 3, t1: 8 }] }, {

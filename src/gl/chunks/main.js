@@ -191,12 +191,19 @@ void main(){
     // Both ends are exact: a family that's done with is off altogether.
     if(uF[F_XF].x>.5){
       gRnd[0]=mix(gRnd[0],gRnd[1],T); gSum[0]=mix(gSum[0],gSum[1],T);
+#ifdef TIME
+      // A front this wide would hold what's closing in thin lines right across the frame: a span gets it over within a part of its width.
+      float Tc=T,To=T; if(uF[F_XF].x>3.5){ Tc=smoothstep(.2,.55,T); To=smoothstep(.45,.8,T); }
+#else
+#define Tc T
+#define To T
+#endif
       for(int i=0;i<FAM;i++){
-        if(int(pa[i])<0&&gOn[i]){ if(abs(gDu[i])<=1.01) gDu[i]=mix(gDu[i],-1.,1.-(1.-T)*(1.-T)); if(T>=1.) gOn[i]=false; }       // it gets through its last thin lines quickly
+        if(int(pa[i])<0&&gOn[i]){ if(abs(gDu[i])<=1.01) gDu[i]=mix(gDu[i],-1.,1.-(1.-Tc)*(1.-Tc)); if(T>=1.) gOn[i]=false; }       // it gets through its last thin lines quickly
       }
       for(int j=0;j<FAM;j++){
         int q=FAM+j; bool taken=int(pa[0])==j||int(pa[1])==j||int(pa[2])==j||int(pa[3])==j;
-        if(!taken&&gOn[q]){ if(abs(gDu[q])<=1.01) gDu[q]=mix(-1.,gDu[q],T*T); if(T<=0.) gOn[q]=false; }
+        if(!taken&&gOn[q]){ if(abs(gDu[q])<=1.01) gDu[q]=mix(-1.,gDu[q],To*To); if(T<=0.) gOn[q]=false; }
       }
     }
     for(int i=0;i<FAM;i++){

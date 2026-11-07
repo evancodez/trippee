@@ -7,6 +7,9 @@ float xfU(vec2 p0){ vec4 x=uF[F_XF]; float R=length(p0-uF[F_XF2].xy)/x.w;
 #ifdef WORLD_FRONT
   if(x.x>2.5) R=.5+.5*dot(p0-uF[F_XF2].xy,vec2(cos(uW[3].w),sin(uW[3].w)))/x.w;      // mode 3: a straight front, travelling along uW[3].w
 #endif
+#ifdef TIME
+  if(x.x>3.5){ vec2 d=p0-uF[F_XF2].xy; R=.5+.5*(dot(d,uT[8].zw)+uT[9].z*sin(dot(d,uT[8].wz*vec2(1.,-1.))*uT[9].w+uG[I_shape].y*0.))/x.w; }      // a straight front, wandering: the past on one side of the frame and the future on the other. src/score/xform/span.js
+#endif
   float W=mix(uF[F_XF2].z,x.z,min(R,1.));      // it's slow and wide at the rim and tightens on the centre, which turns in moments, on the hit
   if(x.x>1.5) R=1.-R; return clamp((x.y-(1.-R)*(1.-W))/W,0.,1.); }
 float xfT(vec2 p0,float T){ if(uF[F_XF].x<.5) return T;
