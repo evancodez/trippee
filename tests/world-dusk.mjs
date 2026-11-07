@@ -1,5 +1,5 @@
 // Dusk: what docs/MODES.md section 8 asks of it that no other test does. Muted, like every browser here.
-//   STAGE=stills                       every pattern in the pool, calm and buzzing, as a sheet. No song.
+//   STAGE=stills                       every pattern in the pool, at two moments of the evening, as a sheet. No song.
 //   STAGE=buds                         the first few landings, as sheets. No song.
 //   STAGE=sheet                        every pattern on one sheet, to judge them against each other. TIMES=20,21,22 for several moments, NAME=file
 //   STAGE=lands                        landings as sheets: LANDS=ridge>sierra:line,sierra>sea:fall,sea>lowsun:flare,lowsun>wires:settle, D=seconds. No song.
@@ -7,6 +7,10 @@
 //   STAGE=steps SONG=... AT=t,t        frames either side of moments in the film, and what changed
 //   STAGE=film SONG=media/mgmt.mp3     the world's whole film as a person gets it: what it hears, what it lands on, a 20 s sheet and slices across a landing.
 //   STAGE=change                       from the film into the world and back, as a sheet, with the byte check at the middle.
+//   STAGE=frames SONG=... AT=t,t,t     frames of the film at given moments, big enough to look at, and the film's whole cast. NAME=file COLS=4
+//   STAGE=big IDS=wires,blinds T=80    a few patterns big, at given times. No song: the evening goes by t.
+//   STAGE=trem IDS=ridge,road          the same frames with and without a tremolo, since no test song has one the extras can hear
+//   STAGE=pure SONG=...                which numbers in the block depend on what was drawn before
 //   STAGE=cost                         GPU ms per program at 3024x1964, governor off. Say what else was running.
 //   SESSION=1 ...                      holds one browser and reloads the page for each file dropped in <out>/cmd: { stages, env, script }. It lets go after two idle minutes, and after twenty-five in all, so a look needn't queue again.
 import { resolve, basename, join } from 'node:path';
@@ -140,19 +144,6 @@ async function stages({ page, log, save, sleep }) {
       log(landed != null ? 'ok  ' : 'FAIL', id, landed != null ? `${(landed / 1000).toFixed(1)} s` : 'never landed', [...kinds].join(','));
     }
     log(`clicks: ${good}/${ids.length} landed`);
-  }
-  if (want.includes('fit')) {
-    // What a rehearsal thinks of each pattern, as coverage, at a few moments: anything it calls bad at every moment sits out of the film.
-    const r = await page.eval(async ts => {
-      const W = await F_.enter(), R = app.R, gl = R.gl, wp = R.worldPrograms.get(W), { measure } = await import(new URL('src/music/rehearse.js', location.href).href), out = [], w = 320, h = 180, px = new Uint8Array(w * h * 4);
-      for (const p of W._pool) {
-        const row = [];
-        for (const t of ts) { F_.show(p, t); wp.coverage(null, w, h); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); const m = measure(px, w, h); row.push(`${m.why || 'ok'}(${m.white.toFixed(2)},${m.area.toFixed(2)},${m.disc.toFixed(2)})`); gl.viewport(0, 0, R.canvas.width, R.canvas.height); }
-        out.push(`${p.id.slice(5).padEnd(22)} ${row.join(' ')}`);
-      }
-      return out;
-    }, (process.env.TIMES || '4,20,36').split(',').map(Number));
-    log(r.join('\n'));
   }
   if (want.includes('big')) {
     // A few patterns big enough to look at: IDS=wires,blinds T=80,170
