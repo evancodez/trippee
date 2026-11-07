@@ -237,6 +237,8 @@ Also: MODES reserves `field.kind >= 4` for worlds (`renderer.js` 137 stops count
 
 ## 4. Vibe and energy to pace
 
+**Overruled in part on 6 Nov 2026.** The owner: "not nearly reactive enough to music... stays on an individual pattern too long almost always. Sometimes fair to hold on it but only if you're doing cool stuff/it fits." So the long holds, the withholding, "nothing new for 4 to 12 bars" and the table below's 1.4 to 3.7 changes a minute are out. The vocabulary stays. What the generated film does now is in `src/score/pace.js`, behind `directing.pace`, with `?pace=0` for the old film: a change every 2 to 4 bars on the loud parts, every 4 to 8 in the middle and every 8 to 16 when quiet, one way of changing per passage (Relay, the riot moves, the still moves, a suite of patterns), one wardrobe per kind of section, and no plain hold past 8 bars.
+
 **Ride inside a song, register across songs.** Register is the budget, ride spends it.
 
 | Ride | Bars per pattern, shortest: chill / travel / riot | Morph, bars | Edge speed, %/s | Pulses | Song's share | Fineness, most |
