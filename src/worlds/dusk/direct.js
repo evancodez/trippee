@@ -46,7 +46,8 @@ export function landings(score) {
   let prev = null;
   for (let i = 0; i + 1 < g.length; i++) {
     const G = g[i], N = g[i + 1], a = base(G.pattern), b = base(N.pattern), flat = S => S[OFF['surf.kind']] < 0.5, wants = N.pattern.sun && N.pattern.cam === 'anchor', open = [];
-    if (flat(a) && flat(b)) open.push('line', 'fall', 'settle');
+    // Not the drift out of or into one of the film's own patterns: their bands are dense, and drifting all of them at once went by a tile 4 to 5 times a second (Wildflower 56.5 s, MGMT). A front or a fall has the same energy and goes by one band at a time.
+    if (flat(a) && flat(b)) open.push('line', 'fall', ...(groupOf(G.pattern) === 'film' || groupOf(N.pattern) === 'film' ? [] : ['settle']));
     if (flat(a) && flat(b) && wants) open.push('flare');
     if (!open.length) { G.xform = { id: 'dive', chosen: true }; continue; }
     const score1 = k => WEIGHT[k] / (1 + (used[k] ?? 0)) * (k === prev ? 0.001 : 1) * (k === 'flare' && wants ? 1.5 : 1), k = open.sort((x, y) => score1(y) - score1(x))[0];

@@ -624,6 +624,9 @@ export default {
 - `table.fill` runs after `uniforms`, so what it reads from the slot is what will be drawn.
 - `tests/judge.mjs`'s Variety passes a film whose only kind is `motion.xform`: the world means it.
 - The library shows `W._pool` while a world has one, and a click on a tile is a real pick, by pattern and not by id, since a world's patterns aren't in `app.byId`. `hand.go` takes either.
+- `woah: { tricks, never, fond, gap, least, runOn, rewind, fits }`: what `src/score/woah.js` casts in this mode, by the music. `tricks` the ones that suit it (folds and time only: space isn't in a mode's programs), `fond` a bonus each (about 1 is a strong liking), `gap` seconds from one trick to the next, loud to quiet, `least` the shortest stay one can go on (a mode's stays are shorter than a film's), `runOn` how many stays one can run on over (1), `rewind: true` lets the calm rewind in, and `fits(id, G, slot)` says what its own sheets can wear. A mode's own moves on a stay give way to a trick there, except `ball`, `star`, `coin`, `countdown` and `ramp`. `woah: 'film'` (the mirror) is cast exactly as the film is. `woah: true` is the old way, the film's own casting at `GAP.world`. Each mode's choices and why are in its file. `tests/world-cast.mjs`: `STAGE=list` what each casts on a song, `STAGE=sheet` every trick as a row of frames, `STAGE=look` how bold each mode is.
+- Moves a mode registers in `MOVES` need names of their own (`dusk.gust`, `pearl.ghost`): they go in a table everyone shares, and a plain `ghost` went over the film's time trick for every film once Pearl had loaded.
+- A change from the film waiting on its flight's plan is the film. A world's plain program draws its inks in full, and only a flight's brings them in.
 
 ### Control
 
