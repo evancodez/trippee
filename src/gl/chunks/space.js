@@ -4,7 +4,7 @@
 // One sheet (a move, a stretch of a song): uG[b+I_spaceK..E], read at the top of prepare().
 // Two sheets (a transformation, dive mode 6): uF[F_SPACE..+4], read in main(). Each pixel lands on A or B; irisB says how much of it is B.
 //
-//   k  kind, amp, f, ph     kind: 1 swell, 3 drop, 4 pleat, 5 tube, 7 hall
+//   k  kind, amp, f, ph     kind: 1 swell, 3 drop, 4 pleat, 5 tube, 7 hall, 8 strata
 //   c  pitch, yaw, roll, dist     the camera, about the point it's looking at. With everything else 0 a sheet lying at z = 0 is exactly the frame, whatever dist is.
 //   o  x, y, z, a           the point it's looking at. a: each kind's own
 //   e  bowl, q, pix, w      bowl: the world curves up away from the camera, so the far ground fills the top of the frame and there's never a horizon. q: heights in steps of this. pix: in square columns this wide. w: each kind's own
@@ -157,8 +157,21 @@ vec3 spHall(vec2 p,vec4 k,vec4 c,vec4 o,vec4 e,out vec3 XB,out float side){
   XB=vec3(sign(rd.x+1e-6)*rd.z*tx*e.x,y0+rd.y*tx*e.x,0.);       // the wall it's facing, read so that it comes out the right way round. e.x: how much bigger the sheet's lines have got, as the lens gets wider, to stay bold
   return vec3(rd.x*tz*sign(-rd.z-1e-6)*e.x,y0+rd.y*tz*e.x,0.);
 }
+// Strata (kind 8): the sheet stays exactly the frame, and each family lies on a pane of glass of its own, at a height over it, seen from a camera of its own. All this works out is the slope of the view ray at this
+// pixel (frame units across, per unit of height). prepare() reads each family's point shifted by its height (amp times its e) times that slope, before its lines are measured, so line widths stay exact.
+// Straight under the camera nothing slides. With amp 0 every family reads the frame itself.
+//   amp: how far apart the panes are, in frame units.   c: the camera, pitch, yaw, roll, dist.   e: each family's pane, -1..1 of amp (bowl, q, pix, w for families 0..3)
+vec2 gStS=vec2(0.);
+void spStrata(vec2 p,vec4 c){
+  vec3 rd=normalize(vec3(p,-max(c.w,.3)));
+  rd.xy=rot(c.z)*rd.xy; rd.yz=rot(c.x)*rd.yz; rd.xy=rot(c.y)*rd.xy;
+  vec2 S=rd.xy/max(-rd.z,.35);
+  float L=length(S); if(L>1.3) S*=1.3/L;      // a grazing ray is capped, so a pane can't run off at the far edge
+  gStS=S;
+}
 // One sheet: a stretch of a song.
 vec2 spaceOf(vec4 k,vec4 c,vec4 o,vec4 e,vec2 p,out bool edge){
+  if(k.x>7.5){ spStrata(p,c); return p; }
   if(k.x<3.5){ float s; return spRelief(p,k,c,o,e,SP_GONE,s,edge).xy; }
   if(k.x<4.5){ float s,f; vec3 r=spPleat(p,k,c,o,e,s,f,edge); return r.xy+vec2(cos(e.w),sin(e.w))*((s>.5?.5+.5*f:.5*f)-f)/k.z; }      // each face is half a cell of it, and at a share of half with no height it's exactly flat
   if(k.x<5.5) return spTube(p,k,c,o,e,0.,edge).xy;
