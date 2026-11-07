@@ -4,6 +4,7 @@ import { reactAt } from '../../score/react.js';
 import { hitsFor } from '../../score/moves/surge.js';
 import { MOVES } from '../../score/moves/index.js';
 import { base } from '../../score/slot.js';
+import { directing } from '../../score/flags.js';
 
 export const PICK = (score, A) => { const left = score.patterns.filter(p => p.pool !== false && p.group); let n = 0; return G => { const seen = new Set(score.gestures.map(x => x.pattern)), fresh = left.filter(p => !seen.has(p)), from = fresh.length ? fresh : left; return from[(n++ * 7 + (A.hash ? parseInt(String(A.hash).slice(0, 4), 16) : 3)) % from.length]; }; };
 const SHARE = { land: 0.38, road: 0.2, strings: 0.14, room: 0.18, film: 0.1 };
@@ -68,7 +69,8 @@ export function moves(score, A, M) {
     if (body < 2.5 * bar) continue;
     // A land's field isn't continuous, and in a mirror its crests only come out as lace. It can have the slit.
     const isLand = G.pattern.group === 'land';
-    if (++since >= 3 && body >= 6 && !G.pattern.lake && !G.pattern.g?.rot) {
+    // With the casting on (src/score/woah.js, W.woah in dusk.js) the film's big ideas are cast, by the music, and not every third stay.
+    if (!directing.woah && ++since >= 3 && body >= 6 && !G.pattern.lake && !G.pattern.g?.rot) {
       const id = isLand ? 'slit' : BIG[big % BIG.length], made = id === 'slit' ? MOVES.slit.cue({ id, beats: 'strong', map: 'sweep', D: Math.min(body, 2 * bar), from: start, to: end }, ctxOf(G)) : MOVES[id].cue({ id, from: G.t0, to: end, open: Math.min(3, (0.3 * body) / bar), close: Math.min(2.5, (0.22 * body) / bar) }, ctxOf(G));
       if (!isLand) big++;
       if (made) { G.moves = [made]; since = 0; continue; }

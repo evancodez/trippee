@@ -154,6 +154,9 @@ export default {
       }
     }
   },
+  // src/score/woah.js casts these, by the music. Slow ones: the slit's scan, echo, fringe, a calm rewind, the pearls and the screen. Nothing that throws the land about: a land's field isn't continuous, and in a mirror its crests come out as lace, so it has only the time tricks.
+  woah: { tricks: ['slit', 'echo', 'fringe', 'pearls', 'screen', 'ghost', 'rewind'], rewind: true, fond: { slit: 1.1, echo: 1, fringe: 0.9, rewind: 0.6 }, gap: [30, 48], least: 6,
+    fits: (id, G) => !((G.pattern.group === 'land' || G.pattern.lake != null || G.pattern.g?.rot) && (id === 'pearls' || id === 'screen' || id === 'fan' || id === 'forever' || id === 'limit' || id === 'crumple')) },
   pace: { bars: [8, 7, 5, 4, 3], morph: [6, 9], most: 17 },
   motion: { len: [14, 24], morph: [7, 11], xforms: KINDS, xform: 'line', keep: ['line', 'fall', 'flare', 'settle'], front: true },
   hear: { pulse: 0.6, melody: 0.9, tone: 0.5, harmony: 0.6, lung: 0.8, threshold: 0, depth: 0.4 },

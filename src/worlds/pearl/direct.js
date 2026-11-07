@@ -5,6 +5,7 @@ import { hitsFor } from '../../score/moves/surge.js';
 import { rampTrack } from '../../score/moves/ramp.js';
 import { MOVES } from '../../score/moves/index.js';
 import { base } from '../../score/slot.js';
+import { directing } from '../../score/flags.js';
 import { voiceSpot } from './song.js';
 
 const SHARE = { contact: 0.3, water: 0.28, shell: 0.27, op: 0.15 };
@@ -49,7 +50,7 @@ export function landings(score, song) {
   }
 }
 
-const ROT = ['chorus', 'ghost', 'pearls', 'lead', 'wring', 'fan', 'waltz', 'slit', 'chorus', 'bellows', 'limit', 'ghost', 'ramp', 'echo'];
+const ROT = ['chorus', 'pearl.ghost', 'pearls', 'pearl.lead', 'wring', 'fan', 'pearl.waltz', 'slit', 'chorus', 'bellows', 'limit', 'pearl.ghost', 'ramp', 'echo'];
 const FOLDS = new Set(['pearls', 'fan', 'limit', 'forever', 'screen']), TIMES = new Set(['slit', 'echo']);
 export function moves(score, A, M) {
   const g = score.gestures, bar = M?.bar ?? 2;
@@ -60,8 +61,8 @@ export function moves(score, A, M) {
     if (id === 'slit') return n('surf.kind') < 0.5;
     if (id === 'echo') return n('surf.kind') < 0.5 && fams === 1;
     if (id === 'chorus') return fams <= 2 && !n('round') && n('f0.t1') === 0 && (p.g.fams?.[0]?.t1 ?? 0) === 0;
-    if (id === 'ghost') return fams === 1 && !n('round');
-    if (id === 'lead' || id === 'waltz') return fieldOn && [n('blobs.r1'), n('blobs.r2'), n('blobs.r3')].filter(x => x > 0).length > 1;
+    if (id === 'pearl.ghost') return fams === 1 && !n('round');
+    if (id === 'pearl.lead' || id === 'pearl.waltz') return fieldOn && [n('blobs.r1'), n('blobs.r2'), n('blobs.r3')].filter(x => x > 0).length > 1;
     if (id === 'wring') return n('surf.kind') < 0.5;
     if (id === 'bellows') return fams >= 2 && !n('round') && !n('shape.round');
     if (id === 'ramp') return true;
@@ -74,7 +75,7 @@ export function moves(score, A, M) {
     for (let part = 0; part < parts; part++) {
       const from = start + (body * part) / parts, to = start + (body * (part + 1)) / parts;
       let id = null;
-      for (let n = 0; n < ROT.length; n++) { const c = ROT[(at + n) % ROT.length]; if (fits(c, G) && !G.moves?.some(m => m.id === c) && !((FOLDS.has(c) || TIMES.has(c)) && G.moves?.length)) { id = c; at = (at + n + 1) % ROT.length; break; } }
+      for (let n = 0; n < ROT.length; n++) { const c = ROT[(at + n) % ROT.length]; if (directing.woah && (FOLDS.has(c) || TIMES.has(c))) continue; if (fits(c, G) && !G.moves?.some(m => m.id === c) && !((FOLDS.has(c) || TIMES.has(c)) && G.moves?.length)) { id = c; at = (at + n + 1) % ROT.length; break; } }
       if (!id) continue;
       if (FOLDS.has(id) || TIMES.has(id)) {
         // Whatever comes in has to have room to get in and get out.

@@ -22,17 +22,17 @@ const own = {
     out[OFF['f2.ph']] = out[OFF['f0.ph']] * (1 + de) + 0.2 * s;
   } },
   // Lead: one contact takes the frame and passes it on, and the rest make room.
-  lead: { write(out, { t, m }) {
+  'pearl.lead': { write(out, { t, m }) {
     const s = surged(evalTrack(clockOf(m), t)), a = ampAt(m, t) * (m.amp ?? 0.5), on = POLES.filter(p => out[p[2]] > 0);
     on.forEach((p, i) => { out[p[2]] *= Math.exp(a * Math.cos(Math.PI * (s / 2 - (2 * i) / on.length))); });
   } },
   // Waltz: everything floats round the middle of the frame, a little further on each hit.
-  waltz: { write(out, { t, m }) {
+  'pearl.waltz': { write(out, { t, m }) {
     const s = surged(evalTrack(clockOf(m), t)), ang = (m.turn ?? 0.34) * Math.max(0, s + 0.5) * ease((t - m.hits[0] + (m.lead || 1)) / (m.lead || 1)), c = Math.cos(ang), n = Math.sin(ang);
     for (const p of POLES) { const x = out[p[0]], y = out[p[1]]; out[p[0]] = c * x - n * y; out[p[1]] = n * x + c * y; }
   } },
   // Ghost voice: a family with no lines at all, rewritten while it isn't showing. A whole other pattern that exists only in the colour, comes up through the lines and goes, one after another: nothing that isn't colour moves, and the eye can hardly say where it is.
-  ghost: { write(out, { t, m }) {
+  'pearl.ghost': { write(out, { t, m }) {
     const a = ampAt(m, t);
     if (a <= 0) return;
     const s = evalTrack(clockOf(m), t) / (m.each ?? 4), k = Math.floor(s), u = s - k, v = GHOSTS[((k % GHOSTS.length) + GHOSTS.length) % GHOSTS.length];
@@ -41,4 +41,5 @@ const own = {
     out[OFF['spare.d']] = a * Math.sin(Math.PI * u) ** 2 * (m.amt ?? 300);
   } },
 };
+// Named as its own: plain 'ghost', 'lead' and 'waltz' are the film's and Flower's, and these went over them for everyone once Pearl had loaded.
 for (const k in own) MOVES[k] = { id: k, needs: () => true, ...own[k] };

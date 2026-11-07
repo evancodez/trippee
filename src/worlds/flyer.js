@@ -149,6 +149,9 @@ export default {
     else if (from && to) { const u = x < 0.5 ? 1 - ease(x / 0.45) : ease((x - 0.55) / 0.45); writeStencil(a, x < 0.5 ? from : to, t, pop, u, hopS, hopF); writeStencil(b, null, t, pop, 0, 0, 1); }
     else { writeStencil(a, here, t, pop, 1, hopS, hopF); writeStencil(b, null, t, pop, 0, 0, 1); }
   },
+  // src/score/woah.js casts these, by the music: the screen, crumple, the fan, ghost hands on the strong beats, a roll on the biggest hit. Loud songs more often.
+  woah: { tricks: ['screen', 'crumple', 'fan', 'ghost', 'roll', 'forever', 'limit'], fond: { screen: 1, crumple: 1, ghost: 0.8, roll: 0.8, fan: 0.6 }, gap: [24, 40], least: 5.5,
+    fits: (id, G, S) => S[OFF['surf.kind']] < 0.5 && !G.pattern.stencil && (G.pattern.group !== 'film' || id === 'ghost' || id === 'screen' || id === 'roll') },
   pace: { bars: [8, 6, 4, 3, 2], morph: [3.2, 6.5], most: 15 },
   motion: { len: [10, 16], morph: [4.5, 7], xforms: { crank, bleed, feed, fill }, xform: 'crank', keep: ['crank', 'bleed', 'feed', 'fill'], front: true },
   hear: { pulse: 1.25, melody: 0.8, tone: 0.3, harmony: 0.5, lung: 0.5, threshold: 0.3 },

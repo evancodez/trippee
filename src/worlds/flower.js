@@ -104,7 +104,9 @@ export default {
       if (m > 0.002) for (const S of [A, B]) POLE_SIZES.forEach((p, i) => { if (S[p] > 0) { const d = s.melody * 0.32 - (i - 1.5) * 1.2; S[p] *= Math.exp(m * (Math.exp(-d * d) - 0.4)); } });
     }
   },
-  woah: true,      // src/score/woah.js: it goes through the folds and the time tricks, less often than a film, on its own patterns and with its own landings. Space isn't in a world's programs
+  // src/score/woah.js casts these, by the music, on its own patterns and with its own landings. Space isn't in a mode's programs; folds and time are. Its own moves on a stay give way to a trick there.
+  // The kaleidoscope's fan and forever's zoom suit flat hot inks best, so it's fond of those. gap: seconds between tricks, loud to quiet.
+  woah: { tricks: ['fan', 'forever', 'pearls', 'crumple', 'slit', 'screen', 'roll', 'echo'], fond: { fan: 1.2, forever: 1.1, pearls: 0.6, crumple: 0.4 }, gap: [26, 44], least: 6 },
   pace: { bars: [9, 7, 5, 4, 3], morph: [5, 8], most: 18 },       // src/score/pace.js: bars between changes by the song's level, and how long a landing takes. ?pace=0: motion's len and morph
   motion: { len: [13, 22], morph: [6, 9], xforms: { bud, melt, tide }, xform: 'bud', keep: ['bud', 'melt', 'tide'], front: true },
   hear: { pulse: 1, melody: 1, tone: 0.4, harmony: 0.7, lung: 1 },

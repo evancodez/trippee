@@ -99,6 +99,9 @@ export default {
     if (s) { const k = 1 + 0.1 * lung + 0.06 * pulse; for (const S of [A, B]) for (const n of ['blobs.r1', 'blobs.r2', 'blobs.r3', 'p1.q', 'p2.q']) if (S[OFF['field.kind']] === 4 && S[OFF['field.a']] < 0.5 && S[OFF[n]] > 0) S[OFF[n]] *= k; }
   },
   camera: { pool: { quiet: ['float', 'sink', 'tideway', 'veil'], mid: ['float', 'tideway', 'sink', 'plate', 'wander'], loud: ['rise', 'sink', 'sweep', 'dolly'] } },      // src/score/camera.js. Weightless: it hardly turns, and it goes up and down as much as along.
+  // src/score/woah.js casts these, by the music: pearls, echo, ghost, fringe, and the softer folds. Never on a surface, or one already folded.
+  woah: { tricks: ['pearls', 'echo', 'ghost', 'fringe', 'forever', 'fan', 'slit'], fond: { pearls: 1.2, echo: 1, ghost: 0.8, fringe: 0.8 }, gap: [28, 46], least: 6,
+    fits: (id, G, S) => S[OFF['surf.kind']] < 0.5 && S[OFF['fold.n']] < 2 && ((id !== 'echo' && id !== 'ghost') || (G.pattern.g.fams?.length ?? 1) === 1) },
   pace: { bars: [8, 7, 6, 5, 4], morph: [4.5, 6.5], most: 15 },
   motion: { len: [12, 20], morph: [6, 9], xforms: { rack, drain, breath }, xform: 'rack', keep: ['rack', 'drain', 'breath'], front: true },
   hear: { pulse: 0.8, melody: 1.2, tone: 0.8, harmony: 0.7, lung: 1 },

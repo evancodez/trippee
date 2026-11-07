@@ -5,6 +5,7 @@ import { hitsFor } from '../../score/moves/surge.js';
 import { rampTrack } from '../../score/moves/ramp.js';
 import { MOVES } from '../../score/moves/index.js';
 import { base } from '../../score/slot.js';
+import { directing } from '../../score/flags.js';
 import './moves.js';
 
 const SHARE = { target: 0.2, icon: 0.24, pop: 0.1, plate: 0.13, op: 0.22, film: 0.11 };
@@ -78,9 +79,11 @@ export function landings(score, song) {
   return used;
 }
 
+// The film's tricks, which src/score/woah.js casts by the music (W.woah in flyer.js) when it's on, and not one after another here.
+const CAST = new Set(['crumple', 'fan', 'slit', 'echo', 'forever']);
 // What it does while it's there. A long stay has to earn it: one thing after another, each a dozen seconds or so.
 export function moves(score, A, M) {
-  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['windmill', 'separate', 'upstroke', 'crumple', 'headbang', 'crank', 'lead', 'wring', 'fan', 'slit', 'bellows', 'separate', 'rotator', 'ratchet', 'scissor', 'echo', 'ramp', 'forever'];
+  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['windmill', 'separate', 'upstroke', 'crumple', 'headbang', 'crank', 'flyer.lead', 'wring', 'fan', 'slit', 'bellows', 'separate', 'rotator', 'ratchet', 'scissor', 'echo', 'ramp', 'forever'];
   let at = 0;
   const fits = (id, G) => {
     const p = G.pattern, S = base(p), num = n => S[OFF[n]], flat = num('surf.kind') < 0.5, field = num('field.kind') === 4 && num('field.k0') !== 0 && num('star._1') === 0, plain = (p.g?.fams?.length ?? 1) < 2;
@@ -91,7 +94,7 @@ export function moves(score, A, M) {
     if (id === 'wring') return flat;
     if (id === 'ramp' || id === 'separate') return true;
     if (id === 'crank') return field && num('field.ph') > 0;
-    if (id === 'lead' || id === 'rotator') return field && !num('blobs.beta') && countPoles(p) > 1;
+    if (id === 'flyer.lead' || id === 'rotator') return field && !num('blobs.beta') && countPoles(p) > 1;
     if (id === 'windmill' || id === 'headbang') return flat;
     if (id === 'crumple' || id === 'fan' || id === 'forever') return flat && !p.stencil && p.group !== 'film';
     if (id === 'slit' || id === 'echo') return flat && !p.stencil;
@@ -104,7 +107,7 @@ export function moves(score, A, M) {
     for (let part = 0; part < parts; part++) {
       const from = start + (body * part) / parts, to = start + (body * (part + 1)) / parts;
       let id = null;
-      for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (fits(c, G) && !G.moves?.some(m => m.id === c) && !(c === 'ramp' && part)) { id = c; at = (at + n + 1) % rotation.length; break; } }
+      for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (directing.woah && CAST.has(c)) continue; if (fits(c, G) && !G.moves?.some(m => m.id === c) && !(c === 'ramp' && part)) { id = c; at = (at + n + 1) % rotation.length; break; } }
       if (!id) continue;
       const half = ['windmill', 'upstroke', 'headbang', 'wring', 'ratchet', 'bellows', 'scissor', 'separate'].includes(id);
       let hits = hitsFor(half ? 'half' : 'bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
