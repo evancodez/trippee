@@ -43,7 +43,8 @@ const reachOf = roll => { const c = Math.cos(roll), s = Math.sin(roll); return 1
 // A flat sheet goes on a plane through the origin, where a pixel lands on the same spot as ever until it tips. Below this it's left flat, so a transformation between two untipped sheets is what it always was.
 const FLAT = 1e-4;
 export function writeTip(out, tip, dir, lens) {
-  if (Math.abs(tip) < FLAT) return;
+  // Only a sheet that isn't tipping at all stays flat. One rocking through flat stays on its plane for the frame it's level, or that one frame drops the lens and the surface and pops (PPP 125.22 s, 63 against 19)
+  if (tip === 0) return;
   if (out[OFF['surf.kind']] < 0.5) { out[OFF['surf.kind']] = 1; out[OFF['surf.map']] = 0; out[OFF['q.zw']] = 0.5; }
   const was = out[OFF['cam.roll']] + out[OFF['cam.yaw']];
   out[OFF['cam.dist']] = lens;
