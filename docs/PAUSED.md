@@ -25,7 +25,7 @@ Limits are unchanged, so these rows fail. We kept the film's energy instead of d
 - **Flash, generated film:** MGMT 0 whole, 4 tile (near 150.2 s). PPP 1 whole (59.5, 141, 326 s), 3 tile (171 s). Wildflower and Disclosure weren't rescanned after the last fixes; before them both read 1 whole, 3 tile.
 - **Jerk:** 4.08x on MGMT (the end of the rest, 93.76 s), 4.22x on PPP. Limit 3x. Breath fails narrowly on MGMT.
 - **Fast stripes:** PPP 50-53 s, left because slowing them would dull it.
-- **Hand cuts** are still the old slow ones, and with reaction on they fail `tests/cut.mjs` on flashes (MGMT whole at 185.67 s). Disclosure's has a jerk near 146 s and cracked-glass hairlines at 84.5-88 and 137.7-141. Wildflower's has fine hatching at 58-76 and quartered seams at 94.98 and 182.28.
+- **Hand cuts** are still the old slow ones, and with reaction on they fail `tests/cut.mjs` on flashes (MGMT whole at 185.67 s). Disclosure's has a jerk near 146 s and cracked-glass hairlines at 84.5-88 and 137.7-141. Its seek matches play on only 40 of 46 frames. Wildflower's has fine hatching at 58-76 and quartered seams at 94.98 and 182.28.
 - **Flower Power:** hairline seams on Bead Bloom, library clicks are always dives, Tunnel and Daisy Floor are out of the rotation because they only have flights, and its flashes weren't rescanned after the last fixes.
 - **Generated takes:** pace was only flash-scanned on seed 7.
 
