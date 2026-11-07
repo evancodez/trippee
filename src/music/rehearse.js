@@ -394,7 +394,7 @@ async function chooseWay(R, score, A, B, ctx) {
   return out;
 }
 
-export { getRig, shot, drawn, Eyes };    // for tests: the same eyes, at any moment of a film
+export { getRig, shot, drawn, Eyes, slowedTrack };    // for tests: the same eyes, at any moment of a film
 
 // Returns { jumps: [{ t, by, id }], bad: [pattern ids], rides: [what each gesture rides], ways: [each transformation], sitOut: [no good run], seconds }
 // stale: asked between looks. Once it says yes the rehearsal stops where it is, by throwing, because someone's made another film and this one will never be shown.
@@ -670,7 +670,7 @@ const smootherArea = u => u * u * u * u * (u * (u - 3) + 2.5);
 
 async function guardFilm(R, score, seen, ctx) {
   const { breathe, mayChangeFor, opening = 0 } = ctx, g = score.gestures, t0 = performance.now(), fixes = [], refused = score.refused ??= [], tau = score.tau ?? (t => t), isLoud = loudness(score), fps = seen.fps;
-  let looks = GUARD_LOOKS, falseAlarms = 0;
+  let looks = GUARD_LOOKS, falseAlarms = 0, unlooked = false;
   const spent = n => { looks -= n; }, tried = [];
   const lands = opening || FLASH_ARRIVAL;
   const scan = async ([a, b]) => {
@@ -683,11 +683,19 @@ async function guardFilm(R, score, seen, ctx) {
     await eyes.flush();
     eyes.free();
   };
-  // What's really flashing in a range of frames, as they stand now: coarse first, and only what that flags close up.
-  const realIn = async ([a, b]) => {
+  // What's really flashing in a range of frames, as they stand now: coarse first, and only what that flags close up. What's been looked at closely stays known until a change is kept.
+  let known = new Map();
+  const closely = async (a, b, remember) => {
+    const key = `${a.toFixed(2)}:${b.toFixed(2)}`, had = remember ? known.get(key) : null;
+    if (had) return had;
+    const r = await lookClose(R, score, a, b, ctx, spent);
+    if (remember) known.set(key, r);
+    return r;
+  };
+  const realIn = async ([a, b], remember = false) => {
     const out = { at: [], whole: 0 };
     for (const w of stretches(seen.over(a, b), fps)) {
-      const r = await lookClose(R, score, w.a, Math.min(w.b, b / fps + 1), ctx, spent);
+      const r = await closely(w.a, Math.min(w.b, b / fps + 1), remember);
       out.at.push(...r.at); out.whole += r.whole;
       if (!r.at.length) falseAlarms++;
     }
@@ -699,26 +707,30 @@ async function guardFilm(R, score, seen, ctx) {
 
   const todo = [];
   for (const w of stretches(seen.over(), fps)) {
-    if (looks <= 0) break;
     const r = await lookClose(R, score, w.a, w.b, ctx, spent);
     if (r.at.length) todo.push({ ...w, ...r }); else falseAlarms++;
   }
   // The whole frame first: it's the one with no allowance at all
   todo.sort((x, y) => y.whole - x.whole || x.a - y.a);
   for (const spot of todo) {
-    if (looks <= 0) break;
+    if (looks <= 0) { unlooked = true; break; }
     const tHit = spot.at[0], { k, kind } = spot.kinds[0], G = g[k], N = g[k + 1];
     if (!G || (opening && k > 1) || !mayChangeFor(G)()) continue;
     const what = `${G.pattern.id}${kind && N ? '>' + N.pattern.id : ''}`, loud = isLoud(tHit), first = Math.min(...spot.at) - 1, last = Math.max(...spot.at) + SLOW_AROUND;
     let still = spot.at.length;
-    // A change: make it, look at the frames it touches, and keep it only if less is really flashing there. Otherwise undo it and put back what was seen.
-    const change = async (range, apply, undo, did, why) => {
-      const before = worse(await realIn(range)), kept = seen.keep(range);
+    const around = frames(first - 2.6, last + 1);
+    // A change: make it, look at the frames it touches, and keep it only if less is really flashing there. Otherwise undo it and put back what was seen. The flash itself is looked at first, so what doesn't help costs little.
+    const change = async (range0, apply, undo, did, why) => {
+      const range = [Math.min(range0[0], around[0]), Math.max(range0[1], around[1])];
+      const before = worse(await realIn(range, true)), kept = seen.keep(range), near = [range[0], Math.min(range[1], around[1] + Math.ceil(2 * fps))];
+      if (!before) { still = 0; return false; }
       apply(); forget(G); forget(g[k - 1]);
-      await scan(range);
-      const now = await realIn(range);
+      await scan(near);
+      let now = await realIn(near);
+      if (worse(now) < before && near[1] < range[1]) { await scan([near[1], range[1]]); now = await realIn(range); }
       tried.push({ t: +tHit.toFixed(2), did, before, after: worse(now) });
       if (worse(now) < before) {
+        known = new Map();
         still = now.at.filter(t => t >= first - 0.5 && t <= last + 0.5).length;
         fixes.push({ t: +tHit.toFixed(2), id: G.pattern.id, kind: kind ?? 'body', did });
         say(tHit, what, `flashed: ${why}`);
@@ -738,9 +750,13 @@ async function guardFilm(R, score, seen, ctx) {
       const hasHold = (G.moves ?? []).some(m => m.hold), pay = !!G.pattern.drive;
       const a = Math.max(first, G.t0 + SLOW_RAMP), b = Math.min(last, G.t1 - (G.morph || 0) - SLOW_RAMP), range = frames(a - SLOW_RAMP - 0.5, G.t1 + 0.5);
       const flow = async by => {
-        const T = hasHold || b <= a ? null : (pay && slowedTrack(G, tau, a, b, by, true)) || slowedTrack(G, tau, a, b, by, false), was = G.phiTrack;
-        if (!T) return false;
-        return change(range, () => { G.phiTrack = T; }, () => { G.phiTrack = was; }, `flow /${by} from ${a.toFixed(1)} to ${b.toFixed(1)}`, `flow at 1/${by} from ${a.toFixed(1)} to ${b.toFixed(1)}`);
+        if (hasHold || b <= a) return false;
+        // Falling behind for the rest of the gesture can stir up the rest of it. Paying the time back can't, if there's room for it.
+        for (const pays of pay ? [true, false] : [false, true]) {
+          const T = slowedTrack(G, tau, a, b, by, pays), was = G.phiTrack;
+          if (T && await change(range, () => { G.phiTrack = T; }, () => { G.phiTrack = was; }, `flow /${by} from ${a.toFixed(1)} to ${b.toFixed(1)}`, `flow at 1/${by} from ${a.toFixed(1)} to ${b.toFixed(1)}`)) return true;
+        }
+        return false;
       };
       const flowed = await flow(SLOW_LOUD);
       if (still) await calmer();
@@ -783,9 +799,9 @@ async function guardFilm(R, score, seen, ctx) {
   // What's left. Nothing's dulled to clear it, and it's said out loud.
   const left = [];
   for (const w of stretches(seen.over(), fps)) {
-    const r = looks > 0 ? await lookClose(R, score, w.a, w.b, ctx, spent) : { at: [w.b - 0.3], whole: 0 };
+    const r = await closely(w.a, w.b, true);
     for (const t of r.at) left.push(+t.toFixed(1));
-    if (r.at.length) say(r.at[0], g.find(G => G.t0 <= r.at[0] && r.at[0] < G.t1)?.pattern.id ?? '?', `flash left in${r.whole ? ', whole frame' : ''}: ${looks > 0 ? 'nothing cleared it without dulling the stretch' : 'not looked at, out of looks'}`);
+    if (r.at.length) say(r.at[0], g.find(G => G.t0 <= r.at[0] && r.at[0] < G.t1)?.pattern.id ?? '?', `flash left in${r.whole ? ', whole frame' : ''}: ${unlooked ? 'out of looks before getting to it, perhaps' : 'nothing cleared it without dulling the stretch'}`);
   }
   return { fixes, left: [...new Set(left)].sort((a, b) => a - b), seconds: +((performance.now() - t0) / 1000).toFixed(2), falseAlarms, looked: GUARD_LOOKS - looks, tried };
 }

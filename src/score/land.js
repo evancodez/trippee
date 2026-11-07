@@ -93,7 +93,7 @@ export function land(score, A, M, cast = []) {
     if (tail >= least && tail < total) {
       const was = N.t0;
       G.t1 = N.t0 = end + tail;
-      G.morph = total;
+      G.morph = Math.min(total, (LEAD + 1) * tail);     // with little room for a tail, it starts later, not hanging
       G.peak = { hit: end, q: Q };
       shiftArcs(N, was); restEnd(G); forget(G);
       landed.push(['plain', +end.toFixed(2), +tail.toFixed(2), +G.morph.toFixed(2)]);

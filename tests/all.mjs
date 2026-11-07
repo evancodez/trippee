@@ -115,6 +115,7 @@ const steps = {
     const lines = r.text.split('\n').filter(l => /^PRINT /.test(l));
     add('Whole film', r.code || failLines(r.text).length || !lines.length ? 'FAIL' : 'PASS', lines.map(l => l.replace(/^PRINT /, '').replace(/ seconds byte-identical to .*/, '')).join('; '), `which seconds, by how much: ${join(LOGS, 'filmprint.log')}`);
   },
+  async guard() { await plain('Flash', 'guard', 'tests/guard.mjs', { env: { SONGS: 'mgmt,ppp' }, size: '1280,720', minutes: 10 }); },
   async boot() {
     await plain('Boot', 'integrate', 'tests/integrate.mjs', { minutes: 10 });
     await plain('Boot', 'v2-boot', 'tests/v2.mjs', { env: { STAGE: 'boot' }, minutes: 10 });
