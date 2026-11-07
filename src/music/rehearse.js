@@ -15,6 +15,7 @@ import { fillSlot, noHorizon, withTravel } from '../score/slot.js';
 import { OFF, SLOT_FLOATS } from '../pattern/layout.js';
 import { clamp, evalTrack, smoother } from '../score/curves.js';
 import { XFORMS } from '../score/xform/index.js';
+import { slowCamera } from '../score/camera.js';
 
 const JUMP_H = 54, STEP = 0.2, JUMP = 0.3;     // a jump: 30% of full scale in a fifth of a second
 const LOOK_H = 360, SAMPLES = 12;              // 13 points, at a third of 1080p: enough to tell a 16 px line period at 1080p from a 45 px one
@@ -608,6 +609,7 @@ const forget = G => { if (G) G.plan = G.planFor = G.planning = null; };
 // ---------------------------------------------------------------- the layer that follows the song
 // Everything above looks at the film with this layer off. So here it's on: the film as it's seen, and for the second or so around whatever's still flashing, the layer itself gives way (score.hear.ease), a little more each time it doesn't clear, and nowhere else. It takes nothing from the rest of the song. What flashes with it all the way down is the film's own.
 const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 2;
+const CAM_TRIES = 8, CAM_RATE = 0.3;
 async function guardHeard(R, score, until, colour, ctx) {
   const H = score.hear, g = score.gestures, edits = { hear: 1 }, fps = (colour ? HEAR_SUB_WORLD : FILM_SUB) / STEP, HH = colour ? FLASH_H : FLASH_H_FILM, W = Math.max(8, Math.round(HH * ctx.aspect)), n = Math.ceil(until * fps);
   const seen = new FlashSeen(n + 1, W, HH, fps, colour, !colour);
@@ -649,6 +651,23 @@ async function guardHeard(R, score, until, colour, ctx) {
     for (const w of stretches(seen.over(0, seen.n, colour), fps)) if (!fine.has(w.b.toFixed(1))) stuck.push(...(colour ? [w.b - 0.5] : (await lookClose(R, score, w.a, w.b, ctx, () => {}, edits, true)).at));      // what the judge itself would count: anything less and the dip's doing its job
     const keep = dips.filter(d => !stuck.some(t => d.b > t - 1.3 && d.a < t + 0.2));
     if (keep.length < dips.length) { H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
+  }
+  // And the camera (src/score/camera.js): whatever's left, it goes more slowly past, and keeps that only if it helped.
+  if (score.camera && !colour) {
+    let tried = 0;
+    H.camSlowed = [];
+    for (const w of stretches(seen.over(0, seen.n, false), fps)) {
+      if (tried >= CAM_TRIES || fine.has(w.b.toFixed(1))) continue;
+      const was = await lookClose(R, score, w.a, w.b, ctx, () => {}, edits);
+      if (!was.at.length) continue;
+      tried++;
+      const a = Math.min(...was.at) - 1, b = Math.max(...was.at) + 0.2, kept = score.camera.lag?.slice() ?? null;
+      slowCamera(score.camera, a, b, CAM_RATE);
+      for (const G of g) if (G.t0 < b + 8 && G.t1 > a - 8) forget(G);
+      const now = await lookClose(R, score, w.a, w.b, ctx, () => {}, edits);
+      if (now.at.length < was.at.length || now.whole < was.whole) { H.camSlowed.push({ a: +a.toFixed(2), b: +b.toFixed(2), was: was.at.length, now: now.at.length }); await look(Math.floor((a - 1.5) * fps), Math.ceil((b + 8) * fps)); }
+      else { score.camera.lag = kept; for (const G of g) if (G.t0 < b + 8 && G.t1 > a - 8) forget(G); }
+    }
   }
   return dips;
 }

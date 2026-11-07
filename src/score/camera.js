@@ -28,7 +28,7 @@ const LENS = 2.4;           // cam.dist where nothing's been asked for
 // Sizes, all first guesses against what the eye sees on the sheets.
 export const SIZE = {
   bold: 8,  boldFar: 19,    // cycles per picture unit: the finest the lines can be across the frame, and at the far side of a tipped sheet. 8 is a period of 45 px at 720p
-  big: 0.95,                // ...and the biggest, so nothing's one flat shape
+  big: 1.4,                 // ...and the biggest, so nothing's one flat shape, and a few big shapes going by can't swing the whole frame's brightness
   whipTurn: 0.75, whipSlide: 1.5,    // a full moment's whip, in radians and frame units
   pushIn: 0.75, windTurn: 0.5,       // the top of a build
   fallBack: 0.85,                    // a falling moment's crane
@@ -212,12 +212,16 @@ function buildHands(film, A, M, H, seed, only = null) {
   for (const s of segs) { const k = kinds.get(s.label) ?? { e: 0, c: 0, lang: null, way: random() < 0.5 ? 1 : -1 }; for (let t = s.t0; t < s.t1; t += 0.5) { k.e += eAt(t); k.c++; } kinds.set(s.label, k); }
   const order = [...kinds.keys()].sort((a, b) => kinds.get(a).e / Math.max(kinds.get(a).c, 1) - kinds.get(b).e / Math.max(kinds.get(b).c, 1));
   const rank = l => (order.length > 1 ? order.indexOf(l) / (order.length - 1) : 0.5);
-  // Each kind of section gets its own language, from the pool its size allows. A song uses as many as it has kinds of section.
+  // Each kind of section gets its own routine of languages, from the pool its size allows: mostly one, and then a turn at another, so that a long section isn't one thing for minutes. A song uses as many as it has kinds of section.
   const used = new Set();
   for (const l of order) {
     const r = rank(l), mean = kinds.get(l).e / Math.max(kinds.get(l).c, 1), pool = POOL[r < 0.3 && mean < 0.55 ? 'quiet' : r > 0.62 || mean > 0.72 ? 'loud' : 'mid'];
-    const open = pool.filter(x => !used.has(x)), lang = only ?? random.pick(open.length ? open : pool);
-    used.add(lang); kinds.get(l).lang = lang;
+    const pick = () => { const open = pool.filter(x => !used.has(x)), lang = random.pick(open.length ? open : pool); used.add(lang); return lang; };
+    const a = only ?? pick();
+    let b = only ?? pick(), c = only ?? pick();
+    if (b === a) b = pool[(pool.indexOf(a) + 1) % pool.length];
+    if (c === a || c === b) c = pool[(pool.indexOf(b) + 1) % pool.length];
+    kinds.get(l).lang = only ? [a] : [a, a, a, b, b, a, a, c, c, c];
   }
   const phrase = bar * 4 >= 5.5 ? 4 : 8;
   // A knot goes on the strong moment nearest its bar line, if there's one close: a move arrives on something.
@@ -230,13 +234,14 @@ function buildHands(film, A, M, H, seed, only = null) {
     seen.set(seg.label, visit + 1);
     const way = kind.way * (visit % 2 ? -1 : 1), P = Math.min(1.8, lerp(0.8, 1.2, rank(seg.label)) * (1 + 0.2 * visit));
     const span = seg.t1 - seg.t0, count = Math.max(1, Math.round(span / (phrase * bar)));
-    plan.push({ t0: +seg.t0.toFixed(1), label: seg.label, lang: kind.lang, way, P: +P.toFixed(2), phrases: count });
-    spans.push({ t0: time(seg.t0), lang: kind.lang, way });
+    plan.push({ t0: +seg.t0.toFixed(1), label: seg.label, lang: [...new Set(kind.lang.slice(0, Math.max(count, 1)))].join('+'), way, P: +P.toFixed(2), phrases: count });
     let t = seg.t0;
     for (let i = 0; i < count; i++) {
       const raw = seg.t0 + span * (i + 1) / count, t1 = i === count - 1 && si < segs.length - 1 ? segs[si + 1].t0 : toHit(raw);
       const put = o => { const at = time(o.at ?? t1); for (const k of ['alt', 'tip', 'speed', 'lens']) if (o[k] != null && at > keys[k].at(-1)[0] + 0.05) keys[k].push([at, o[k]]); for (const k of ['spin', 'dir', 'head']) if (at > keys[k].at(-1)[0] + 0.05) keys[k].push([at, s[k]]); knots.push(at); };
-      LANG[kind.lang](put, { i: i + visit, way, P, t0: t, t1, visit }, s);
+      const lang = kind.lang[i % kind.lang.length];
+      spans.push({ t0: time(t), lang, way });
+      LANG[lang](put, { i: i + visit, way, P, t0: t, t1, visit }, s);
       t = t1;
     }
   });
@@ -431,7 +436,7 @@ function makeWrite(cam) {
   return function camWrite(out, tIn, G) {
     const r = cam.routeFor(G);
     if (!r) return;
-    const B = G.camBear, t = clockOf(G, tIn), locks = G.camLocks ??= locksOf(G);
+    const B = G.camBear, t1 = clockOf(G, tIn), t = cam.lag ? t1 - rd(cam.lag, n, t1 * HZ) : t1, locks = G.camLocks ??= locksOf(G);
     const p = t * HZ, z = r.at(r.z, t), spin = r.at(r.spin, t), tip = rd(T.tip, n, p) * B.tip * (G.camCalm ?? 1), dir = rd(T.dir, n, p), lens = rd(T.lens, n, p), mx = r.at(r.x, t), my = r.at(r.y, t);
     if (!locks.scale) out[OFF.scale] *= Math.exp(z);
     if (!locks.tx) { out[OFF.tx] += mx; out[OFF.ty] += my; }
@@ -466,6 +471,21 @@ function locksOf(G) {
     if (l.off === OFF['cam.roll'] || l.off === OFF['cam.yaw']) L.roll = true;
   }
   return L;
+}
+
+// The rehearsal found a flash here and the camera's part of it: for those seconds the camera goes at `rate` of its speed, on a clock of its own, and it makes up the time over the next few, so everything past that is where it was. Nothing stops.
+const SLOW_EDGE = 0.5, SLOW_PAY = 6;
+export function slowCamera(cam, a, b, rate) {
+  const n = cam.n, lag = cam.lag ?? new Float32Array(n), lost = 1 - rate;
+  const total = lost * (b - a + SLOW_EDGE);
+  for (let i = Math.max(0, Math.floor((a - SLOW_EDGE) * HZ)); i < n; i++) {
+    const t = i / HZ;
+    // what's been lost by t, then paid back
+    const inn = t <= a ? lost * SLOW_EDGE / 2 * smoother((t - a + SLOW_EDGE) / SLOW_EDGE) : t <= b ? lost * (SLOW_EDGE / 2 + t - a) : t <= b + SLOW_EDGE ? total - lost * SLOW_EDGE / 2 * (1 - smoother((t - b) / SLOW_EDGE)) : total;
+    const pay = t <= b + SLOW_EDGE ? 0 : total * smoother((t - b - SLOW_EDGE) / SLOW_PAY);
+    lag[i] += inn - pay;
+  }
+  cam.lag = lag;
 }
 
 // compose() calls this once a film is made. A world can refuse with world.camera === false.
