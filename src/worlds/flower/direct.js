@@ -4,7 +4,8 @@ import { reactAt } from '../../score/react.js';
 import { hitsFor } from '../../score/moves/surge.js';
 import { rampTrack } from '../../score/moves/ramp.js';
 import { starMove } from '../../score/moves/star.js';
-import { hasField } from './bud.js';
+import { MOVES } from '../../score/moves/index.js';
+import { base } from '../../score/slot.js';
 
 // How much of a film each group should have.
 const SHARE = { flower: 0.46, motif: 0.3, op: 0.24 };
@@ -51,13 +52,14 @@ export function landings(score) {
     if (sameFold && field(G.pattern) && field(N.pattern)) open.push('bud');
     if (sameFold) open.push('melt');
     open.push('tide');
-    if (D >= 6) open.push('dive');
-    if (D >= 6 && i % 5 === 3) open.push('iris');
+    if (D >= 5) open.push('dive');
+    if (D >= 5 && i % 5 === 3) open.push('iris');
     const score1 = k => WEIGHT[k] / (1 + (used[k] ?? 0)) * (k === prev ? 0.001 : 1);
     const k = open.sort((x, y) => score1(y) - score1(x))[0];
     used[k] = (used[k] ?? 0) + 1;
     prev = k;
-    G.xform = k === 'tide' ? { id: 'tide', dir: (used.tide % 2) ? 2 : 1, centre: tideCentre(N.pattern) } : { id: k };
+    // A tide: out of a flower, in from the rim, or straight across the frame, in turn.
+    G.xform = k === 'tide' ? { id: 'tide', dir: [2, 3, 1][used.tide % 3], centre: tideCentre(N.pattern), ang: (used.tide * 2.4) % 6.283 } : { id: k, chosen: true };
   }
   return used;
 }
@@ -65,17 +67,20 @@ const tideCentre = p => { const g = p.g, c = [[g['blobs.r1'], g['blobs.x1'], g['
 
 // What it does while it's there. A gesture has at most one of these and there's a rest now and then: not everything has to be doing something.
 export function moves(score, A, M) {
-  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['pump', 'wind', 'lead', 'wring', 'beads', 'waltz', 'ratchet', 'ramp'];
-  let at = 0, sinceStar = 99;
+  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['pump', 'scissor', 'turnover', 'wind', 'lead', 'wring', 'bellows', 'beads', 'waltz', 'ratchet', 'ramp'];
+  let at = 0, sinceStar = 99, runs = 0;
   const fits = (id, G) => {
-    const p = G.pattern, field = p.g['field.k0'] !== 0, whip = p.g['spare.a'] !== 0 || p.g['spare.c'] !== 0;
+    const p = G.pattern, S = base(p), num = n => S[OFF[n]], field = num('field.k0') !== 0, whip = num('spare.a') !== 0 || num('spare.c') !== 0;
     if (id === 'ratchet') return (p.g.fams ?? []).some(f => f.t1);
+    if (id === 'scissor') return p.id === 'flower.check';
+    if (id === 'turnover') return num('blobs.beta') > 0;
+    if (id === 'bellows') return (p.g.fams?.length ?? 1) >= 2 && !num('shape.round') && !num('round');
     if (id === 'wring') return true;
     if (id === 'ramp') return true;
-    if (id === 'beads') return field && !whip && p.group !== 'op' && !p.g['ribbon.a'] && (p.g.fams?.length ?? 1) < 2;
-    if (id === 'wind') return field && !whip && !p.g['field.b'];
-    if (id === 'pump') return field && !whip && (p.g['field.ph'] ?? 0) > 0;
-    if (id === 'lead' || id === 'waltz') return field && !p.g['blobs.beta'] && p.arcs?.length && countPoles(p) > 1;
+    if (id === 'beads') return field && !whip && p.group !== 'op' && !num('ribbon.a') && (p.g.fams?.length ?? 1) < 2;
+    if (id === 'wind') return field && !whip && !num('field.b');
+    if (id === 'pump') return field && !whip && num('field.ph') > 0;
+    if (id === 'lead' || id === 'waltz') return field && !num('blobs.beta') && countPoles(p) > 1;
     return false;
   };
   for (let i = 1; i + 1 < g.length; i++) {
@@ -84,7 +89,7 @@ export function moves(score, A, M) {
     let id = null;
     for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (fits(c, G)) { id = c; at = (at + n + 1) % rotation.length; break; } }
     if (!id) continue;
-    const beats = (id === 'wind' || id === 'pump' || id === 'wring' || id === 'ratchet') ? 'half' : 'bar';
+    const beats = (id === 'pump' || id === 'wring' || id === 'ratchet' || id === 'bellows' || id === 'scissor' || id === 'turnover') ? 'half' : 'bar';
     const hits = hitsFor(beats, { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
     if (hits.length < 3 && id !== 'ramp') continue;
     if (id === 'ramp') {
@@ -93,13 +98,22 @@ export function moves(score, A, M) {
       continue;
     }
     const m = { id, beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - G.t0, 0.5)), coast: Math.min(bar, Math.max(G.t1 - hits.at(-1), 0.5)), from: G.t0, to };
+    // The film's own need setting up by their own cue, which goes in bars.
+    if (id === 'scissor') { m.lead = 0.5; m.coast = 1; m.every = 4; if (!MOVES.scissor.cue(m, { score, A, M, G, at: x => x, bar, beat: M?.beat ?? 0.5, meter: M?.meter ?? 4, tau: score.tau })) continue; }
     (G.moves ??= []).push(m);
+  }
+  // A colour run now and then: what's born while this one's on wears a cycle, not the tune. Every so often, and never two together.
+  const CYCLE = ['fire', 'sea', 'rainbow', 'stick'];
+  for (let i = 3; i + 1 < g.length; i += 4) {
+    const G = g[i];
+    if (G.pattern.run || g[i - 1].pattern.run || g[i + 1].pattern.run) continue;
+    G.run = CYCLE[runs++ % CYCLE.length];
   }
   // The ball, once or twice in a song, in a quiet stretch on something with flowers.
   for (let i = 2; i + 1 < g.length; i++) {
     const G = g[i], to = G.t1 - (G.morph || 0);
     if (++sinceStar < 7 || G.moves?.length || to - G.t0 < 10 || G.pattern.group !== 'flower' || G.pattern.g['blobs.beta']) continue;
-    G.moves = [starMove({ t0: G.t0 + 0.5, open: (to - G.t0) * 0.45, close: { t: to - (to - G.t0) * 0.45, D: (to - G.t0) * 0.45 } })];
+    G.moves = [{ ...starMove({ t0: G.t0 + 0.5, open: (to - G.t0) * 0.45, close: { t: to - (to - G.t0) * 0.45, D: (to - G.t0) * 0.45 } }), id: 'ball' }];
     sinceStar = 0;
   }
 }

@@ -47,8 +47,8 @@ float wFlowerBlooms(int b,vec2 X,vec4 f,vec4 f2,float e){
       float qr=q/(r*r),u=q/D;
 #ifdef WORLD_FULL
       int m=(kinds>>(4*i))&15;
-      if(m>=8){ float dd=wFlowerStroke(m,rot(P.w)*d/r); l=mix(l,log(1.+dd/.35)-1.35,a); }
-      else if(m>0){ float rho=sqrt(q)+1e-5; vec2 v=rot(P.w)*d/rho; float s=m==7?a*smoothstep(.5,1.4,rho/r):a*u*u/(1.+qr*fade); l-=log(1.+s*(wFlowerMotif(m,v,atan(v.y,v.x))-1.)); }
+      if(m>=8){ float dd=wFlowerStroke(m,rot(P.w)*d/r); l=mix(l,log(1.+dd/.35)-1.35,min(a,1.)); }
+      else if(m>0){ float rho=sqrt(q)+1e-5; vec2 v=rot(P.w)*d/rho; float s=m==7?a*smoothstep(.5,1.4,rho/r):a*u*u/(1.+qr*fade); l-=log(max(1.+s*(wFlowerMotif(m,v,atan(v.y,v.x))-1.),.25)); }
       else
 #endif
       l-=log(1.+a*u*u/(1.+qr*fade)*wFlowerPetal(n*(atan(d.y,d.x)+P.w)+kap*.5*log(q+1e-5),fat,.006+.012*qr));

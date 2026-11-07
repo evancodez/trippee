@@ -125,7 +125,7 @@ export const pool = [
   }),
   flower({
     id: 'flower.mushrooms', name: 'Mushrooms', group: 'motif', motif: MUSHROOM, a: 1, k: 1.9, beta: 3.6, e: 0.12, fade: 0.06, sway: 0.1, orbit: 0.14,
-    poles: [[-0.75, 0.1, 0.68, 0], [0.95, -0.22, 0.46, 0], [1.75, 0.6, 0.28, 0], [-1.85, -0.55, 0.3, 0], [0.2, 0.86, 0.2, 0]],
+    poles: [[-0.5, 0.0, 0.92, 0], [1.2, -0.15, 0.5, 0], [-1.9, 0.5, 0.24, 0]],
     arcs: heartArcs,
   }),
   flower({
@@ -192,12 +192,6 @@ export const pool = [
     fams: [{ x: 2.4 }, { ph: 0.25, d: -40 }],       // a family that's just a number lifts the whole field, so these are dots and not a check: src/pattern/families/dots.js
     over: { round: 1, sum: 0.42 / (40 * 0.577), bulge: { a: 0.5, r: 0.9, cx: 0.4, cy: 0 } },
     arcs: [{ path: 'rot', from: 0.45, to: 0.75 }, { path: 'scale', from: 1.0, to: 1.25, log: true }, { path: 'bulge.cx', from: 0.7, to: -0.7 }],
-  }),
-  flower({
-    id: 'flower.wave', name: 'Op Wave', group: 'op', field: false, poles: [[0, 0, 1, 0]], lines: 3,
-    over: { bend1: { a: 0.3, f: 2.1, ph: 0, ang: 0 }, bend2: { a: 0.12, f: 3.3, ph: 1, ang: 0.5 } },
-    arcs: [{ path: 'rot', from: -0.2, to: 0.25 }, { path: 'bend1.a', from: 0.18, to: 0.42 }],
-    flow: { 'bend1.ph': 4, 'bend2.ph': -3 },
   }),
   // ---------------------------------------------------------------- pattern inside pattern
   flower({

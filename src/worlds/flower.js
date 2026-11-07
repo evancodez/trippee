@@ -28,6 +28,7 @@ const inkOf = (song, score) => {
 };
 const clamp01 = x => Math.max(0, Math.min(1, x));
 const POLE_SIZES = ['blobs.r1', 'blobs.r2', 'blobs.r3', 'p1.q', 'p2.q'].map(n => OFF[n]);
+const BULGE = OFF['bulge.a'], TEETH = OFF['zig.a'], BEND = OFF['bend1.a'];
 const SWEEP = 1.2, SWEEP_LINES = 6;      // seconds from the line being born to the farthest showing: bands this bold are only about this many lines out from a flower to the corner
 
 export default {
@@ -77,14 +78,18 @@ export default {
       // A rehearsal that's watched one flash can ask the rings to give way (bud.js, its levers): behind at the middle, where everything else is moving fastest, and paying it back at the ends, where nothing is. They land exactly on the clock.
       A[OFF['f0.ph']] = a + (b - a) * ctx.T - FLOW * score.phi(t, to) - (from.budRest ?? 0) * giveWay(ctx.x);
     } else if (from && to && kind === 'tide') {
-      const now = FLOW * score.phi(t, to);
+      const now = FLOW * score.phi(t, to) + (from.budRest ?? 0) * giveWay(ctx.x);
       A[OFF['f0.ph']] = from.pattern.g.fams[0].ph - now; B[OFF['f0.ph']] = to.pattern.g.fams[0].ph - now;
+      U.e[15] = ctx.plan.ang ?? 0;      // the way a straight tide goes
     }
     const s = ctx.at(ctx.c);
     if (s) {
       // Lung and the strong beats: petal depth. A flower opens on the beat, and with the phrase.
       const k = 1 + 0.3 * Math.min(s.lung, 1.2) + 0.28 * Math.min(s.pulse, 1.2);
       A[OFF['field.ph']] *= k; B[OFF['field.ph']] *= k;
+      // What has no petals takes the beat in whatever shape it has: a check's bulge, a chevron's teeth, a wave's bend.
+      const p = 1 + Math.min(s.pulse, 1.2);
+      for (const S of [A, B]) { S[BULGE] *= 1 + 0.5 * (p - 1); S[TEETH] *= 1 + 0.3 * (p - 1); S[BEND] *= 1 + 0.4 * (p - 1); }
       // The tune: whichever flower it's singing to swells, and the rest make room. Each pole has its place on the scale.
       const m = s.voiced * Math.min(1, s.gains?.tune ?? 1) * 0.16;
       if (m > 0.002) for (const S of [A, B]) {
@@ -93,6 +98,6 @@ export default {
       }
     }
   },
-  motion: { len: [13, 22], morph: [6, 9], xforms: { bud, melt, tide }, xform: 'bud', keep: ['bud', 'melt', 'tide'], front: false },
+  motion: { len: [13, 22], morph: [6, 9], xforms: { bud, melt, tide }, xform: 'bud', keep: ['bud', 'melt', 'tide'], front: true },
   hear: { pulse: 0.75, melody: 1, tone: 0.4, harmony: 0.7, lung: 1 },      // pulse: each strong beat's ring shoves a band's edge out and back across a tile
 };

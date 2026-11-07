@@ -87,6 +87,56 @@ async function stages({ page, log, save, sleep }) {
     save(process.env.NAME || 'sheet.jpg', r.sheet);
     log('sheet', r.n, 'patterns');
   }
+  if (want.includes('lands')) {
+    // Landings of every kind, as sheets: LANDS=a>b:kind,... with no song, so the clock's steady. D seconds each.
+    const list = (process.env.LANDS || 'daisy>bloom:bud,daisy>hearts:bud,daisy>check:melt,hearts>stars:melt,check>dart:melt,moddaisy>bloom:bud,bloom>mandala:tide,hearts>peace:tide,peace>check:tide,check>chevron:melt,chevron>dart:tide,dart>burst:bud,circles>poppy:bud,bloom>check:dive,check>hearts:iris').split(',').map(s => s.split(/[>:]/));
+    const r = await page.eval(async (list, D) => {
+      const W = await F_.enter(), by = id => W._pool.find(p => p.id === 'flower.' + id), out = [];
+      const N = 10, w = 256, h = 144, cv = document.createElement('canvas'); cv.width = w * N; cv.height = h * list.length;
+      const g = cv.getContext('2d');
+      for (let k = 0; k < list.length; k++) {
+        const [a, b, kind] = list[k], st = app.stage;
+        st.score.handover = null;
+        st.score.gestures = [{ t0: -20, t1: 2 + D, arcEnd: 2 + D, pattern: by(a), morph: D, xform: { id: kind } }, { t0: 2 + D, t1: 3600, arcEnd: 2 + D + 26, pattern: by(b) }];
+        st.hold = true; app.t = 0; trippee.seek(0);
+        for (let i = 0; i < 400 && !st.score.gestures[0].plan; i++) { trippee.seek(2.5); await new Promise(r => setTimeout(r, 4)); }
+        let kinds = new Set(), V = new Set();
+        for (let i = 0; i < N; i++) { const t = 1.5 + i * (D + 1) / (N - 1); trippee.seek(t); kinds.add(app.lastFrame.kind); V.add(app.R.variant); g.drawImage(trippee.canvas, i * w, k * h, w, h); g.fillStyle = '#000'; g.fillRect(i * w, k * h, 150, 15); g.fillStyle = '#fff'; g.font = '11px monospace'; g.fillText(`${a}>${b} ${t.toFixed(1)} ${app.lastFrame.kind ?? ''}`, i * w + 3, k * h + 11); }
+        out.push(`${a}>${b} wanted ${kind}: ${[...kinds].join(',')} programs ${[...V].join(',')}`);
+      }
+      return { sheet: cv.toDataURL('image/jpeg', 0.9), out };
+    }, list, +(process.env.D || 8));
+    save(process.env.NAME || 'lands.jpg', r.sheet);
+    log('lands\n  ' + r.out.join('\n  '));
+  }
+  if (want.includes('clicks')) {
+    // Every pattern in the library, by a real click on its tile, on the wander. Each has to land, with no error.
+    const mouse = (type, x, y, o = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, button: o.button ?? 'none', buttons: o.buttons ?? 0, clickCount: o.clickCount ?? 0 });
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+    const ids = await page.eval(async () => {
+      try { document.querySelector('#hints [data-ok]').click(); } catch {}
+      await app.stage.setWorld('flower');
+      app.ui.library.show(true);
+      window.__tile = id => { const t = app.ui.library.tiles.get(id); t.b.scrollIntoView({ block: 'center' }); const r = t.b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2 - 8]; };
+      return app.stage.world._pool.map(p => p.id);
+    });
+    for (let i = 0; i < 300; i++) { if (await page.eval('!app.stage.score.handover?.change')) break; await sleep(100); }
+    await sleep(400);
+    const shown = await page.eval(() => [...document.querySelectorAll('#library .tile')].filter(b => b.offsetParent).map(b => b.title));
+    log('library shows', shown.length, 'tiles of', ids.length);
+    let good = 0;
+    const order = ids.map((_, k) => ids[(k * 11 + 3) % ids.length]);
+    for (const id of order) {
+      const [x, y] = await page.eval(`__tile(${JSON.stringify(id)})`);
+      await sleep(30);
+      await mouse('mouseMoved', x, y); await mouse('mousePressed', x, y, { button: 'left', buttons: 1, clickCount: 1 }); await mouse('mouseReleased', x, y, { button: 'left', clickCount: 1 });
+      let landed = null; const t0 = Date.now(), kinds = new Set();
+      while (Date.now() - t0 < 16000) { await sleep(120); const st = await page.eval(() => ({ p: app.lastFrame.G.pattern.id, k: app.lastFrame.kind, m: !!app.lastFrame.N })); if (st.k) kinds.add(st.k); if (st.p === id && !st.m) { landed = Date.now() - t0; break; } }
+      if (landed != null) good++;
+      log(landed != null ? 'ok  ' : 'FAIL', id, landed != null ? `${(landed / 1000).toFixed(1)} s` : 'never landed', [...kinds].join(','));
+    }
+    log(`clicks: ${good}/${ids.length} landed`);
+  }
   if (want.includes('buds')) {
     const r = await page.eval(async () => {
       const W = await F_.enter(), P = W._pool, out = [];

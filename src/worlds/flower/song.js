@@ -72,6 +72,9 @@ export function hearSong(A, M) {
     for (let i = b; i < Math.min(rings, b + BLOCK); i++) ground[i] = g;
   }
   const out = { bloom, ground, when, rings, N, inks, on: on.map(o => o.pc), id: A.hash ?? String(A.duration), set: setsOf(A, M, when, rings), ...buzzOf(A, M) };
+  // The whoa: the buzz stops dead, and the next ring out is in another set altogether.
+  const w = whoaOf(out, M);
+  if (w) { const at = when.findIndex(x => x >= w.t), was = out.set[at], to = was === 4 ? 1 : 4; for (let i = at; at >= 0 && i < Math.min(rings, at + 16) && out.set[i] === was; i++) out.set[i] = to; }
   memo.set(A, out);
   return out;
 }

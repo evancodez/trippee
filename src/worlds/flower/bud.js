@@ -39,17 +39,25 @@ const glideEnter = st => {
   st.moveA = true; st.moveB = true;
 };
 
+// What the second family does inside a band can't glide: it's a whole count, and a whole count of bands. So it's the numbers of whichever pattern has that family showing.
+const INSIDE = [OFF['ribbon.a'], OFF['blobs.k']];
+const holdInside = (A, B, plan, wasA, wasB) => { INSIDE.forEach((n, i) => { A[n] = wasB[i] !== 0 && (plan.open.length || plan.pair[1] === 1 || wasA[i] === 0) ? wasB[i] : wasA[i]; }); };
+const insideOf = S => INSIDE.map(n => S[n]);
+
 export const melt = {
   id: 'melt', levers: LEVERS, enter: glideEnter,
   plan(a, b, ctx) {
-    if (!flat(a) || !flat(b) || a[OFF['fold.n']] !== b[OFF['fold.n']] || ctx.D < 4) return null;
+    if (!flat(a) || !flat(b) || a[OFF['fold.n']] !== b[OFF['fold.n']] || ctx.D < 3) return null;
     return { kind: 'melt', onClock: true, ...partners(a, b) };
   },
   write(st, A, B) {
-    const T = st.T, side = T < 0.5 ? A : B, kept = FIELDS.map(n => side[n]);
-    const s = T < 0.5 ? 1 - smoother(T / 0.5) : smoother((T - 0.5) / 0.5);
+    const x = st.x, side = x < 0.5 ? A : B, kept = FIELDS.map(n => side[n]);
+    // On x, not T: it's all the time there is, and on T all of it would go in the steepest third.
+    const s = x < 0.5 ? 1 - smoother(x / 0.5) : smoother((x - 0.5) / 0.5);
     A[OFF.theta] = st.theta; B[OFF.theta] = st.theta;
+    const inA = insideOf(A), inB = insideOf(B);
     applySlide(A, B, st.plan, st.x * st.x * (3 - 2 * st.x));
+    holdInside(A, B, st.plan, inA, inB);
     FIELDS.forEach((n, i) => { A[n] = kept[i]; });
     A[SHARE] = kept[FIELDS.indexOf(SHARE)] * s;
     st.two = false;
@@ -59,17 +67,23 @@ export const melt = {
 export default {
   id: 'bud', levers: LEVERS, enter: glideEnter,
   plan(a, b, ctx) {
-    if (!flat(a) || !flat(b) || a[OFF['fold.n']] !== b[OFF['fold.n']] || ctx.D < 4) return null;
+    // With two different folds the only way across is a tide.
+    if (a[OFF['fold.n']] !== b[OFF['fold.n']]) return tide.plan(a, b, ctx);
+    if (!flat(a) || !flat(b) || ctx.D < 3) return null;
     // A pattern with no flowers can't close them. It melts.
     if (!hasField(a) || !hasField(b)) return melt.plan(a, b, ctx);
+    // Nobody chose (a wander, or a film that didn't say): it isn't always the one thing. Which goes by the two patterns, so the same two always go the same way.
+    if (!ctx.xform?.chosen) { const h = Math.abs(Math.round((a[OFF['field.k0']] + b[OFF['blobs.x1']] * 7 + a[OFF['blobs.y1']] * 13 + b[OFF['field.a']]) * 10)) % 5; if (h === 1) return melt.plan(a, b, ctx); if (h === 3) return tide.plan(a, b, { ...ctx, xform: { dir: 2 } }); }
     return { kind: 'bud', onClock: true, ...partners(a, b) };
   },
   write(st, A, B) {
     const T = st.T, from = T < 0.5 ? A : B, kept = STEPPED.map(n => from[n]), ta = A[TILE], tb = B[TILE], X = st.x * st.x * (3 - 2 * st.x);
     const depth = T < 0.5 ? A[DEPTH] * (1 - smoother(T / 0.5)) : B[DEPTH] * smoother((T - 0.5) / 0.5);
     A[OFF.theta] = st.theta; B[OFF.theta] = st.theta;
+    const inA = insideOf(A), inB = insideOf(B);
     // Everything that isn't the petals goes a little gentler than T, or a change in how many lines there are sweeps the far rings by faster than the flash limit, right where T is steepest. It still starts and ends at rest.
     applySlide(A, B, st.plan, X);
+    holdInside(A, B, st.plan, inA, inB);
     STEPPED.forEach((n, i) => { A[n] = kept[i]; });
     A[DEPTH] = depth;
     // Tiles grow as a whole, so the walls fly off the frame all the way to one flower, and don't all go at the start.
@@ -81,11 +95,13 @@ export default {
 // The front's width as a share of its travel, how far it reaches, and how hard it pushes the sheet aside going by. Wide, so no line whips.
 const WIDE = 0.55, PUSH = 0.05;
 export const tide = {
-  id: 'tide', levers: {}, enter: glideEnter,
+  id: 'tide', enter: glideEnter,
+  // As for a Bud, and it can go wider, so that each pixel takes longer about turning into the next.
+  levers: { 'a wider tide': G => { if (!G.xform || G.xform.W) return null; G.xform.W = 0.8; return () => { delete G.xform.W; }; }, ...LEVERS },
   plan(a, b, ctx) {
-    if (a[OFF['surf.kind']] > 0.5 || b[OFF['surf.kind']] > 0.5 || a[OFF['field.kind']] !== 4 || b[OFF['field.kind']] !== 4 || ctx.D < 4) return null;
-    const o = ctx.xform ?? {}, dir = o.dir ?? 2, centre = o.centre ?? [b[OFF['blobs.x1']] || 0, b[OFF['blobs.y1']] || 0], reach = Math.hypot(ctx.aspect + Math.abs(centre[0]), 1 + Math.abs(centre[1])) * 1.05;
-    return { kind: 'tide', onClock: true, ...partners(a, b), dir, centre, reach, W: WIDE };
+    if (a[OFF['surf.kind']] > 0.5 || b[OFF['surf.kind']] > 0.5 || a[OFF['field.kind']] !== 4 || b[OFF['field.kind']] !== 4 || ctx.D < 3) return null;
+    const o = ctx.xform?.id === 'tide' || ctx.xform?.dir ? ctx.xform : {}, dir = o.dir ?? 2, centre = dir === 3 ? [0, 0] : o.centre ?? [b[OFF['blobs.x1']] || 0, b[OFF['blobs.y1']] || 0], reach = Math.hypot(ctx.aspect + Math.abs(centre[0]), 1 + Math.abs(centre[1])) * 1.05;
+    return { kind: 'tide', onClock: true, ...partners(a, b), dir, centre, reach, W: o.W ?? WIDE, ang: o.ang ?? 0 };
   },
   write(st, A, B, F) {
     const { plan, T, x } = st;

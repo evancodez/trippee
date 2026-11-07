@@ -7,7 +7,13 @@ const lin = c => c.map(v => Math.pow(v / 255, 2.2));
 const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 // The same hue at the luminance everything meets at when it buzzes. Too bright, it darkens. Too dark, it goes towards white.
 const EQUAL = 0.33;
-const level = rgb => { const c = lin(rgb), Y = lum(c); if (Y > EQUAL) return c.map(v => v * EQUAL / Y); const k = (EQUAL - Y) / (1 - Y); return c.map(v => v + (1 - v) * k); };
+// Darkening a yellow only makes it olive, so what comes down is its green, as the first set's hand-picked inks do: yellow goes to orange, aqua to blue, mint to lilac. Red keeps enough green not to be saturated red.
+const level = rgb => {
+  const c = lin(rgb), Y = lum(c);
+  if (Y <= EQUAL) { const k = (EQUAL - Y) / (1 - Y); return c.map(v => v + (1 - v) * k); }
+  const g = Math.max((EQUAL - 0.2126 * c[0] - 0.0722 * c[2]) / 0.7152, 0.27 * c[0]);
+  return [c[0], g, c[2]];
+};
 const ink = rgb => ({ a: lin(rgb), b: level(rgb) });
 
 // A bloom is what a line wears for the note it was born on, by that note's place round the circle of fifths from home. Warm near home, cool the far way.
@@ -33,20 +39,21 @@ const GROUNDS = [
   /* -2 */       ['emerald',    [0, 120, 90],     [0, 180, 90]],
   /* minor */    ['plum',       [130, 0, 140],    [200, 120, 255]],
 ];
-const made = (B, G) => ({ blooms: B.map(ink), grounds: G.map(ink) });
+// buzz: how far along to equal a set goes. Inks of nearly one hue at one luminance are only mud, and pale ones go first.
+const made = (B, G, buzz) => ({ blooms: B.map(ink), grounds: G.map(ink), buzz });
 export const SETS = [
   // Sunshine: the poster everyone knows.
   { name: 'sunshine', blooms: BLOOMS.map(([, a, b]) => ({ a: lin(a), b: lin(b) })), grounds: GROUNDS.map(([, a, b]) => ({ a: lin(a), b: lin(b) })) },
   // Pop: primaries and a lot of cream, Warhol's screen colours.
-  { name: 'pop', ...made([[255, 232, 0], [255, 244, 220], [255, 60, 150], [255, 150, 190], [0, 190, 255], [0, 215, 200], [120, 210, 255], [255, 150, 0]], [[0, 60, 200], [20, 30, 130], [190, 0, 110], [0, 110, 170], [0, 125, 100], [90, 0, 160]]) },
+  { name: 'pop', ...made([[255, 232, 0], [255, 244, 220], [255, 60, 150], [255, 150, 190], [0, 190, 255], [0, 215, 200], [120, 210, 255], [255, 150, 0]], [[0, 60, 200], [30, 45, 150], [190, 0, 110], [0, 110, 170], [0, 125, 100], [90, 0, 160]], 0.75) },
   // Candy: pastels on raspberry and periwinkle. What's quiet.
-  { name: 'candy', ...made([[255, 238, 150], [255, 205, 165], [255, 175, 215], [255, 205, 225], [215, 190, 255], [170, 245, 215], [170, 220, 255], [205, 245, 150]], [[125, 105, 230], [215, 60, 135], [40, 150, 170], [85, 110, 225], [50, 165, 125], [175, 80, 205]]) },
+  { name: 'candy', ...made([[255, 238, 150], [255, 205, 165], [255, 175, 215], [255, 205, 225], [215, 190, 255], [170, 245, 215], [170, 220, 255], [205, 245, 150]], [[125, 105, 230], [215, 60, 135], [40, 150, 170], [85, 110, 225], [50, 165, 125], [175, 80, 205]], 0.4) },
   // Harvest: mustard and avocado on chocolate, the end of the decade.
-  { name: 'harvest', ...made([[238, 185, 25], [232, 128, 30], [245, 160, 110], [250, 232, 195], [190, 195, 60], [120, 195, 170], [150, 180, 190], [205, 205, 40]], [[90, 45, 28], [135, 68, 32], [25, 88, 92], [60, 62, 110], [78, 88, 22], [100, 35, 70]]) },
+  { name: 'harvest', ...made([[238, 185, 25], [232, 128, 30], [245, 160, 110], [250, 232, 195], [190, 195, 60], [120, 195, 170], [150, 180, 190], [205, 205, 40]], [[110, 58, 34], [140, 72, 34], [25, 100, 105], [65, 68, 125], [88, 100, 26], [112, 42, 82]], 0.25) },
   // Acid: everything turned up. Where the song's biggest.
-  { name: 'acid', ...made([[210, 255, 0], [255, 170, 0], [255, 60, 225], [255, 130, 240], [190, 110, 255], [0, 245, 240], [60, 200, 255], [0, 255, 130]], [[70, 0, 215], [205, 0, 165], [0, 110, 130], [0, 45, 190], [0, 130, 50], [125, 0, 175]]) },
+  { name: 'acid', ...made([[210, 255, 0], [255, 170, 0], [255, 60, 225], [255, 130, 240], [190, 110, 255], [0, 245, 240], [60, 200, 255], [0, 255, 130]], [[70, 0, 215], [205, 0, 165], [0, 110, 130], [0, 45, 190], [0, 130, 50], [125, 0, 175]], 0.8) },
   // Lagoon: the far side of the wheel, for a change of air.
-  { name: 'lagoon', ...made([[150, 255, 210], [255, 225, 190], [255, 135, 115], [255, 175, 150], [175, 175, 255], [0, 225, 215], [90, 200, 255], [235, 245, 120]], [[0, 70, 145], [120, 35, 130], [0, 110, 135], [40, 40, 165], [0, 120, 100], [70, 30, 150]]) },
+  { name: 'lagoon', ...made([[150, 255, 210], [255, 225, 190], [255, 135, 115], [255, 175, 150], [175, 175, 255], [0, 225, 215], [90, 200, 255], [235, 245, 120]], [[0, 70, 145], [120, 35, 130], [0, 110, 135], [40, 40, 165], [0, 120, 100], [70, 30, 150]], 0.6) },
 ];
 export const blooms = SETS[0].blooms;
 export const grounds = SETS[0].grounds;
@@ -75,10 +82,10 @@ export function paint(tex, nLow, tensionOf, inkAt) {
     const [w, g, s, run, at] = inkAt(n);
     if (!fresh && was.n[r] === n && was.k[r] === k && was.run[r] === run) continue;
     was.n[r] = n; was.k[r] = k; was.run[r] = run; changed = true;
-    const L = run ? RUNS[run] : null, place = L ? ((at % L.length) + L.length) % L.length : 0;
+    const L = run ? RUNS[run] : null, place = L ? ((at % L.length) + L.length) % L.length : 0, K = L ? k * 0.3 : k * (SETS[s].buzz ?? 1);
     const W = L ? L[place] : SETS[s].blooms[w], G = L ? L[(place + 1) % L.length] : SETS[s].grounds[g];
-    tex.set(r, 0, W.a[0] + (W.b[0] - W.a[0]) * k, W.a[1] + (W.b[1] - W.a[1]) * k, W.a[2] + (W.b[2] - W.a[2]) * k);
-    tex.set(r, 1, G.a[0] + (G.b[0] - G.a[0]) * k, G.a[1] + (G.b[1] - G.a[1]) * k, G.a[2] + (G.b[2] - G.a[2]) * k);
+    tex.set(r, 0, W.a[0] + (W.b[0] - W.a[0]) * K, W.a[1] + (W.b[1] - W.a[1]) * K, W.a[2] + (W.b[2] - W.a[2]) * K);
+    tex.set(r, 1, G.a[0] + (G.b[0] - G.a[0]) * K, G.a[1] + (G.b[1] - G.a[1]) * K, G.a[2] + (G.b[2] - G.a[2]) * K);
   }
   return changed;
 }
