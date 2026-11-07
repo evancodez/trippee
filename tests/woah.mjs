@@ -1,9 +1,10 @@
 // What a film wears: its tricks by time, and sheets to look at them with. Muted: the song never plays.
 //   SONGS=mgmt SEEDS=7,8 FAST=1 node tools/lab.mjs tests/woah.mjs --out lab-out/woah           the list. FAST=1: no flash guard, no range: the casting, in seconds
 //   SHEET=1                                                                                     the whole film on one sheet, a frame every EVERY seconds (default 2): <song>-<seed>.film.jpg
+//   WORLD=flower                                                                                a world's film, in colour
 //   DENSE=1                                                                                     each trick's way in and way out, close: <song>-<seed>-dense.jpg
-const cap = 13;
-const sheet = async ({ title, items, cols, tw, th }) => {
+import { enterWorld } from '../tools/look.mjs';
+const sheet = async ({ title, items, cols, tw, th, colour = false }) => {
   const { getRig, shot } = await import(new URL('src/music/rehearse.js', location.href).href);
   const R = await getRig(), S = app.song.score, W2 = 480, H2 = 270, big = new Uint8Array(W2 * H2 * 4), tmp = new OffscreenCanvas(W2, H2), tg = tmp.getContext('2d');
   const top = 22, rows = Math.ceil(items.length / cols), c = document.createElement('canvas');
@@ -13,7 +14,7 @@ const sheet = async ({ title, items, cols, tw, th }) => {
   g.fillStyle = '#fff'; g.font = 'bold 13px monospace'; g.fillText(title, 6, 16);
   const list = S.woah?.list ?? [];
   for (let i = 0; i < items.length; i++) {
-    const t = items[i], x = (i % cols) * tw, y = top + Math.floor(i / cols) * (th + 13), f = shot(R, S, t, W2, H2, big), G = f.G;
+    const t = items[i], x = (i % cols) * tw, y = top + Math.floor(i / cols) * (th + 13), f = shot(R, S, t, W2, H2, big, colour), G = f.G;
     const d = tg.createImageData(W2, H2);
     for (let r = 0; r < H2; r++) d.data.set(big.subarray((H2 - 1 - r) * W2 * 4, (H2 - r) * W2 * 4), r * W2 * 4);
     tg.putImageData(d, 0, 0);
@@ -39,6 +40,7 @@ export default async ({ page, log, save, sleep }) => {
     for (let i = 0; i < 3000; i++) { if (await page.eval('window.__done||!!window.__err')) break; await sleep(200); }
     const err = await page.eval('window.__err');
     if (err) throw new Error(err);
+    if (process.env.WORLD) await enterWorld(page, process.env.WORLD, log);
     const info = await page.eval(() => {
       const S = app.song.score, W = S.woah, g = S.gestures;
       return { dur: app.song.analysis.duration, register: S.pace?.register, cast: S.stats?.cast, climax: S.pace?.climaxAt, idea: W?.climaxIdea, lean: W?.take, tricks: (W?.list ?? []).map(x => `${x.at.toFixed(0).padStart(4)} ${x.kind[0]} ${x.id.padEnd(9)} ${(x.t1 - x.t0).toFixed(0).padStart(3)}s ${x.pattern.padEnd(20)} ${x.climax ? 'CLIMAX ' : ''}${x.again ? 'again ' : ''}${x.answers ? 'answers ' + x.answers + ' ' : ''}[${x.why}]`),
@@ -50,7 +52,7 @@ export default async ({ page, log, save, sleep }) => {
     if (!FAST) log('  guard', JSON.stringify(info.rehearsal), 'refused', info.refused.length, JSON.stringify(info.refused.slice(0, 30)));
     if (process.env.SHEET) {
       const items = []; for (let t = 1; t < info.dur; t += EVERY) items.push(t);
-      save(`${song}-${seed}.film.jpg`, await page.eval(`(${sheet.toString()})(${JSON.stringify({ title: `${song} seed ${seed} every ${EVERY}s`, items, cols: 12, tw: 160, th: 90 })})`));
+      save(`${song}-${seed}.film.jpg`, await page.eval(`(${sheet.toString()})(${JSON.stringify({ title: `${song} seed ${seed} every ${EVERY}s`, items, cols: 12, tw: 160, th: 90, colour: !!process.env.WORLD })})`));
     }
     if (process.env.DENSE) {
       const list = await page.eval(() => (app.song.score.woah?.list ?? []).map(x => [x.t0, x.t1, x.id, x.at]));

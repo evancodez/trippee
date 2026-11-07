@@ -107,6 +107,17 @@ class WorldPrograms {
     this._next();
   }
 
+  // These, built behind the picture. A film says what it's going to draw with while it rehearses.
+  whenBuilt(list) {
+    const one = v => new Promise(res => {
+      if (this.progs[v]) { res(); return; }
+      if (!this.building[v]) { this.building[v] = true; this._build(v, () => {}); }
+      const wait = () => { if (this.progs[v] || this.failed) res(); else setTimeout(wait, 16); };
+      wait();
+    });
+    return Promise.all(list.map(one));
+  }
+
   // One at a time, behind the picture: plain, flight, then the rest.
   _next() {
     const v = this.order.find(n => !this.progs[n]);

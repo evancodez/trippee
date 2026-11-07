@@ -153,7 +153,7 @@ export function init(app) {
       let r;
       const last = guarded && tries === tryN - 1;
       if (arriving && guarded && !score.world) app.stage._clearRunway(0, ARRIVE, score);
-      try { r = await rehearse(score, Math.min(analysis.duration, 1200), onProgress, { lastTry: last, stale, gentle }); }
+      try { r = await rehearse(score, Math.min(analysis.duration, 1200), onProgress, { lastTry: last, stale, gentle, keep: typeof opts.pattern === 'string' ? opts.pattern : opts.pattern?.id ?? null }); }
       catch (e) { if (e.message !== 'stale') console.warn('rehearsal skipped:', e); return; }
       song.rehearsal = r;
       const mine = typeof opts.pattern === 'string' ? opts.pattern : opts.pattern?.id;

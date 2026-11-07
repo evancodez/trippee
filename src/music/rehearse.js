@@ -414,7 +414,7 @@ export { getRig, shownShot as shot, shownDrawn as drawn, Eyes, slowedTrack };   
 // stale: asked between looks. Once it says yes the rehearsal stops where it is, by throwing, because someone's made another film and this one will never be shown.
 // gentle: a film's playing in front of this one, so it takes less of each frame.
 // opening: the seconds a long arrival has just taken (stage._clearRunway). Only the film's first two gestures are looked at again, and only for flashes.
-export async function rehearse(score, until, onProgress = () => {}, { lastTry = false, stale = null, gentle = false, opening = 0 } = {}) {
+export async function rehearse(score, until, onProgress = () => {}, { lastTry = false, stale = null, gentle = false, opening = 0, keep = null } = {}) {
   const t0 = performance.now();
   const R = await getRig();
   // A world's programs on this renderer too, all of them: as with the film's, anything not built yet would be judged as a different picture. If it fails to build it draws as the film, as it would on screen.
@@ -439,7 +439,12 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
 
   const task = () => new Promise(r => { wake = r; ch.port2.postMessage(0); });
   const gestures = score.gestures, rides = [], ways = [];
-  if (!opening && !score.world) await buildFor(R, score, until, breathe);
+  if (!opening && score.woah) await buildFor(R, score, until, breathe);
+  // A jump in brightness makes a whole new film, so it's looked for first, before anything's spent on this one. And one inside a trick is the trick's: it's the trick that goes.
+  if (!opening && !lastTry && !score.world && !score.cut && flag('flashGuard') && until <= FLASH_LONGEST) {
+    const early = await jumpsFirst(R, score, until, { aspect, breathe, task, batch: live() || gentle ? GPU_BATCH_GENTLE : GPU_BATCH });
+    if (early.filter(j => j.id !== keep).length) { ch.port1.close(); return { jumps: early, bad: [...new Set(early.map(j => j.id))], rides: [], ways: [], sitOut: [], rangeSeconds: 0, seconds: (performance.now() - t0) / 1000, early: true }; }
+  }
   // What will be morphed into soon has its plan already, and what's showing is showing. Only what's still ahead changes.
   const nowT = () => globalThis.app?.pictureT?.() ?? globalThis.app?.t ?? 0;
   const firstSeen = G => { const k = gestures.indexOf(G); return k > 0 ? gestures[k - 1].t1 - (gestures[k - 1].morph || 0) : k === 0 ? G.t0 : -Infinity; };
@@ -690,21 +695,22 @@ async function guardHeard(R, score, until, colour, ctx) {
 // ---------------------------------------------------------------- what a film will draw with
 // Each trick's program is only built when it's first asked for, which on screen would be a hitch. So the film's walked, with nothing drawn, for what it's going to ask for: both renderers build those, and neither has to stop for one.
 async function buildFor(R, score, until, breathe) {
-  const want = new Set(), t0 = performance.now();
+  const want = new Set(), t0 = performance.now(), W = score.world, on = W ? R.worldPrograms?.get(W) : R;
   R.resize(16, 9, 1);
   for (let t = 0; t < until; t += 0.25) {
-    for (const edits of [FILM_ONLY, null]) { frame(score, t, R, edits); want.add(R._variantOf(R.frame) | (R.timeOn ? TIME : 0)); }
+    for (const edits of [FILM_ONLY, null]) { drawnNot(R, score, t, edits); want.add((W ? on.variantOf(R.frame) : R._variantOf(R.frame)) | (R.timeOn ? TIME : 0)); }
     await breathe();
   }
-  const list = [...want], shown = globalThis.app?.R;
-  shown?.whenBuilt?.(list);
-  await R.whenBuilt(list);
+  const list = [...want], shown = globalThis.app?.R, there = W ? shown?.worldPrograms?.get(W) : shown;
+  there?.whenBuilt?.(list);
+  await on.whenBuilt(list);
   score.woahPrograms = { list, seconds: +((performance.now() - t0) / 1000).toFixed(2) };
 }
+const drawnNot = (R, score, t, edits) => { const h = score.world ? score.handover : null; if (h) score.handover = null; frame(score, t, R, edits); if (h) score.handover = h; };
 
 // ---------------------------------------------------------------- a trick the guard can't clear
 // It's swapped for the next thing that could go there, and what clears it most is kept. Nothing's dropped unless nothing else can go there, and all of it's in score.refused.
-const SWAP_TRIES = 4;
+const SWAP_TRIES = 4, SWAP_FOR = 8;
 function swapLooks(R, score, seen, ctx) {
   const g = score.gestures, fps = seen.fps;
   const scan = async ([a, b]) => {
@@ -740,6 +746,37 @@ async function swapForJumps(R, score, seen, jumps, ctx) {
     if (cleared) for (let i = jumps.length - 1; i >= 0; i--) if (jumps[i].t >= slot.from - 1 && jumps[i].t <= slot.to + 1) jumps.splice(i, 1);
   }
 }
+async function jumpsFirst(R, score, until, ctx) {
+  const H = JUMP_H, W = Math.max(8, Math.round(H * ctx.aspect)), g = score.gestures, n = Math.ceil(until / STEP), mean = new Float32Array(n + 1), who = new Int32Array(n + 1), eyes = Eyes.of(R, W, H, ctx.batch, ctx.task);
+  const look = async (a, b) => {
+    for (let i = a; i < b; i++) {
+      const f = drawn(R, score, i * STEP, W, H), G = f.from ?? f.G;
+      who[i] = g.indexOf(G);
+      if (eyes.read(p => { let s = 0; for (let k = 1; k < p.length; k += 4) s += p[k]; mean[i] = s / (W * H); })) await eyes.flush();
+      await ctx.breathe();
+    }
+    await eyes.flush();
+  };
+  await look(0, n + 1);
+  const jumpsIn = (a, b) => { const out = []; for (let i = Math.max(a, 1); i < b; i++) { const by = (mean[i] - mean[i - 1]) / 255; if (Math.abs(by) >= JUMP) out.push({ t: +(i * STEP).toFixed(2), by: +by.toFixed(3), id: g[Math.max(who[i], 0)].pattern.id }); } return out; };
+  const W2 = score.woah, done = new Set();
+  if (W2) for (const j of jumpsIn(0, n + 1)) {
+    const slot = W2.slots.find(s => j.t >= s.from - 0.5 && j.t <= s.to + 0.5);
+    if (!slot || done.has(slot)) continue;
+    done.add(slot);
+    const a = Math.max(0, Math.floor((slot.from - 1) / STEP)), b = Math.min(n + 1, Math.ceil((slot.to + 1) / STEP)), was = slot.id, before = jumpsIn(a, b).length;
+    let cleared = false;
+    for (const alt of [...slot.alts, null]) {
+      const undo = W2.swap(slot, alt);
+      if (!undo) continue;
+      await look(a, b);
+      if (jumpsIn(a, b).length < before) { (score.refused ??= []).push({ t: j.t, what: alt ? `${was} became ${alt}` : `${was} taken off`, why: 'a jump in brightness' }); cleared = true; break; }
+      undo();
+    }
+    if (!cleared) await look(a, b);
+  }
+  return jumpsIn(0, n + 1);
+}
 async function guardWoah(R, score, seen, flash, ctx) {
   const W = score.woah, { scan, frames } = swapLooks(R, score, seen, ctx), refused = (score.refused ??= []), swaps = [], g = score.gestures, fps = seen.fps;
   const realIn = async range => { const out = { at: [], whole: 0 }; for (const w of stretches(seen.over(...range), fps)) { const r = await lookClose(R, score, w.a, w.b, ctx); out.at.push(...r.at); out.whole += r.whole; } return out; };
@@ -750,7 +787,7 @@ async function guardWoah(R, score, seen, flash, ctx) {
   for (const { slot, a, b } of slots) {
     const range = frames(a, b);
     let best = await realIn(range), cur = slot.id;
-    if (!worse(best)) continue;
+    if (!best.whole && best.at.length < SWAP_FOR) continue;       // a tile a little over isn't worth another trick, and it's reported as it is
     const first = cur;
     for (const alt of slot.alts) {
       if (!worse(best) || tries >= SWAP_TRIES) break;
@@ -764,6 +801,19 @@ async function guardWoah(R, score, seen, flash, ctx) {
       if (worse(now) < worse(best)) { best = now; cur = alt; }
       else { undo(); seen.back(range, kept); }
     }
+    // A whole-frame flash has no allowance. If there's nothing that clears it and it goes when the trick goes, the trick goes, and it says so.
+    if (best.whole && tries < SWAP_TRIES) {
+      const undo = W.swap(slot, null);
+      if (undo) {
+        tries++;
+        const kept = seen.keep(range);
+        await scan(range);
+        const now = await realIn(range);
+        if (now.whole < best.whole) { best = now; cur = 'nothing'; refused.push({ t: +slot.from.toFixed(2), what: `${first} taken off`, why: `a whole-frame flash nothing else that could go here cleared, and without it there are ${now.whole}` }); }
+        else { undo(); seen.back(range, kept); }
+      }
+    }
+    if (cur === 'nothing') { swaps.push({ t: +slot.from.toFixed(2), was: first, now: cur, left: best.at.length }); continue; }
     if (cur !== first) { swaps.push({ t: +slot.from.toFixed(2), was: first, now: cur, left: best.at.length }); refused.push({ t: +slot.from.toFixed(2), what: `${first} became ${cur}`, why: best.at.length ? `it flashed, and this flashes less (${best.at.length} left)` : 'it flashed, and this does not' }); }
     else if (slot.alts.length) refused.push({ t: +slot.from.toFixed(2), what: first, why: `flash left: ${best.at.length}, ${tries >= SWAP_TRIES ? 'out of tries' : 'nothing that could go here was better'}` });
     else refused.push({ t: +slot.from.toFixed(2), what: first, why: `flash left: ${best.at.length}, and nothing else can go here` });
