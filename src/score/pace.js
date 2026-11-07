@@ -352,7 +352,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
         if (on.length) {
           fixed();
           const from = done.get(part.seq) ?? 0;
-          G.moves = [{ id: 'relay', seq: part.seq, on, lead: Math.max(lead, 1.2), tail: Math.max(tail, 0.4), from }];
+          G.moves = [{ id: 'relay', seq: part.seq, on, lead: Math.max(lead, 1.2), tail: Math.max(tail, 0.4), from, q: 1 }];      // q 1: half as sharp as a cut's. At 2 a step in a whole-frame flash on PPP, each right on its step
           done.set(part.seq, from + on.length);
         }
         return;
