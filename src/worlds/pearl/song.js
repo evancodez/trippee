@@ -50,7 +50,9 @@ export function hearSong(A, M) {
   const washes = [{ t: -99, s: 0, dir: 0 }], end = A.duration, bigOnes = [...(M?.arrivals?.(0.2) ?? [])].filter(a => a.t > 6 && a.t < end - 6).sort((a, b) => a.t - b.t);
   const APART = 18, LONGEST = 30;
   let last = 0;
-  const pick = (a, prev, two) => { const list = a >= 0.55 ? BIG : a >= 0.3 ? MIDDLE : CALM; return list.find(s => s !== prev && s !== two) ?? list[0]; };
+  // By how big it is against the song's own: its biggest few get the richest.
+  const ranked = bigOnes.map(a => a.a).sort((p, q) => q - p), topA = ranked[Math.min(ranked.length - 1, 2)] ?? 1, midA = ranked[Math.min(ranked.length - 1, 6)] ?? 1;
+  const pick = (a, prev, two) => { const list = a >= topA ? BIG : a >= midA ? MIDDLE : CALM; return list.find(s => s !== prev && s !== two) ?? list[0]; };
   const plan = [];
   for (const a of bigOnes) { if (a.t - last < APART) continue; while (a.t - last > LONGEST + APART) { last += LONGEST; plan.push({ t: last, a: 0.15 }); } plan.push(a); last = a.t; }
   while (end - last > LONGEST) { last += LONGEST; plan.push({ t: last, a: 0.15 }); }

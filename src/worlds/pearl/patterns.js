@@ -53,11 +53,11 @@ const down = [{ path: 'ty', from: 0.2, to: -0.2 }, { path: 'scale', from: 1.2, t
 
 export const pool = [
   // ---------------------------------------------------------------- contact: round things touching. Rings crowd going out, and it's the rings' colour that runs
-  pearl({ id: 'pearl.newton', name: "Newton's Rings", k: 1.5, beta: 1.2,
+  pearl({ id: 'pearl.newton', name: "Newton's Rings", k: 2.3, beta: 1.2,
     poles: [[-0.75, 0.15, 1.05, 0], [1.05, -0.35, 0.8, 0], [0.35, 1.25, 0.55, 0]], arcs: wide,
     film: { H: 1250, R: 170, wedge: 180, pool: 150, echo: 130 } }),
-  pearl({ id: 'pearl.fizeau', name: 'Fizeau Wedge', k: 1.1, beta: 1.4, orbit: 0.35,
-    poles: [[-2.6, 1.8, 1.6, 0], [2.7, -1.5, 1.4, 0]], arcs: down,
+  pearl({ id: 'pearl.fizeau', name: 'Fizeau Wedge', k: 1.7, beta: 1.4, orbit: 0.3,
+    poles: [[-2.2, 1.5, 1.3, 0], [2.3, -1.3, 1.15, 0]], arcs: down,
     film: { H: 1600, wedge: 340, R: 140, pool: 210, lets: 1.1 } }),
   pearl({ id: 'pearl.bubbles', name: 'Soap Bubbles', kind: BUBBLE, k: 1.05, n: 5.5, a: 0.55, lines: 1.5, time: 0.12, orbit: 0.3,
     poles: [[-0.85, 0.18, 0.86, 0], [0.92, 0.5, 0.56, 0.8], [0.55, -0.62, 0.42, 1.6], [-1.75, -0.7, 0.34, 2.2], [1.85, -0.3, 0.3, 0.2]], arcs: wide,
@@ -65,7 +65,7 @@ export const pool = [
   pearl({ id: 'pearl.chorus', name: 'Chorus', group: 'op', kind: WAVES, k: 0.75, n: 1.05, time: 0.9, orbit: 0.22,
     poles: [[-0.8, 0.1, 1, 0], [0.8, -0.1, 1, 0], [0.05, 1.5, 0.7, 1.1]], arcs: wide,
     film: { H: 1700, R: 200, wedge: 150, pool: 140, lets: 0.55 } }),
-  pearl({ id: 'pearl.medusa', name: 'Medusae', kind: VEIL, k: 2.1, n: 0.8, beta: 1.4, time: 0.5, orbit: 0.22,
+  pearl({ id: 'pearl.medusa', name: 'Medusae', kind: VEIL, k: 2.9, n: 0.8, beta: 1.4, time: 0.5, orbit: 0.22,
     poles: [[-0.85, 0.3, 0.62, 0.1], [0.95, -0.05, 0.46, -0.15], [0.2, 1.0, 0.3, 0.05], [1.95, 0.8, 0.26, 0.2], [-1.9, -0.85, 0.3, -0.1]], arcs: down,
     film: { H: 1300, R: 180, wedge: 300, pool: 130, lets: 0.9 } }),
   // ---------------------------------------------------------------- water: what the voice floats on
@@ -133,4 +133,6 @@ export const pool = [
   own('riley.shift', 'shift', 'Shift', { H: 1200, lets: 0.5 }, { group: 'op' }),
   own('lines.fall', 'fall', 'Falls', { H: 1200, wedge: 500, lets: 0.8 }, { group: 'water' }),
 ];
-export const FILMS = new Map(pool.map(p => [p.id, p.film]));
+// A click arrives by the world's own way, each pattern by a different one, in turn: out from the middle, down, or the whole frame.
+const ARRIVE = [{ id: 'rack', dir: 2, chosen: true }, { id: 'drain', chosen: true }, { id: 'breath', chosen: true }, { id: 'rack', dir: 1, W: 0.6, chosen: true }];
+pool.forEach((p, i) => { p.arrive = ARRIVE[i % ARRIVE.length]; });

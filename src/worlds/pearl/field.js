@@ -208,7 +208,8 @@ vec3 worldColor(int k0,int k1,float c){
   if(a.w!=0.) o+=a.w*tri(x0-x1);
   { float gh=b.x+uW[k1-k0<=FAM?(k0==0?44:45):44].x; if(gh!=0.) o+=gh*tri(x1); }
   // A big slow unevenness in the film that has nothing to do with the lines. It's what travels.
-  if(d.y!=0.){ float pt=G.z; vec2 q=p0*.85; o+=d.y*(sin(q.x*1.1+1.5*sin(q.y*.9+pt)+pt*.7)+.7*sin(q.y*1.7-1.2*sin(q.x*1.3-pt*.8)-pt*.6)); }
+  float mel=min(wBlurNow*4.,1.);
+  if(d.y!=0.){ float pt=G.z; vec2 q=p0*.85; o+=d.y*(1.+1.5*mel)*(sin(q.x*1.1+1.5*sin(q.y*.9+pt)+pt*.7)+.7*sin(q.y*1.7-1.2*sin(q.x*1.3-pt*.8)-pt*.6)); }
   // Terraces: the whole of a cell a thickness of its own. Mother of pearl.
   if(b.z!=0.){ float ca=floor(x0+.5),cb=gOn[k2]?floor(x1+.5):0.; o+=b.z*(fract(sin(ca*12.9898+cb*78.233)*43758.5453)-.5); }
   if(e.x!=0.) o+=e.x*(cellF-.5);
@@ -234,6 +235,7 @@ vec3 worldColor(int k0,int k1,float c){
   // A sheen's wash.
   vec4 W=uW[29]; float s=W.y>0.?clamp((W.x-dot(p0,W.zw))/W.y,0.,1.):W.x;
   s=s*s*(3.-2.*s);
+  c=c+mel*.28*(1.-c);
   vec3 A=c>0.?wSheen(o,0,s):vec3(0.),B=c<1.?wSheen(o+b.y,1,s):vec3(0.),col=mix(B,A,c);
   // Bloom: a soft copy of the bright side, as light. It needs no second picture, since the filter's exact however wide. By screen, so a pastel stays a pastel and doesn't go out to white.
 #ifdef WORLD_CELLS

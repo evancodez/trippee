@@ -58,7 +58,7 @@ export default {
     if (to && from && !two) { writeFilm(U.a, fa, fb, ctx.T); writeFilm(U.b, fb); } else { writeFilm(U.a, fa); writeFilm(U.b, fb); }
     // In a world's landing the lines run on the one clock, right through it. Every pattern's first family.
     if (from && to && (kind === 'rack' || kind === 'drain' || kind === 'breath')) {
-      const now = FLOW * score.phi(t, to);
+      const now = FLOW * (score.phi ? score.phi(t, to) : t * 0.25);
       A[OFF['f0.ph']] = (from.pattern.g.fams?.[0]?.ph ?? 0) - now; B[OFF['f0.ph']] = (to.pattern.g.fams?.[0]?.ph ?? 0) - now;
       U.e[15] = plan.ang ?? 0;
     }

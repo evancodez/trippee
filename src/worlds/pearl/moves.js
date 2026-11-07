@@ -19,7 +19,7 @@ const own = {
     out[OFF['f2.on']] = 1; out[OFF['f2.d']] = -1 + a; out[OFF['f2.x']] = x * (1 + de); out[OFF['f2.y']] = y * (1 + de);
     out[OFF['f2.r1']] = out[OFF['f0.r1']] * (1 + de); out[OFF['f2.l1']] = out[OFF['f0.l1']] * (1 + de); out[OFF['f2.t1']] = out[OFF['f0.t1']];
     out[OFF['field.k2']] = k * (1 + de);
-    out[OFF['f2.ph']] = out[OFF['f0.ph']] * (1 + de) + 0.5 * s;
+    out[OFF['f2.ph']] = out[OFF['f0.ph']] * (1 + de) + 0.2 * s;
   } },
   // Lead: one contact takes the frame and passes it on, and the rest make room.
   lead: { write(out, { t, m }) {

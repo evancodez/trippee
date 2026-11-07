@@ -37,7 +37,7 @@ function make(id, { dir, W, push = 0.05, ang = null }) {
   return {
     id, enter, write, levers,
     plan(a, b, ctx) {
-      if (!flat(a) || !flat(b) || ctx.D < 3) return null;
+      if (!flat(a) || !flat(b) || ctx.D < 3 || ctx.noGlide) return null;      // noGlide: a change of world, which has to be a flight, or a rehearsal that's watched this one flash
       const o = ctx.xform ?? {}, d = o.dir ?? dir, centre = d === 3 ? [0, 0] : o.centre ?? [0, 0], reach = Math.hypot(ctx.aspect + Math.abs(centre[0]), 1 + Math.abs(centre[1])) * 1.05;
       return { kind: id, onClock: true, ...partners(a, b), dir: d, centre, reach, W: o.W ?? W, ang: ang ?? o.ang ?? 0, push };
     },
