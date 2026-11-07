@@ -303,7 +303,7 @@ export function direct(score, A, M) {
       put('iris', G, L, G.t1 - D, G.t1, G.t1 - D, G.t1 + bar);
       return true;
     };
-    const places = landings.filter(l => !l.rest && Math.abs(l.B - A.climax) <= IRIS_NEAR).sort((x, y) => (Math.abs(x.B - A.climax) - 16 * x.a) - (Math.abs(y.B - A.climax) - 16 * y.a));
+    const places = landings.filter(l => !l.rest && Math.abs(l.B - A.climax) <= IRIS_NEAR).sort((x, y) => (Math.abs(x.B - (P?.climaxAt ?? A.climax)) - (P ? 0 : 16 * x.a)) - (Math.abs(y.B - (P?.climaxAt ?? A.climax)) - (P ? 0 : 16 * y.a)));
     for (const l of places) {
       let i = g.findIndex(x => Math.abs(x.t1 - l.B) < 0.05);
       if (i < 1 || i + 1 >= lastG()) continue;

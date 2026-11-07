@@ -26,14 +26,16 @@ const LEAST_S = 3.2, MOST_BARS = 18, MOST_S = 30;     // the shortest and longes
 const FLIGHT_LEAD = 3.4, FLIGHT_TAIL = 2;           // seconds. A flight in less than this flashes, where a glide doesn't
 const HOLD = 8;                     // bars a pattern can stay with nothing but its ordinary flow
 const CLASS_LEAST = 6;              // bars
+const ARC_SECONDS = 22;             // a pattern's long move is written for about this long. A shorter gesture rides the middle of it at that speed, not all of it at a run
+const DROP = 0.25, DROP_WORTH = 6;  // a jump of this much energy across 2 bars each way is a moment, and this is what it's worth to land on it
 const IRIS_ROOM = 13;               // seconds the gesture before the climax's landing keeps, plain, so that the Iris can roll it up
 const CLIMAX_NEAR = 16;             // bars around the climax that may go at the peak's pace. Everything else is held to the chorus's, so there's something saved
 const OPENS = 14;                   // seconds: the arrival. The first thing that's looked at, plain
 const CAP = { relay: 16, riot: 6, still: 12, suite: 10 };       // bars a way of changing runs before the next thing in its wardrobe
 const LEAST = { relay: 4, riot: 4, still: 6 };        // bars. Any shorter and it's a suite
-const GEAR = [32, 16, 8, 4, 4];     // beats to a cycle of flow, by level
+const GEAR = [32, 16, 12, 8, 6];     // beats to a cycle of flow, by level
 const STEP = { chill: [10, 8, 6, 4, 3], travel: [5, 4, 3, 2, 2], riot: [4, 3, 2, 2, 1] };      // a Relay's bars between steps, at most: the song's own landings, and bar lines where they're further apart than this
-const BOLD = [6, 8, 10];            // cycles per picture unit: how fine a chorus, a lift and the rest would rather not go
+const BOLD = [6, 8, 9];            // cycles per picture unit: how fine a chorus, a lift and the rest would rather not go
 
 // How each register goes about each class of the song's level: a short routine of ways of changing, the next one for each new kind of section. A section coming back runs the routine it ran.
 const MENU = {
@@ -43,7 +45,7 @@ const MENU = {
 };
 const RELAYS = ['tour', 'star', 'whirl', 'saw', 'weave', 'floor', 'rooms'];       // not dipole: its rings go by as hairlines
 const RIOTS = ['ratchet', 'wring', 'scissor', 'bellows'];
-const STILLS = ['still.confocal', 'still.mirror', 'still.wheel', 'still.mirror6', 'still.floor', 'still.chevrons', 'still.mirror3', 'still.ball'];
+const STILLS = ['still.confocal', 'still.mirror', 'still.mirror6', 'still.floor', 'still.mirror3', 'still.ball'];     // not the Moire Wheel or the Chevrons, whose lines read as hairlines until something's asked them to be big
 
 const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
 const sdOf = a => { const m = meanOf(a); return Math.sqrt(meanOf(a.map(v => (v - m) ** 2))) || 1; };
@@ -139,6 +141,15 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   // The peak's pace is saved for around the climax
   const levelAt = t => { const l = lv[clamp(barAt(t), 0, lv.length - 1)] ?? 2; return Math.abs(t - A.climax) <= CLIMAX_NEAR * bar ? l : Math.min(l, 3); };
   // Which class of the song's level, for what it wears: nothing under 6 bars, or a chorus that dips for a bar or two would change its clothes.
+  const labelClass = new Map();
+  const classOfLabel = label => {
+    if (labelClass.has(label)) return labelClass.get(label);
+    let n = 0, s = 0;
+    for (const x of A.segments) if (x.label === label) for (let i = barAt(x.t0); i < lv.length && bars[i] < x.t1; i++) { n++; s += lv[i]; }
+    const m = n ? s / n : 2, c = m >= 2.5 ? 'loud' : m >= 1.4 ? 'mid' : 'quiet';
+    labelClass.set(label, c);
+    return c;
+  };
   const classes = (() => {
     const c = lv.map(l => (l >= 3 ? 2 : l === 2 ? 1 : 0)), N = c.length;
     for (let pass = 0; pass < 3; pass++) {
@@ -166,15 +177,16 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   const menuAt = { riot: 0, travel: 0, chill: 0 }, turn = { loud: Math.floor(rand() * 2), mid: Math.floor(rand() * 2), quiet: Math.floor(rand() * 2) };
   const wardrobe = new Map();
   const has = way => way === 'suite' || bags[way].length > 0;
-  const wardrobeOf = (key, cls, climax) => {
+  const wardrobeOf = (key, cls) => {
     let w = wardrobe.get(key);
     if (w) return w;
     const menu = MENU[name][cls], pick = menu[turn[cls]++ % menu.length].filter(has);
     w = { key, ways: pick.length ? pick : ['suite'], at: 0, items: {}, used: {} };
-    for (const way of w.ways) {
-      if (way === 'suite') continue;
-      w.items[way] = way === 'relay' && climax && saved ? [saved, take(bags.relay)] : [take(bags[way]), take(bags[way])];
-    }
+    // The longer a kind of section is over the whole song, the more it has to wear
+    let total = 0;
+    for (const x of A.segments) if (x.label === key) total += x.t1 - x.t0;
+    const many = clamp(Math.round(total / 40), 2, 3);
+    for (const way of w.ways) if (way !== 'suite') w.items[way] = Array.from({ length: many }, () => take(bags[way]));
     wardrobe.set(key, w);
     return w;
   };
@@ -191,17 +203,20 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       if (Math.abs(near - A.climax) <= 30 && near > OPENS + IRIS_ROOM) { climaxAt = near; land = land.filter(t => !(t > near - IRIS_ROOM && t < near)); }
     }
     for (let k = 0; k + 1 < land.length; k++) {
-      const a = land[k], b = land[k + 1], mid = (a + b) / 2, seg = segAt(mid), level = levelAt(mid), cls = classAt(mid), climax = climaxAt != null && a >= climaxAt && a <= climaxAt + 2 * IRIS_ROOM;
-      const w = wardrobeOf(`${seg.label}.${cls}`, cls, climax), last = out.at(-1), forced = a < OPENS || b === climaxAt;
+      const a = land[k], b = land[k + 1], mid = (a + b) / 2, seg = segAt(mid), level = levelAt(mid), label = seg.label;
+      // What a kind of section wears goes by the kind of section, so it's the same each time it comes back. A long stretch that isn't like the rest of it, an outro on the end of a chorus, has its own.
+      const own = classOfLabel(label), here = classAt(mid), key = (own === 'loud' && here === 'quiet') || (own === 'quiet' && here === 'loud') ? `${label}.${here}` : label;
+      const w = wardrobeOf(key, key === label ? own : here), last = out.at(-1), forced = a < OPENS || b === climaxAt;
       // A section coming back starts its routine from the top
       if (!last || last.w !== w || last.seg.visit !== seg.visit) { w.at = 0; w.used = {}; }
       let way = forced ? 'suite' : w.ways[w.at % w.ways.length];
       if (last && last.w === w && last.way === way && !last.forced && !forced) {
-        if ((b - last.a) / bar <= CAP[way]) { last.hits.push(a); last.b = b; last.level = Math.max(last.level, level); continue; }
+        if ((b - last.a) / bar <= (last.saved ? 2 : 1) * CAP[way]) { last.hits.push(a); last.b = b; last.level = Math.max(last.level, level); continue; }
         way = w.ways[++w.at % w.ways.length];
       } else if (last?.w === w && !last.forced && !forced && last.way !== way) way = w.ways[w.at % w.ways.length];
+      if (a === climaxAt && saved) way = 'relay';      // what opens at the climax is what's been saved for it
       const n = (w.used[way] = (w.used[way] ?? -1) + 1);
-      out.push({ a, b, seg, level, way, w, hits: [], n, forced });
+      out.push({ a, b, seg, level, way, w, hits: [], n, forced, saved: a === climaxAt && saved });
     }
     for (const p of out) if (p.way !== 'suite' && (p.b - p.a) / bar < LEAST[p.way]) p.way = 'suite';
     // What came back to a suite has its landings back
@@ -221,7 +236,8 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   const wear = (q, part, prev, choose) => {
     const { w, seg } = part, visit = `${w.key}/${seg.visit || 0}`;
     if (part.way !== 'suite') {
-      const it = w.items[part.way][part.n % w.items[part.way].length];
+      w.items[part.way] ??= [take(bags[part.way])];
+      const it = part.saved || w.items[part.way][part.n % w.items[part.way].length];
       if (part.way === 'relay') { part.seq = it; part.pat = lib(`relay.${it}`); }
       else if (part.way === 'riot') { part.riot = it; part.pat = lib(`riot.${it}`); }
       else part.pat = lib(it);
@@ -248,7 +264,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   // How much a pattern's fineness costs it here, in the composer's scoring. Bold on the loud parts.
   const fineCost = (p, level) => {
     const k = finest(p), lim = BOLD[level >= 3 ? 0 : level === 2 ? 1 : 2], over = clamp(Math.log(k / lim) / Math.log(2.5));
-    return (level >= 3 ? 3 : level === 2 ? 1.5 : 0.6) * over + (p.fine ? level / 2 : 0);
+    return (level >= 3 ? 3.5 : level === 2 ? 2.5 : 1.5) * over + (p.fine ? 1 : 0);
   };
 
   // ---------------------------------------------------------------- how long each change takes
@@ -284,7 +300,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
         for (let k = 0; k + 1 < keys.length; k++) {
           if (k) stops.push(keys[k]);
           // Bar lines between them, evenly, where it's too long to wait
-          const gap = keys[k + 1] - keys[k], most = STEP[name][levelAt((keys[k] + keys[k + 1]) / 2)] * bar, n = Math.round(gap / most);
+          const gap = keys[k + 1] - keys[k], most = STEP[name][levelAt((keys[k] + keys[k + 1]) / 2)] * bar, n = Math.ceil(gap / most);
           for (let j = 1; j < n; j++) {
             const want = keys[k] + j * gap / n, near = bars.reduce((best, x) => (Math.abs(x - want) < Math.abs(best - want) ? x : best), want);
             stops.push(near);
@@ -303,6 +319,18 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
       if (part.riot === 'scissor') m.teeth = part.hits.map(time);
       const made = MOVES[part.riot].cue(m, ctx(G)) ?? MOVES[part.riot].cue({ ...m, beats: 'half' }, ctx(G));
       if (made) { fixed(); G.moves = [made]; G.hero = part.riot; }
+    });
+  };
+
+  // A pattern's long move rides at its own speed. A gesture that has less time rides less of it, around the middle: at 4x it's a flash.
+  const shrinkArcs = (arcs, seen) => {
+    const share = clamp(seen / ARC_SECONDS, 0.2, 1);
+    if (share >= 1) return arcs;
+    return arcs.map(a => {
+      if (a.ease === 'wave') return { ...a, cycles: (a.cycles || 1) * share };
+      if (a.log && a.from > 0 && a.to > 0) { const m = Math.sqrt(a.from * a.to); return { ...a, from: m * Math.pow(a.from / m, share), to: m * Math.pow(a.to / m, share) }; }
+      const m = (a.from + a.to) / 2;
+      return { ...a, from: m + (a.from - m) * share, to: m + (a.to - m) * share };
     });
   };
 
@@ -362,6 +390,6 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
 
   return {
     register: name, registerScore: reg.score, least: Math.max(LEAST_S, 1.8 * bar), most: Math.min(MOST_S, MOST_BARS * bar), oneMore: ONE_MORE, stiff: STIFF, bar,
-    want: t => barsWanted(t) * bar, levelAt, classAt, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
+    want: t => barsWanted(t) * bar, shrinkArcs, dropWorth: dE => (Math.abs(dE) >= DROP ? DROP_WORTH : 0), levelAt, classAt, get climaxAt() { return climaxAt; }, passages, parts, wear, fineCost, leadOf, tailOf, dress, timeHits, glides, wardrobe,
   };
 }

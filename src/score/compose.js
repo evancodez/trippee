@@ -289,7 +289,7 @@ export function compose(A, seed = 1, opts = {}) {
     for (let j = n - 1; j > 0 && from[j] >= 0; j = from[j]) pick.push(j);
     return pick.reverse();
   };
-  const bonus = nodes.map(n => (n.boundary && n.S >= mandatory ? 8 : 0) + (form ? 8 * clamp((n.peak ?? 0) / 0.5) : 0));
+  const bonus = nodes.map(n => (n.boundary && n.S >= mandatory ? 8 : 0) + (form ? 8 * clamp((n.peak ?? 0) / 0.5) : 0) + (P ? P.dropWorth(n.dE ?? 0) : 0));
   // A rest is somewhere to land: the next world arrives and the film stops on it, until the band comes back.
   if (form) for (const r of M.rests) {
     let best = -1, d = 1.5 * M.bar;
@@ -610,6 +610,7 @@ export function compose(A, seed = 1, opts = {}) {
       arcs = c.arcs; flowOver = c.flow; change = c.what;
     } else {
       arcs = journey(pat, seen, zoomWay(a, b));
+      if (P) arcs = P.shrinkArcs(arcs, seen);
     }
     // Triangles close by area, so they spend longer nearly solid: a shorter sweep keeps the solid moment the same length
     const tight = (pat.solid ?? 1) < 1 ? 0.75 : 1;
