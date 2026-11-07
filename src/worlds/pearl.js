@@ -85,7 +85,10 @@ export default {
     set(29, -2.2 + sh.x * (4.4 + width), width, dx, dy);
     set(30, 0.11 + 0.1 * lung, 0.66 + 0.1 * (1 - e), 0.018 + 0.012 * lung, 0);
     // z: how much deeper the dark side of every line is than its sheen says. A little when it's quiet, so it stays pearly, and a lot on a loud passage, where the edges want to be bold.
-    set(31, kind === 'breath' ? 0.16 : 0.2, 80 + 190 * e, 0.22 + 0.45 * e * e, 0);      // not on the beat: the whole frame's dark side going deeper on each strong beat is a whole-frame flash
+    // By how loud the last few seconds have been, not this moment: energy rises and falls with each beat, and the whole frame's dark side going with it was a whole-frame flash (MGMT 10.5, 13, 18.8 s).
+    let eS = 0.45;
+    if (s) { eS = 0; for (let j = 0; j < 8; j++) eS += clamp01(ctx.at(ctx.c - 0.5 * j)?.energy ?? 0.45) / 8; }
+    set(31, kind === 'breath' ? 0.16 : 0.2, 80 + 190 * e, 0.22 + 0.45 * eS * eS, 0);
     // The pearls: the voice, and its echoes along the same path, each a beat or two behind.
     for (let i = 0; i < ORBS; i++) {
       voiceSpot(song, t - i * ORB_LAG, spot);
