@@ -451,6 +451,7 @@ export function direct(score, A, M) {
       const i = g.findIndex(x => Math.abs(x.t1 - l.B) < 0.05);
       if (i < 0 || i + 1 >= lastG()) return null;
       const G = g[i], N = g[i + 1], D = P ? clamp(3 * bar, 4.5, 8) : clamp(4 * bar, 6, 10);
+      if (P && i === 0 && G.t1 < 14) return null;
       if (G.xform || G.t1 - G.t0 < D + ROOM_T || !quiet(G.t1 - D, G.t1 + bar) || twiceRunning('fall', G.t1) || clash(i, 'fall')) return null;
       if (N.hero === 'countdown' || N.moves?.some(m => m.id === 'slip') || lagged(G.t1 - D, G.t1 + bar)) return null;
       // It falls into something bold, or all that's seen on the way down is a fine weave
@@ -482,6 +483,7 @@ export function direct(score, A, M) {
   const shockOn = (i, landing, dir, mirror, again) => {
     const G = g[i];
     let N = g[i + 1];
+    if (P && i === 0) return null;     // the arrival would fly straight past it, and past the first pattern with it
     if (!N || i + 1 >= lastG() || G.xform || N.carry || G.moves?.some(m => m.id === 'star') || N.hero === 'countdown' || N.moves?.some(m => m.id === 'slip' || m.id === 'snap')) return null;
     const D = P ? SHOCK_D : Math.min(G.morph || 10, 10), span = dir === 2 ? D : 0;
     if (landing - G.t0 < D + SHOCK_ROOM || !quiet(landing - D, landing + span + bar) || twiceRunning('shock', landing) || lagged(landing - D, landing + span + bar) || clash(i, 'shock')) return null;
