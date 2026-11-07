@@ -1,7 +1,7 @@
 // The sheet in space, as a stretch of a song: a pattern on a sheet that has left the plane (src/gl/chunks/space.js). The numbers are the slot's own, so arcs, knobs, slides, flights, plates and the song all work on it. It's a camera and a
 // surface, in front of everything the pattern is, so it doesn't care what the pattern is. At amount 0 and pitch 0 it is exactly the flat frame.
 //
-//   G.moves = [{ id: 'swell' }]      any of swell, terraces, pleats, ride, hall, on any pattern. Every number can be a plain number or a lane [[t, x], ...] in song seconds. Say nothing, and it comes up over `lead` seconds from where the shot starts and
+//   G.moves = [{ id: 'swell' }]      any of swell, terraces, pleats, ride, hall, on any pattern (strata, below, only on a sheet with three sets of stripes). Every number can be a plain number or a lane [[t, x], ...] in song seconds. Say nothing, and it comes up over `lead` seconds from where the shot starts and
 //                                    goes back to flat over `coast` before `to` (song seconds; default the end of the shot's body), and in between it travels.
 //     amp      how high the sheet goes
 //     f, ph    its waves: how many a unit, and where they've got to
@@ -12,7 +12,7 @@
 //     fly      how fast it goes. heave: how hard it surges into each strong beat. lift: how far each strong beat lifts the sheet
 //
 // On the strong beats (the song's own, read off the score that's up, as handClock in surge.js does) the sheet heaves and the camera surges forward, with no change of brightness. The tune swings the camera a little. Both go through reaction: nothing here replaces it.
-import { OFF } from '../../pattern/layout.js';
+import { OFF, FAMILIES } from '../../pattern/layout.js';
 import { clamp, smoother } from '../curves.js';
 import { val } from './long.js';
 import { melodyAt, reactAt } from '../react.js';
@@ -135,6 +135,70 @@ export function sliceDrive(out, { t, G }, m = {}) {
   writeSlice(out, sliceAngles(d * (m.speed ?? 1), k, (m.heave ?? 0.28) * surgeAt(T) * k + 0.03 * tuneAt(t) * k), [(m.fly ?? 0.05) * d, 0.6 * (m.fly ?? 0.05) * d], m.k ?? 2.1);
 }
 
+// ---------------------------------------------------------------- strata
+// A sheet of three or more sets of lines comes loose: each set lifts off to a pane of glass of its own (chunks/space.js, kind 8), and nothing morphs. Straight under the camera the sheet holds; away from there each
+// pane slides by its own height, so triangles turn into hexagons, six-pointed stars and back, in broad bands that sweep as the camera leans. The sheet itself stays exactly the frame, so with the panes together it's the plain sheet.
+//
+//   G.moves = [{ id: 'strata', from, lands, sep }]   sep: a lane [[t, x], ...] of how far apart the panes are, in frame units, 0 at `from` and 0 at `lands`, which is where it locks back into register.
+//     tilt   how far the camera leans as the panes part, radians. spin: how fast the way it leans goes round, radians a second. yaw: where that starts. peak: when they're furthest apart
+//
+// Sets that run nearly the same way at nearly the same size (within 30% and 20 degrees) stay on one pane, or the two of them could tune into big solid areas. A plain check is only a shear, so it isn't worn.
+const PANE_K = 0.3, PANE_ANG = 20 * Math.PI / 180, POLES = ['r1', 'l1', 't1', 'r2', 'l2', 't2'];
+const STRATA_D = 2.4;       // the camera's height: the panes are a fraction of it apart
+export function panesOf(s) {
+  const fams = [];
+  for (let i = 0; i < FAMILIES; i++) {
+    if (s[OFF[`f${i}.on`]] < 0.5 || Math.abs(s[OFF[`f${i}.d`]]) > 0.97) continue;
+    const x = s[OFF[`f${i}.x`]], y = s[OFF[`f${i}.y`]], pole = POLES.map(n => s[OFF[`f${i}.${n}`]]);
+    fams.push({ i, k: Math.hypot(x, y), ang: ((Math.atan2(y, x) % Math.PI) + Math.PI) % Math.PI, pole, round: pole.some(v => Math.abs(v) > 1e-4) });
+  }
+  const near = (a, b) => {
+    const d = Math.abs(a.ang - b.ang), da = Math.min(d, Math.PI - d);
+    return Math.abs(a.k - b.k) <= PANE_K * Math.max(a.k, b.k) && da <= PANE_ANG;
+  };
+  // Only stripes lift: rings and spokes stay on the sheet itself (a pane each would cost every program with the sheet in space a ring's worth of work per family, on every pixel, drawn or not)
+  const panes = [];
+  for (const f of fams) { if (f.round) continue; const p = panes.find(q => near(q[0], f)); if (p) p.push(f); else panes.push([f]); }
+  if (panes.length < 3) return null;
+  // Round the way the lines run, so the heights go round with them, and spread evenly about the sheet: the middle pane stays where it is
+  panes.sort((a, b) => a[0].ang - b[0].ang);
+  const e = [0, 0, 0, 0], n = panes.length;
+  panes.forEach((p, j) => { for (const f of p) e[f.i] = -1 + 2 * j / (n - 1); });
+  return e;
+}
+// Can it be worn: a flat sheet, and something to re-weave
+export const strataFits = s => s[OFF['surf.kind']] < 0.5 && s[OFF['matte.kind']] < 0.5 && s[OFF['ribbon.on']] < 0.5 && s[OFF['blobs.on']] < 0.5 && s[OFF['droste.lnS']] === 0 && s[OFF['field.kind']] < 0.5 && s[OFF['slip.kind']] < 0.5 && !!panesOf(s);
+// How far apart the panes are at t
+export const strataSep = (m, t) => (t <= m.from || t >= m.lands ? 0 : Math.max(0, val(m.sep, t)));
+// Its camera: it leans further as the panes part, the way it leans goes round, and the tune leans it. A strong beat heaves it in a little, a pulse you see in depth and not in brightness.
+export function strataNumbers(t, c, sep, top, e, m = {}) {
+  // It leans as the panes part, and comes upright as they sink back, a little ahead of them: the bands are about where it looks straight down, and balanced about the middle of the frame its brightness can't swing
+  const k = clamp(sep / Math.max(top, 1e-4)), lean = m.peak != null && t >= m.peak ? k : Math.sqrt(k), tune = tuneAt(c), kick = kickAt(t);
+  const yaw = (m.yaw ?? 0.6) + (m.spin ?? 0.12) * (t - (m.from ?? 0)) + 0.45 * tune;
+  return {
+    amp: sep, pitch: (m.tilt ?? 0.3) * lean + 0.06 * tune * k, yaw, roll: 0, dist: STRATA_D / (1 + 0.05 * kick * k),
+    bowl: e[0], q: e[1], pix: e[2], w: e[3],
+  };
+}
+const strata = {
+  id: 'strata',
+  needs(slot) { return strataFits(slot); },
+  write(out, { t, c, m }) {
+    const sep = strataSep(m, t);
+    if (!(sep > 1e-6)) return;      // locked: the plain sheet, on the plain program
+    const e = panesOf(out);
+    if (!e) return;
+    writeSpace(out, 8, strataNumbers(t, c ?? t, sep, m.top ?? sep, e, m));
+  },
+};
+// With no song, or picked by hand: an endless round of it. It comes loose over 14 s, travels apart, and sinks back into register, then the sheet goes on whole for a few seconds.
+const STRATA_LOOP = [[0, 0], [3, 0], [9, 0.16], [16, 0.3], [20, 0.32], [22.5, 0], [27, 0]];
+export function strataLoop(out, t, t0) {
+  const L = STRATA_LOOP.at(-1)[0], n = Math.floor((t - t0) / L), u = t - t0 - n * L;
+  const sep = u <= 3 || u >= 22.5 ? 0 : Math.max(0, val(STRATA_LOOP, u)), e = sep > 1e-6 ? panesOf(out) : null;
+  if (e) writeSpace(out, 8, strataNumbers(t, t, sep, 0.32, e, { from: t0 + n * L + 3, peak: t0 + n * L + 20, yaw: 0.6 + 1.9 * n, spin: 0.1 }));
+}
+
 // How each of them sits on the same relief
 export const TERRACES = { Q: 0.2, A: 0.46, F: 1.7, P: 0.92, fly: 0.4 };
 const move = (id, kind, numbers, more = {}) => ({
@@ -150,4 +214,5 @@ export default {
   ride: move('ride', 5, rideNumbers),
   hall: move('hall', 7, hallNumbers),
   slice: { id: 'slice', flies: true, needs(slot) { return [0, 1, 2, 3].every(i => slot[OFF[`f${i}.on`]] >= 0.5); }, write(out, c) { sliceDrive(out, c, c.m); } },
+  strata,
 };

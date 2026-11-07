@@ -146,13 +146,22 @@ float prepare(int K,int b,vec2 p){
   bool wrapped=uG[b+I_surf].y>.5;
   vec2 fq=lensView?vec2(1.,tn.x):vec2(tn.x);          // and the lines knob only changes what runs along it
   float sl=moveSlip(b,X.xy,b1),fS=fieldS(b,X.xy),tuneShare=uF[F_SPARE][K==1?3:2];    // how much of the tune's rings this slot has: a slot that's shut has none, or they'd open it
+#ifdef SPACE
+  // Strata (chunks/space.js, kind 8): the slope of the view ray, through the view into the sheet's own units. Only on a sheet the view moves as a whole.
+  vec2 stV=gSt&&!lensView?rot(-v.y)*gStS/max(v.x,1e-5):vec2(0.);
+#endif
   for(int i=0;i<FAM;i++){
     vec4 fa=uG[b+3*i],fb=uG[b+3*i+1],fc=uG[b+3*i+2];
     int k=K*FAM+i;
     gOn[k]=fc.w>=.5;
     if(!gOn[k]) continue;
     // the smooth part of the phase; angles are added afterwards, with their exact gradient, so a wrap never shows
+#ifdef SPACE
+    // On its own pane a family reads its point shifted by its height times the slope (only stripes have a pane: src/score/moves/space.js leaves rings and spokes at 0). A multiply and an add, as every program here pays for it on every pixel
+    float sm=dot(fa.xyz,vec3((X.xy-gStH[i]*stV)*fq,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
+#else
     float sm=dot(fa.xyz,vec3(X.xy*fq,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
+#endif
     if(tn.y!=0.) sm+=tn.y*boil(X.xy*tn.z,tn.w,float(i)*2.3+.7);
     sm+=gLift*LIFT[i];
     sm+=fS*uG[b+I_fieldK][i];
@@ -189,8 +198,8 @@ float prepare(int K,int b,vec2 p){
   gBreak=spBrk;
 #endif
 #ifdef SPACE
-  // Far off, lines too fine to draw close up to solid, or they'd be a grey smudge at the end of every tunnel.
-  if(uG[b+I_spaceK].x>.5||uF[F_DIVE].w>5.5) for(int i=K*FAM;i<(K+1)*FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.16,.42,gGn[i]);
+  // Far off, lines too fine to draw close up to solid, or they'd be a grey smudge at the end of every tunnel. Strata's sheet stays flat, so it has no far off.
+  if((uG[b+I_spaceK].x>.5&&uG[b+I_spaceK].x<7.5)||uF[F_DIVE].w>5.5) for(int i=K*FAM;i<(K+1)*FAM;i++) if(gOn[i]&&abs(gDu[i])<=1.01) gDu[i]+=smoothstep(.16,.42,gGn[i]);
 #endif
   gRnd[K]=uG[b+I_shape].x; gSum[K]=uG[b+I_shape].y;
   return cover;

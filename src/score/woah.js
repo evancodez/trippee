@@ -26,10 +26,11 @@ const ANSWER = {      // what a section that comes back can say instead of the s
   fringe: ['ghost', 'snakes'], ghost: ['fringe', 'snakes'], snakes: ['ouchi', 'ghost'], ouchi: ['snakes', 'fringe'], slice: ['snakes', 'terraces'], roll: ['screen', 'fan'],
   flood: ['pleat', 'tube'], pleat: ['flood', 'hall'], drop: ['tube', 'flood'], tube: ['drop', 'flood'], hall: ['pleat', 'ride'], span: ['pleat', 'flood'],
   swell: ['terraces', 'ride'], terraces: ['swell', 'pleats'], pleats: ['terraces', 'hall'], ride: ['hall', 'swell'],
+  strata: ['strata', 'terraces'],
 };
 const SET = {      // id: which set
   flood: 'space', drop: 'space', tube: 'space', pleat: 'space', hall: 'space', span: 'time',
-  swell: 'space', terraces: 'space', pleats: 'space', ride: 'space', hallway: 'space', slice: 'space',
+  swell: 'space', terraces: 'space', pleats: 'space', ride: 'space', hallway: 'space', slice: 'space', strata: 'space',
   crumple: 'folds', limit: 'folds', forever: 'folds', screen: 'folds', pearls: 'folds', fan: 'folds', roll: 'folds',
   slit: 'time', ghost: 'time', fringe: 'time', snakes: 'time', ouchi: 'time', echo: 'time', rewind: 'time',
 };
@@ -65,6 +66,7 @@ const SUIT = {
   pleats: f => 0.1 + 0.35 * (1 - f.voiced) + 0.45 * near(f.lv, 1.5, 1.5),
   ride: f => 0.1 + 0.4 * f.climb + 0.3 * (1 - f.voiced) + 0.25 * f.loud,
   hallway: f => 0.1 + 0.6 * f.bridge + 0.3 * near(f.lv, 2, 1.5) + 0.15 * (1 - f.voiced),
+  strata: f => 0.15 + 1.3 * (f.lands ?? 0),
   rewind: f => 1.0 * f.build * f.arrive + 0.2 * f.build,
   drop: f => 0.05 + 1.0 * f.arrive * f.up + 0.25 * f.up,
   tube: f => 0.05 + 0.7 * f.build + 0.5 * f.arrive,
@@ -73,8 +75,10 @@ const SUIT = {
   hall: f => 0.1 + 0.6 * f.bridge + 0.35 * f.turn,
   span: f => 0.1 + 0.3 * f.turn + 0.45 * (1 - f.loud),
 };
-const LEAST = { forever: 8, limit: 8, echo: 9, screen: 9, pearls: 9, fan: 9, crumple: 9, roll: 8, slit: 7, ghost: 9, fringe: 11, snakes: 10, ouchi: 10, slice: 11, swell: 11, terraces: 11, pleats: 10, ride: 13, hallway: 14, rewind: 0 };
-const WANT = { forever: 18, limit: 18, echo: 14, screen: 18, pearls: 16, fan: 18, crumple: 14, roll: 9, slit: 12, ghost: 12, fringe: 16, snakes: 14, ouchi: 12, slice: 18, swell: 18, terraces: 16, pleats: 15, ride: 20, hallway: 20, rewind: 0 };
+const LEAST = { forever: 8, limit: 8, echo: 9, screen: 9, pearls: 9, fan: 9, crumple: 9, roll: 8, slit: 7, ghost: 9, fringe: 11, snakes: 10, ouchi: 10, slice: 11, swell: 11, terraces: 11, pleats: 10, ride: 13, hallway: 14, rewind: 0, strata: 7 };
+const WANT = { forever: 18, limit: 18, echo: 14, screen: 18, pearls: 16, fan: 18, crumple: 14, roll: 9, slit: 12, ghost: 12, fringe: 16, snakes: 14, ouchi: 12, slice: 18, swell: 18, terraces: 16, pleats: 15, ride: 20, hallway: 20, rewind: 0, strata: 24 };
+// Strata (src/score/moves/space.js) is only cast with ?strata=1, and then it's put on the stays that build into a landing: the panes part as far as the build has come and lock back into register on its hit.
+const STRATA = { lead: 2, tail: 0.25, morph: 4.2, top: 0.3, build: 0.25, fond: 1.6 };      // bars of plain sheet before it comes loose, bars of it whole after it locks, the least seconds the change after that takes, how far apart the panes go (frame units), the least build it goes on, and how much a take with it on wants it
 const MOST = 26;
 
 const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
@@ -99,9 +103,10 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const note = (t, what, why) => refused.push({ t: +(+t).toFixed(2), what, why });
 
   // ---------------------------------------------------------------- the take
-  const TRICKS = (world ? STRETCHES.filter(id => SET[id] !== 'space' && (id !== 'rewind' || wish?.rewind)) : [...STRETCHES, ...CHANGES]).filter(id => !directing.woahOnly || directing.woahOnly.includes(id)).filter(id => !wish || ((!wish.tricks || wish.tricks.includes(id) || id === 'rewind') && !wish.never?.includes(id)));      // modes lane: a mode's tricks
+  const STR = directing.strata && !world ? [...STRETCHES, 'strata'] : STRETCHES;      // strata: with ?strata=1 only, so a film without it draws exactly as it did
+  const TRICKS = (world ? STR.filter(id => SET[id] !== 'space' && (id !== 'rewind' || wish?.rewind)) : [...STR, ...CHANGES]).filter(id => !directing.woahOnly || directing.woahOnly.includes(id)).filter(id => !wish || ((!wish.tricks || wish.tricks.includes(id) || id === 'rewind') && !wish.never?.includes(id)));      // modes lane: a mode's tricks
   const lean = { space: 0.2 + 1.5 * rand(), folds: 0.2 + 1.5 * rand(), time: 0.2 + 1.5 * rand() };
-  const fond = Object.fromEntries(TRICKS.map(id => [id, 2.4 * (rand() - 0.5) + (wish?.fond?.[id] ?? 0)]));      // modes lane: and what it's fond of
+  const fond = Object.fromEntries(TRICKS.map(id => [id, 2.4 * (rand() - 0.5) + (wish?.fond?.[id] ?? 0) + (id === 'strata' ? STRATA.fond : 0)]));      // modes lane: and what it's fond of
   const chill = P?.register === 'chill';
   const gaps = world ? (wish?.gap ?? GAP.world) : chill ? GAP.chill : GAP.energetic, pace = 0.75 + 0.35 * rand();      // this take is a little busier, or a little less so
 
@@ -157,6 +162,55 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
       f.bridge = labelCount.get(after.label) === 1 && after.label !== firstLabel && after.label !== lastLabel ? 1 : 0;
     }
     return f;
+  };
+
+  // ---------------------------------------------------------------- strata's landings
+  // Where a build goes into an arrival, on its hit: the strongest beat from one before to two after, as compose.js puts a landing. Only worked out once strata's asked for.
+  let strataLands = null;
+  const strataMoments = () => {
+    const beats = A.beats ?? [], n = (A.E?.length ?? 1) - 1;
+    const hitAt = t => { let h = 0; for (let d = -0.04; d <= 0.07; d += 0.02) { const k = clamp(Math.round((t + d) * fps), 0, n); h = Math.max(h, (A.bass?.[k] || 0) + (A.perc?.[k] || 0)); } return h; };
+    const snap = t => {
+      if (!beats.length) return t;
+      let lo = 0, hi = beats.length - 1;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (beats[m] < t) lo = m + 1; else hi = m; }
+      const k = lo > 0 && t - beats[lo - 1] < beats[lo] - t ? lo - 1 : lo;
+      let best = beats[k], top = hitAt(best);
+      for (const d of [-1, 1, 2]) { const b = beats[k + d]; if (b == null) continue; const h = hitAt(b) * (1 - 0.02 * Math.abs(d)); if (h > 1.35 * top && h - top >= 0.25) { top = h; best = b; } }
+      return best;
+    };
+    return momentsOf(A, M).filter(x => x.sign > 0 && x.s >= 0.35 && x.kind !== 'chord').map(x => { const t = time(snap(x.t)); return { t, s: x.s, kind: x.kind, b: buildInto(t) }; }).filter(x => x.b >= STRATA.build);
+  };
+  // The landing a stay builds into: its own, where the film would change, and then the change waits until the panes are back together (retime). Or failing that one inside the stay, if it can be made to reach it.
+  const strataLandingOf = (i, from, hi) => {
+    const G = g[i], N = g[i + 1], H = G.peak?.hit ?? G.t1, t1 = H + STRATA.tail * bar + STRATA.morph;
+    (globalThis.__sdbg ??= []).push({ i, p: G.pattern.id, from: +from.toFixed(1), hi: +hi.toFixed(1), H: +H.toFixed(1), G: [+G.t0.toFixed(1), +G.t1.toFixed(1), +G.morph.toFixed(1)], xf: G.xform?.id, N: N && [N.pattern.id, N.hero, appointments(N), +bodyOf(N)[1].toFixed(1)], b: +buildInto(H).toFixed(2) });
+    if (N && i + 1 < g.length - 1 && !G.xform && G.morph && H >= bodyOf(G)[0] + Math.max(6.5, 4.5 * bar) && (t1 <= G.t1 || (!appointments(N) && !N.hero && bodyOf(N)[1] - t1 >= 5))) {
+      const b = buildInto(H);
+      if (b >= STRATA.build) return { t: H, b, retime: true };
+    }
+    const { end } = reach(i, hi + WANT.strata - bodyOf(G)[0]);
+    return strataLanding(from, Math.min(end, hi + WANT.strata));
+  };
+  // When the panes lock on a stay's own landing, the change it was going to make there starts once the sheet's had a moment whole
+  // It keeps where it was going to end if there's room, and gets the room from the next stay if not
+  const strataRetime = (G, N, to) => {
+    const t1 = Math.max(G.t1, to + STRATA.morph);
+    if (t1 > G.t1) { N.t0 = t1; if (N.morph) N.morph = Math.min(N.morph, N.t1 - N.t0 - 1); if (N.carry) delete N.carry; }
+    G.t1 = t1; G.morph = t1 - to;
+    delete G.peak; delete G.rise;
+    if (!G.fixedRange) G.arcEnd = G.t1 - G.morph + Math.min(G.morph * 0.4, 3.5) / 2;
+    forget(G); forget(N);
+  };
+  const strataLanding = (from, to) => {
+    strataLands ??= strataMoments();
+    let best = null;
+    for (const x of strataLands) {
+      if (x.t < from + Math.max(6.5, 4.5 * bar) || x.t > to) continue;
+      const v = x.s * (0.4 + x.b);
+      if (!best || v > best.v) best = { ...x, v };
+    }
+    return best;
   };
 
   // ---------------------------------------------------------------- what can be worn where
@@ -290,11 +344,26 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     pleats: (G, from, to, s) => ({ id: 'pleats', from, to, lead: Math.min(5, 0.3 * (to - from)), coast: Math.min(5, 0.25 * (to - from)), A: 0.95 + 0.25 * s }),
     ride: (G, from, to, s) => ({ id: 'ride', from, to, lead: Math.min(7, 0.3 * (to - from)), coast: Math.min(7, 0.3 * (to - from)) }),
     hallway: (G, from, to, s) => ({ id: 'hall', from, to, lead: Math.min(8, 0.33 * (to - from)), coast: Math.min(7, 0.28 * (to - from)) }),
+    // The panes part as far as the build has come, bar by bar and never going back, furthest apart a little before the landing, and they glide back into register with no speed left exactly on its hit
+    strata: (G, from, to, s, { lands } = {}) => {
+      const land = lands != null ? { t: lands, b: buildInto(lands) } : strataLanding(from, to);
+      if (!land || land.t > to) return null;
+      const H = land.t, lock = clamp(bar, 1.8, 2.8), peak = H - lock, start = Math.max(from, Math.min(from + STRATA.lead * bar, peak - 4 * bar));
+      if (peak - start < 3 * bar) return null;
+      // A short build doesn't go as far, so it has less to undo in its last bar
+      const top = STRATA.top * (1 + 0.15 * Math.min(s, 1)) * (0.8 + 0.2 * land.b) * clamp((peak - start) / (6 * bar), 0.6, 1), eAt = t => mean('E', t - bar, t + bar), e0 = eAt(start), e1 = Math.max(eAt(peak), e0 + 1e-3);
+      const sep = start > from + 0.05 ? [[from, 0], [start, 0]] : [[from, 0]];
+      let most = 0;
+      // Mostly the clock, leaning on the energy, and easing as it nears the top: never far ahead of it or behind it, so it can't fly apart in a bar, or stall and then lurch up to the top
+      for (let t = start + bar; t < peak - 0.5 * bar; t += bar) { const lin = 1 - Math.pow(1 - (t - start) / (peak - start), 1.4); most = Math.max(most, 0.8 * lin + 0.2 * clamp((eAt(t) - e0) / (e1 - e0))); sep.push([t, top * Math.min(0.96, most)]); }
+      sep.push([peak, top], [H, 0]);
+      return { id: 'strata', from, to, lands: H, peak, sep, top, tilt: 0.24 + 0.1 * rand(), spin: (rand() < 0.5 ? -1 : 1) * (0.08 + 0.05 * rand()), yaw: 2 * Math.PI * rand() };
+    },
   };
   // The pattern a trick wants a sheet to be, if it isn't.
   const OWN = { slice: 'space.crystal', fringe: 'time.fringe', ouchi: 'time.ouchi' };
   // ...and those that can have one, if what's there can't take them. A Relay can't: a time trick reads the sheet's phases, and it's changing all of them.
-  const OWN_IF = { ghost: ['time.ghostcheck', 'time.ghost'], snakes: ['time.snakes'], echo: ['time.echo'], slit: ['time.shutter', 'time.target', 'time.rings', 'time.venetian', 'time.wave', 'time.spiral', 'time.cells'], swell: ['space.swell'], terraces: ['space.terraces'], pleats: ['space.pleats'], ride: ['space.ride'], hallway: ['space.hall'], crumple: ['folds.crumple', 'folds.crumplerings'], limit: ['folds.limit'] };
+  const OWN_IF = { ghost: ['time.ghostcheck', 'time.ghost'], snakes: ['time.snakes'], echo: ['time.echo'], slit: ['time.shutter', 'time.target', 'time.rings', 'time.venetian', 'time.wave', 'time.spiral', 'time.cells'], swell: ['space.swell'], terraces: ['space.terraces'], pleats: ['space.pleats'], ride: ['space.ride'], hallway: ['space.hall'], strata: ['space.strata'], crumple: ['folds.crumple', 'folds.crumplerings'], limit: ['folds.limit'] };
   const ownFor = (id, G) => {
     if (world) return null;
     if (OWN[id]) return lib(OWN[id]);
@@ -418,13 +487,14 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     }
     const G = g[i], N = g[i + 1], slot = { id, kind, G, N, from, to, hit, D, s: rel.s, alts, tried: [id] };
     slot.keptG = keepOf(G); slot.keptN = N ? keepOf(N) : null; slot.i = i;
-    const did = kind === 'change' ? wearChange(id, i, hit, D, rel.s) : wearStretch(id, i, from, to, rel.s, { hit });
+    if (c.retime) strataRetime(G, N, to);
+    const did = kind === 'change' ? wearChange(id, i, hit, D, rel.s) : wearStretch(id, i, from, to, rel.s, { hit, lands: c.lands });
     if (!did) { putBack(G, slot.keptG); if (N) putBack(N, slot.keptN); return null; }
     slot.undo = did.undo ?? null;
     if (did.on) { slot.G = did.on; slot.keptG = did.before; slot.N = null; slot.keptN = null; }
     slot.alts = alts.filter(x => !OWN[x] && !OWN_IF[x]); slot.f = f; slot.climax = !!c.climax;
     forget(G); forget(g[i - 1]);
-    const out = { id, kind, at: +(kind === 'change' ? hit : from).toFixed(2), t0: +from.toFixed(2), t1: +to.toFixed(2), pattern: (did.on ?? G).pattern.id, why: Object.entries(f).filter(([k, v]) => v >= 0.5 && k !== 'lv').map(([k]) => k).join(' '), ...(rel.again ? { again: true } : {}), ...(rel.answers ? { answers: rel.answers } : {}), ...(c.climax ? { climax: true } : {}) };
+    const out = { id, kind, at: +(kind === 'change' ? hit : from).toFixed(2), t0: +from.toFixed(2), t1: +to.toFixed(2), pattern: (did.on ?? G).pattern.id, why: Object.entries(f).filter(([k, v]) => v >= 0.5 && k !== 'lv').map(([k]) => k).join(' '), ...(rel.again ? { again: true } : {}), ...(rel.answers ? { answers: rel.answers } : {}), ...(c.climax ? { climax: true } : {}), ...(c.lands ? { lands: +c.lands.toFixed(2) } : {}) };
     list.push(out); slots.push(slot); slot.out = out;
     taken.push([from, to]);
     uses.set(id, (uses.get(id) ?? 0) + 1);
@@ -447,13 +517,24 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
       if (wearable(G)) {
         const [a0, e0] = bodyOf(G), from0 = Math.max(a0, lo, OPEN_AT), from = from0 > a0 + 2 * bar ? (A.bars.find(t => t >= from0) ?? from0) : a0;
         if (from <= hi) {
-          for (const id of STRETCHES) {
+          for (const id of STR) {
             if (!TRICKS.includes(id) || id === lastId || id === 'rewind' || !canWear(id, G)) continue;
-            const { j, end } = reach(i, from - a0 + (world ? LEAST[id] + 2 : WANT[id])), to = Math.min(end, from + MOST);
-            if (to - from < leastOf(id) || !clear(from, to)) continue;
-            const f = featuresOf(from, to, G.peak?.hit ?? G.t1), seg = segAt((from + to) / 2), rel = relationOf(id, seg);
+            let { j, end } = reach(i, from - a0 + (world ? LEAST[id] + 2 : WANT[id])), to = Math.min(end, from + MOST), land = null, at = from;
+            // Strata locks on a landing inside the stay that a build goes into, and the stay goes on whole for a moment after it. It starts as long before the landing as it wants, if that's in this window
+            if (id === 'strata') {
+              land = strataLandingOf(i, from, hi);
+              if (!land) continue;
+              at = Math.max(from, A.bars.find(t => t >= land.t - WANT[id]) ?? from);
+              if (at > hi || land.t - at < Math.max(6.5, 4.5 * bar)) continue;
+              to = land.t + STRATA.tail * bar;
+              if (land.retime) j = i;
+              else { ({ j, end } = reach(i, to - a0)); if (end < to) continue; while (j > i && bodyOf(g[j - 1])[1] >= to) j--; }
+            }
+            if (to - at < leastOf(id) || !clear(at, land?.retime ? Math.max(g[i].t1, to + STRATA.morph) : to)) continue;
+            const f = featuresOf(at, to, G.peak?.hit ?? G.t1), seg = segAt((at + to) / 2), rel = relationOf(id, seg);
+            if (land) f.lands = land.b;
             if (SUIT[id](f) < 0.2 && !rel.bonus) continue;
-            out.push({ id, kind: 'stretch', i, j, from, to, hit: G.peak?.hit ?? G.t1, f, rel, v: scoreOf(id, f, seg, from, mid, rel) });
+            out.push({ id, kind: 'stretch', i, j, from: at, to, hit: G.peak?.hit ?? G.t1, f, rel, v: scoreOf(id, f, seg, at, mid, rel), ...(land ? { lands: land.t, retime: land.retime } : {}) });
           }
         }
       }
@@ -569,7 +650,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     const suits = id => (slot.f ? SUIT[id](slot.f) : 0) + (fond[id] ?? 0) * 0.2;
     const pool = slot.kind === 'change'
       ? CHANGES.filter(id => TRICKS.includes(id) && !OFF_CAST.has(id) && (slot.climax || !SAVED.has(id)))
-      : STRETCHES.filter(id => id !== 'rewind' && TRICKS.includes(id) && !OFF_CAST.has(id) && !wish?.off?.includes(id) && slot.to - slot.from >= LEAST[id] && directFits(id, slot.G));
+      : STR.filter(id => id !== 'rewind' && TRICKS.includes(id) && !OFF_CAST.has(id) && !wish?.off?.includes(id) && slot.to - slot.from >= LEAST[id] && directFits(id, slot.G));
     const more = pool.filter(id => !slot.alts.includes(id)).sort((a, b) => suits(b) - suits(a));
     // What the film hasn't got elsewhere first, so a swap doesn't make a second screen or a second pearls
     const elsewhere = id => slots.filter(x => x !== slot && x.id === id).length;
