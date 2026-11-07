@@ -143,7 +143,10 @@ export class Renderer {
   _programFor(F) {
     if (this.wp) return this.wp.program(F);
     let v = this._variantOf(F);
-    if (this.timeOn) { if (this.progs[v | TIME]) v |= TIME; else this._wantTime(v); }      // one still building, the frame goes without it. What asks comes up from nothing
+    if (this.timeOn) {
+      if (!this.progs[v | TIME] && this.bare) this._buildNow(v | TIME);      // the rehearsal's eyes have to see what will be shown
+      if (this.progs[v | TIME]) v |= TIME; else this._wantTime(v);
+    }      // one still building, the frame goes without it. What asks comes up from nothing
     if (!this.progs[v] && !this.parallel && !this._pending) { this._start(v); this._poll(); }
     const got = this.progs[v] ? v : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
     this.variant = got;
@@ -156,6 +159,14 @@ export class Renderer {
     if (!list.length) return;
     this.order = [...this.order, ...list];
     if (!this._pending) { const next = this.order.find(n => !this.progs[n]); if (next !== undefined) { this._start(next); this._poll(); } }
+  }
+
+  _buildNow(v) {
+    const gl = this.gl, fs = compile(gl, gl.FRAGMENT_SHADER, sourceOf(v)), prog = link(gl, this.vs, fs);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { console.error('Shader failed:', gl.getShaderInfoLog(fs)); return; }
+    gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'Block'), 0);
+    gl.useProgram(prog); gl.uniform1i(gl.getUniformLocation(prog, 'uPush'), 0);
+    this.timeLoc[v] = gl.getUniformLocation(prog, 'uT'); this.progs[v] = prog;
   }
 
   _initBrush() {

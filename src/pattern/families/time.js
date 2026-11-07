@@ -37,7 +37,7 @@ export default [
     time: { id: 'fringe' },
     drive(out, c) {
       if (c.G.moves?.some(m => m.id === 'fringe')) return;
-      out[c.OFF['f1.y']] = 17 + 1.1; writeFringe(out, {}, surged(timeClock(c)));
+      writeFringe(out, {}, surged(timeClock(c)));
     },
   }),
 
@@ -50,7 +50,7 @@ export default [
       if (c.G.moves?.some(m => m.id === 'waterfall')) return;
       const k = Math.floor(c.t / 30), stops = [];
       for (let i = 0; i <= k; i++) stops.push([24 + 30 * i, 30 + 30 * i]);
-      writeWater(out, { stops, rate: 2.2, ease: 0.45 }, c.t);
+      writeWater(out, { stops, ease: 0.45 }, c.t);
     },
   }),
 ];

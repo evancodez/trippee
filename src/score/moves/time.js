@@ -23,7 +23,7 @@ function heard(score, tReal) {
 const beatsAt = (c, m) => (m.beats ? evalTrack(clockOf(m), c.t) : timeClock(c));
 // A riot move is the beat itself, so it turns the song's own beats down. These sit on top of them, and it's only a pick's clock asking.
 export const timeClock = c => { c.G.calm ??= 1; return handClock({ t: c.t, phi: c.phi ?? 0, G: c.G }, 6); };
-const cueTime = (m, ctx) => { m.calm ??= 1; return cueHits(m, ctx); };
+const cueTime = (m, ctx) => { m.calm ??= 1; globalThis.app?.R?._wantTime?.(0); return cueHits(m, ctx); };     // while the film's still coming, its programs get built
 const ampAt = (c, m, up = 4) => (c.hand ? smoother((c.t - c.begin) / up) : (m._amp ??= ampOf(m, 1))(c.t));
 
 // ---------------------------------------------------------------- Slit
@@ -105,6 +105,12 @@ function firstOpen(s) {
   for (let i = 0; i < FAMILIES; i++) if (s[OFF[`f${i}.on`]] >= 0.5 && Math.abs(s[OFF[`f${i}.d`]]) <= 0.98) { out[i] = 1; break; }
   return out;
 }
+// How big a moment this hit is: read once for the whole of its transit, or the figure would change in the middle of it.
+function heardAt(c, k, m) {
+  const H = c.score.hear;
+  if (!H || !(c.score.hearNow > 0)) return 0;
+  return m._hitK === k ? m._hitV : (m._hitK = k, m._hitV = Math.min(1, rtH(H, H.hit, c.tReal)));
+}
 const ghost = {
   id: 'ghost',
   needs() { return true; },
@@ -117,9 +123,11 @@ function sheetGhost(want, m, c, s) {
   const { k, y } = transit(s, m.width ?? WHOLE);
   if (y <= 0 || y >= 1) return;       // in register: it isn't there, and it costs nothing
   const poses = m.poses ?? POSES, pose = poses[((k % poses.length) + poses.length) % poses.length], side = k % 2 ? -1 : 1, g = want.ghost = { capsules: handCapsules(pose) };
+  // A big moment gets both hands, right up to the frame.
+  if (heardAt(c, Math.round(k), m) > 0.45) { g.capsules = [...handCapsules({ x: -0.9, y: -0.12, turn: 0.22, size: 2.7, spread: 1.4 }), ...handCapsules({ x: 0.9, y: -0.12, turn: -0.22, size: 2.7, spread: 1.4, flip: -1 })]; }
   // Turning: inside the figure the sheet swings away and comes back, so any sheet at all shows it, and at both ends it's exactly as it was. Sliding: what's inside moves one whole cycle.
   if (m.how === 'slide') { g.slide = y * (m.dir ?? 1) * (m.cycles ?? 1); g.shares = m.shares ?? firstOpen(c.st.A); }
-  else { const w = Math.sin(Math.PI * y); g.turn = (m.turn ?? 0.7) * side * w; g.zoom = (m.zoom ?? 0.25) * w; g.about = [pose.x, pose.y]; }
+  else { const w = Math.sin(Math.PI * y); g.turn = (m.turn ?? 0.7) * side * w; g.zoom = (m.zoom ?? 0.25) * w; g.about = g.capsules.length > 20 ? [0, 0] : [pose.x, pose.y]; }
 }
 
 // ---------------------------------------------------------------- Fringe
@@ -135,7 +143,24 @@ const FACE = [
   [0, -0.4, 0.18, 0.04, 0.17, 0.7], [0, -0.5, 0.14, 0.05, 0.2, 0.7], [0, -0.45, 0.2, 0.022, -0.2, 0.6],     // lips
   [0, -0.63, 0.12, 0.05, -0.08, 0.5], [0, -0.79, 0.17, 0.1, 0.2, 0.55],       // under the lip, the chin
 ];
-export function faceBumps(yaw, nod) { return FACE.map(([x, y, rx, ry, a, z]) => [x + yaw * z * 0.5, y + nod * z * 0.4, rx * (1 - 0.25 * Math.abs(yaw) * (1 - z)), ry, a]); }
+// open: how far the mouth has opened, 0..1. rise: the brows.
+export function faceBumps(yaw, nod, open = 0, rise = 0) {
+  return FACE.map(([x, y, rx, ry, a, z], i) => {
+    if (i === 15) { ry += 0.1 * open; a -= 0.5 * open; rx *= 1 - 0.28 * open; y -= 0.05 * open; }       // the mouth
+    else if (i === 13) y += 0.012 * open;
+    else if (i === 14 || i === 17 || i === 16) y -= (i === 14 ? 0.11 : 0.08) * open;       // the lower lip and the jaw go with it
+    else if (i === 1 || i === 2) y += 0.05 * rise;
+    return [x + yaw * z * 0.5, y + nod * z * 0.4, rx * (1 - 0.25 * Math.abs(yaw) * (1 - z)), ry, a];
+  });
+}
+// What the voice is doing: a sung note opens the mouth as loud as it is, and it closes between words. Worked out from the song's own numbers at this second, a little ahead, as a mouth is.
+function mouthAt(score, t) {
+  const A = score.song; if (!A?.voiced) return 0;
+  const at = (a, q) => (a ? a[clamp(Math.round(q * A.fps), 0, a.length - 1)] || 0 : 0);
+  let s = 0, w = 0;
+  for (let k = -3; k <= 3; k++) { const q = t + 0.04 + k * 0.03, g = 1 - Math.abs(k) / 4; s += g * clamp((at(A.voiced, q) - 0.35) / 0.4) * clamp((at(A.E ?? A.loud, q) - 0.05) / 0.5); w += g; }
+  return smoother(s / w);
+}
 const fringe = {
   id: 'fringe',
   needs(slot) { return slot[OFF['f0.on']] > 0.5 && slot[OFF['f1.on']] > 0.5; },
@@ -144,18 +169,22 @@ const fringe = {
   sheet(want, m, c) { sheetFringe(want, m, c, beatsAt(c, m), ampAt(c, m, 6)); },
 };
 function writeFringe(out, m, s) {
+  // Two line sets a little out of step. A whole number of bands in the frame's height, so it holds its brightness whatever they do: 3
+  const k = m.k ?? 17;
+  out[OFF['f0.x']] = 0; out[OFF['f0.y']] = k; out[OFF['f1.x']] = 0; out[OFF['f1.y']] = k + (m.bands ?? 1.5);
   out[OFF['f1.ph']] += (m.dir ?? 1) * (m.perBeat ?? 0.5) * s;     // half a fringe to each strong beat, everything travelling up the head. A whole one takes every part of the frame from black to white and back on each
 }
 function sheetFringe(want, m, c, s, amp) {
   const { mel, hit } = heard(c.score, c.tReal), a = amp * c.fade;
   if (a <= 0.001) return;
   const yawTo = m.yaw ?? 1, way = Math.sin(TAU * s / (m.turnEvery ?? 16));       // it looks about, slowly: one look to each so many strong beats, and the tune nods it
-  want.fringe = { amp: (m.height ?? 6.5) * a * (1 + 0.25 * hit), shares: m.shares ?? [0, 1, 0, 0], size: m.size ?? 1.08, turn: 0, bumps: faceBumps(yawTo * way, (m.nod ?? 0.35) * mel) };
+  want.fringe = { amp: (m.height ?? 6.5) * a * (1 + 0.25 * hit), shares: m.shares ?? [0, 1, 0, 0], size: m.size ?? 1.08, turn: 0, bumps: faceBumps(yawTo * way, (m.nod ?? 0.35) * mel, mouthAt(c.score, c.tReal), clamp(mel)) };
 }
 
 // ---------------------------------------------------------------- Waterfall
 // Dead steady, for long enough that the eye has got used to it, and then it stops. What you see then isn't on the screen.
-//   { id: 'waterfall', rate: 2.2, times: { stop: 77.75, go: 81 } }   rate: cycles a second. It comes to rest over one beat and doesn't move at all until go, which starts it again over a bar.
+//   { id: 'waterfall', rate: 1.8, times: { stop: 77.75, go: 81 } }   rate: cycles a second. It comes to rest over one beat and doesn't move at all until go, which starts it again over a bar.
+export const RATE = 1.8;      // cycles a second. The arms are bigger than one of the judge's tiles out at the corners, and each that goes by is one swing of brightness there: it has to stay under 2 a second
 function waterClock(t, stops, rate, ease) {
   // Piecewise: run, stop, run. Each stop is [a, b]. The speed goes 1 to 0 over ease before a... the distance is the integral of that.
   let x = t, lost = 0;
@@ -183,7 +212,7 @@ const waterfall = {
   write(out, { t, m }) { writeWater(out, m, t); },
 };
 function writeWater(out, m, t) {
-  const ph = waterClock(t, m.stops, m.rate ?? 2.2, m.ease ?? 0.5);
+  const ph = waterClock(t, m.stops, m.rate ?? RATE, m.ease ?? 0.5);
   for (const i of m.fams ?? [0]) out[OFF[`f${i}.ph`]] += ph * (m.way ?? 1);
 }
 

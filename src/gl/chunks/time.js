@@ -13,7 +13,7 @@
 //   uT[7]  Snakes: x: how much shade; y: how dark the dark tone is; z: how light the light tone is; w: 0 one way, 1 the other. uT[8] x, y: which family runs along, and which across
 //   T_B..  the table: two vec4 for each moment. (ln zoom, turn, x, y) and the four families' phases. All relative to now, so a moment at no delay is exactly nothing.
 //   T_C..  capsules (ax, ay, bx, by), then their radii, four to a vec4.  T_G..  bumps (x, y, rx, ry) and (height, 0, 0, 0)
-export const T_N = 64, T_B = 10, T_C = T_B + 2 * T_N, CAPS = 16, T_R = T_C + CAPS, T_G = T_R + 4, BUMPS = 24, T_ALL = T_G + 2 * BUMPS;
+export const T_N = 64, T_B = 10, T_C = T_B + 2 * T_N, CAPS = 40, T_R = T_C + CAPS, T_G = T_R + 10, BUMPS = 24, T_ALL = T_G + 2 * BUMPS;
 
 export default `#ifdef TIME
 uniform vec4 uT[${T_ALL}];
