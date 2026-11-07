@@ -2,6 +2,10 @@
 //   PAIR=a,b VIA=flood D=14 [O='{"amp":.5}'] node tools/lab.mjs tests/space.mjs --out lab-out/s     a dense sheet across one transformation, with the frame just before and just after
 //   LOAD=space.swell S=30 node tools/lab.mjs tests/space.mjs --out lab-out/s                       a dense sheet of one pattern moving
 //   OVER='{"space.kind":1,...}' LOAD=lines.fall ...                                                any numbers on any pattern
+//   AT=4,8 with either of those                                                                    those moments, full size. BEYOND=1 with colour
+//   MODE=pops [VIAS=flood,drop] [PAIRS="a,b;c,d"]                                                  every change on pool pairs: the biggest one-frame spike at each end and in the middle, and the fastest frames
+//   MODE=cost --size 1920,1080                                                                     GPU ms of a frame of each, by the timer query
+//   MODE=film SONG=media/mgmt.mp3 [AT=62-67 EVERY=.25]                                             a test cut wearing all of it on a real song, muted: a sheet, the judge's flash count, close frames. It doesn't go through the rehearsal's guard
 import { resolve, basename } from 'node:path';
 const E = process.env;
 export default async ({ page, save, log }) => {

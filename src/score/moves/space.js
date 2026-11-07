@@ -105,10 +105,10 @@ export function rideNumbers(G, t, c, m = {}) {
 
 // A square hall, all of it the one sheet, turning over about you as you go along it.
 export function hallNumbers(G, t, c, m = {}) {
-  const T = t, { k, d } = life(G, T, { ...m, lead: m.lead ?? 7, coast: m.coast ?? 7 }), H = m.half ?? 2.3;
-  const look = smoother((k - 0.1) / 0.9), on = smoother((d - 3) / 8);
+  const T = t, { k, d } = life(G, T, { ...m, lead: m.lead ?? 10, coast: m.coast ?? 8 }), H = m.half ?? 2.3;
+  const look = smoother((k - 0.1) / 0.9), on = smoother((d - 3) / 8);      // on: it's been turning at this rate for as long as it's been going, as far as anyone can see
   return {
-    amp: H, ph: look * ((m.turn ?? 0.14) * on * d + 0.22 * surgeAt(T)) + 0.02 * tuneAt(c) * look,
+    amp: H, ph: look * ((m.turn ?? 0.11) * on * d + 0.16 * surgeAt(T)) + 0.02 * tuneAt(c) * look,
     pitch: look * Math.PI / 2, dist: H + ((m.lens ?? 1.05) - H) * look,
     y: (m.fly ?? 0.9) * d + (m.heave ?? 0.6) * surgeAt(T) * k, bowl: 1 + ((m.bold ?? 0.45) - 1) * look,
   };
@@ -116,7 +116,7 @@ export function hallNumbers(G, t, c, m = {}) {
 
 // A slice. A check is the flat cut through a solid of cubes; this one's a cut through a four-dimensional lattice, each family being one axis of it, and the cut turns. At no turn it's a plain check: two families have lines, and the other two are
 // constant. Turning, those two come up from infinitely long lines, nothing appears and nothing tears, and the tiles go through squares, diamonds, triangles and tilings that never repeat, then come back. Four numbers per family and no shader: it
-// costs nothing. Going further through the lattice, along the other two axes, opens and closes the tiles: the strong beats push it on. (The shape only makes sense on four plain families, so it has its own pattern.)
+// costs nothing. Going further through the lattice, along the other two axes, opens and closes the tiles, slowly. (The shape only makes sense on four plain families, so it has its own pattern.)
 export function writeSlice(out, a, depth, k) {
   const u = [1, 0, 0, 0], v = [0, 1, 0, 0], n = [0, 0, 1, 0], m = [0, 0, 0, 1], turn = (w, i, j, th) => { const c = Math.cos(th), s = Math.sin(th), p = w[i], q = w[j]; w[i] = c * p - s * q; w[j] = s * p + c * q; };
   const planes = [[0, 2], [1, 3], [0, 3], [1, 2], [0, 1], [2, 3]];
@@ -126,12 +126,13 @@ export function writeSlice(out, a, depth, k) {
     out[OFF[`f${i}.ph`]] += k * (depth[0] * n[i] + depth[1] * m[i]);
   }
 }
-export function sliceAngles(d, kk) {
-  return [0.9 * Math.sin(d * 0.113) * kk, 0.9 * Math.sin(d * 0.079 + 1) * kk, 0.7 * Math.sin(d * 0.057 + 2) * kk, 0.7 * Math.sin(d * 0.097 + 4) * kk, 0.09 * d, 0];
+export function sliceAngles(d, kk, turn = 0) {
+  return [0.9 * Math.sin(d * 0.113) * kk, 0.9 * Math.sin(d * 0.079 + 1) * kk, 0.7 * Math.sin(d * 0.057 + 2) * kk, 0.7 * Math.sin(d * 0.097 + 4) * kk, 0.09 * d + turn, 0];
 }
 export function sliceDrive(out, { t, G }, m = {}) {
   const { k, d } = life(G, t, { lead: 8, coast: 8, ...m }), T = t;
-  writeSlice(out, sliceAngles(d * (m.speed ?? 1), k), [(m.fly ?? 0.08) * d + (m.heave ?? 0.08) * surgeAt(T) * k, 0.6 * (m.fly ?? 0.08) * d + 0.02 * tuneAt(t) * k], m.k ?? 2.1);
+  // The strong beats turn it, in the plane of the sheet. Going further through the lattice flips what's in its long lines, and on a beat that's the whole frame going light and dark.
+  writeSlice(out, sliceAngles(d * (m.speed ?? 1), k, (m.heave ?? 0.28) * surgeAt(T) * k + 0.03 * tuneAt(t) * k), [(m.fly ?? 0.05) * d, 0.6 * (m.fly ?? 0.05) * d], m.k ?? 2.1);
 }
 
 // How each of them sits on the same relief

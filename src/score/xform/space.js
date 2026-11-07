@@ -61,7 +61,7 @@ function tube(st, F, o) {
 // The floor's only one side of a square hall going off ahead, and the walls are the next pattern. The camera looks up along it, the hall turns over about you, floor to wall to ceiling to wall, and you look back down at what was a wall.
 function hall(st, F, o) {
   const { x } = st, kick = kickAt(st.t), tune = tuneAt(st.c), H = o.half ?? 2.3, look = k(x, 0.04, 0.34) * (1 - k(x, 0.66, 0.96));
-  const turn = (Math.PI / 2 + 2 * Math.PI * (o.turns ?? 1)) * k(x, 0.18, 0.84), Yend = o.fly ?? 9;
+  const turn = (Math.PI / 2 + 2 * Math.PI * (o.turns ?? 0.5)) * k(x, 0.16, 0.86), Yend = o.fly ?? 9;
   put(F, 0, 7, H, 0, turn + 0.03 * kick * look + 0.02 * tune * look);
   put(F, 1, look * Math.PI / 2, 0, 0, lerp(H, o.lens ?? 1.05, look));
   put(F, 2, 0, 0, 0, 0);
@@ -88,7 +88,7 @@ function make(id) {
     write(st, A, B, F) {
       // Everything goes by more quickly into each strong beat and more slowly after it. Both ends stay exact.
       const D = st.from && st.to ? Math.max(st.from.morph || st.plan.D || 12, 1) : 12, x0 = st.x;
-      st.x = clamp(x0 + (st.plan.o.surge ?? 0.55) * surgeAt(st.t) / D * smoother(x0 / 0.12) * smoother((1 - x0) / 0.12));
+      st.x = clamp(x0 + (st.plan.o.surge ?? (id === 'hall' ? 0.25 : 0.55)) * surgeAt(st.t) / D * smoother(x0 / 0.12) * smoother((1 - x0) / 0.12));
       kinds[id](st, F, st.plan.o);
       st.x = x0;
       F[FRAME.dive * 4 + 3] = 6;
