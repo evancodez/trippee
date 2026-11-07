@@ -259,6 +259,9 @@ export function hearRates(film, H) {
   }
 }
 
+// All of it lets go over the song's last seconds, so that what comes after it starts from the bare film.
+const ENDING = 2;
+export const songEnding = (score, t) => { const end = score.song?.duration; return end ? 1 - smoother((t - (end - ENDING)) / ENDING) : 1; };
 // However much a beat and a moment pile up, a lens can't turn the sheet inside out, and a push can't leave the pattern. Nearly straight until it's close to the top.
 const soft = (x, top) => top * (1 - Math.exp(-Math.max(x, 0) / top));
 const Hm = FRAME.hear * 4;
@@ -289,7 +292,7 @@ function writeHear(st, score, edits, tReal, hx) {
   const H = score.hear, h = score.hearNow;
   if (!H || !(h > 0)) return;
   const F = st.F, t = tReal, G = st.G;
-  let amt = h * (edits?.reactAmt ?? 1) * hx;
+  let amt = h * (edits?.reactAmt ?? 1) * hx * songEnding(score, st.t);
   if (score.songFades != null) amt *= 1 - smoother((st.t - score.songFades) / 3);
   if (!(amt > 0)) return;
   const W = score.world?.hear, calm = G.calm ? lerp(1, Math.max(G.calm, 0.6), smoother((st.t - (G.calmWin?.[0] ?? G.t0)) / 1.5) * smoother(((G.calmWin?.[1] ?? G.t1) - st.t) / 1.5)) : 1;
