@@ -81,8 +81,9 @@ export default {
     return { kind: 'bud', onClock: true, ...partners(a, b) };
   },
   write(st, A, B) {
-    const T = st.T, from = T < 0.5 ? A : B, kept = STEPPED.map(n => from[n]), ta = A[TILE], tb = B[TILE], X = st.x * st.x * (3 - 2 * st.x);
-    const depth = T < 0.5 ? A[DEPTH] * (1 - smoother(T / 0.5)) : B[DEPTH] * smoother((T - 0.5) / 0.5);
+    const x = st.x, from = x < 0.5 ? A : B, kept = STEPPED.map(n => from[n]), ta = A[TILE], tb = B[TILE], X = x * x * (3 - 2 * x);
+    // Over all the time there is: on T, all of it would go in the steepest third, and a shape that's far from round would throw every ring across the frame.
+    const depth = x < 0.5 ? A[DEPTH] * (1 - smoother(x / 0.5)) : B[DEPTH] * smoother((x - 0.5) / 0.5);
     A[OFF.theta] = st.theta; B[OFF.theta] = st.theta;
     const inA = insideOf(A), inB = insideOf(B);
     // Everything that isn't the petals goes a little gentler than T, or a change in how many lines there are sweeps the far rings by faster than the flash limit, right where T is steepest. It still starts and ends at rest.

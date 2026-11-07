@@ -137,6 +137,34 @@ async function stages({ page, log, save, sleep }) {
     }
     log(`clicks: ${good}/${ids.length} landed`);
   }
+  if (want.includes('steps')) {
+    // Frames just either side of moments in the film, and the difference between them: AT=t,t,... SONG=...
+    const songPath = process.env.SONG || 'media/mgmt.mp3';
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+    await sleep(400);
+    await dropSong(page, songPath, { resolvePath: resolve, sleep });
+    await enterWorld(page, 'flower', log);
+    const ats = (process.env.AT || '').split(',').map(Number);
+    const r = await page.eval(async ats => {
+      app.manual = true;
+      const g0 = app.stage.score.gestures.map(G => `${G.pattern.id.slice(7)} ${G.t0.toFixed(2)}-${G.t1.toFixed(2)} m${(G.morph ?? 0).toFixed(1)} ${G.xform?.id ?? '-'} ${(G.moves ?? []).map(m => m.id).join('+')} ${G.run ?? ''}`);
+      const w = 320, h = 180, cv = document.createElement('canvas'); cv.width = w * 4; cv.height = h * ats.length;
+      const g = cv.getContext('2d', { willReadFrequently: true }), small = document.createElement('canvas'); small.width = w; small.height = h; const sg = small.getContext('2d', { willReadFrequently: true });
+      const out = [];
+      for (let k = 0; k < ats.length; k++) {
+        const t = ats[k], grab = T => { trippee.seek(T); sg.drawImage(trippee.canvas, 0, 0, w, h); return sg.getImageData(0, 0, w, h); };
+        trippee.seek(t - 2); for (let i = 0; i < 60; i++) { trippee.seek(t - 2 + i * 0.02); if (app.lastFrame.N && !app.stage.score.gestures.find(G => G.t1 > t - 1)?.plan) await new Promise(r => setTimeout(r, 4)); }
+        const a = grab(t - 1 / 60), f = app.lastFrame, was = { kind: f.kind, p: f.G.pattern.id, x: +(f.T || 0).toFixed(3) }, b = grab(t + 1 / 60), f2 = app.lastFrame, now = { kind: f2.kind, p: f2.G.pattern.id }, c = grab(t + 3 / 60);
+        const dm = (p, q) => { let s = 0; for (let i = 0; i < p.data.length; i += 4) s += Math.abs(p.data[i] - q.data[i]) + Math.abs(p.data[i + 1] - q.data[i + 1]) + Math.abs(p.data[i + 2] - q.data[i + 2]); return +(s / (w * h * 3)).toFixed(2); };
+        const d = new ImageData(w, h); for (let i = 0; i < d.data.length; i += 4) { const v = Math.min(255, 3 * (Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 1] - b.data[i + 1]) + Math.abs(a.data[i + 2] - b.data[i + 2]))); d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+        g.putImageData(a, 0, k * h); g.putImageData(b, w, k * h); g.putImageData(c, 2 * w, k * h); g.putImageData(d, 3 * w, k * h);
+        out.push({ t, was, now, across: dm(a, b), next: dm(b, c) });
+      }
+      return { sheet: cv.toDataURL('image/jpeg', 0.92), out, g0 };
+    }, ats);
+    save(process.env.NAME || 'steps.jpg', r.sheet);
+    log(r.g0.join('\n')); log(JSON.stringify(r.out));
+  }
   if (want.includes('buds')) {
     const r = await page.eval(async () => {
       const W = await F_.enter(), P = W._pool, out = [];

@@ -28,6 +28,7 @@ const inkOf = (song, score) => {
 };
 const clamp01 = x => Math.max(0, Math.min(1, x));
 const POLE_SIZES = ['blobs.r1', 'blobs.r2', 'blobs.r3', 'p1.q', 'p2.q'].map(n => OFF[n]);
+const PH0 = 3;      // about where a pattern's rings sit before the flow
 const BULGE = OFF['bulge.a'], TEETH = OFF['zig.a'], BEND = OFF['bend1.a'];
 const SWEEP = 1.2, SWEEP_LINES = 6;      // seconds from the line being born to the farthest showing: bands this bold are only about this many lines out from a flower to the corner
 
@@ -40,7 +41,8 @@ export default {
     h: 2,
     fill(tex, ctx) {
       // The window of lines that can be showing: one flight's clock ahead of what's being born now, and everything out to the far corner. Read off what's drawn, so a change of world's old clock counts too.
-      const S = ctx.change && ctx.x >= 0.5 ? ctx.B : ctx.A, nNow = Math.floor(S[OFF['f0.ph']]) - 4;
+      // In a film everything's on the one clock, so it's the clock that says, whichever slot's showing: in a flight the slot flown out of has come to rest, and going by that the buzz's sweep would jump at the landing.
+      const S = ctx.change && ctx.x >= 0.5 ? ctx.B : ctx.A, clockOn = ctx.score.phi && ctx.score.tables && !ctx.change, nNow = Math.floor(clockOn ? PH0 - FLOW * ctx.score.phi(ctx.t, ctx.G) : S[OFF['f0.ph']]) - 4;
       // The buzz stops from the flowers out, over about a second. All at once it's the whole frame's chroma stepping, one half of a whole-frame flash, and the eye can't follow it anyway.
       // With no song it comes and goes on its own, more often gone.
       const song = ctx.tables, none = Math.pow(clamp01(0.5 + 0.5 * Math.sin(ctx.t * 0.13 - 1.2)), 3);
@@ -92,10 +94,7 @@ export default {
       for (const S of [A, B]) { S[BULGE] *= 1 + 0.5 * (p - 1); S[TEETH] *= 1 + 0.3 * (p - 1); S[BEND] *= 1 + 0.4 * (p - 1); }
       // The tune: whichever flower it's singing to swells, and the rest make room. Each pole has its place on the scale.
       const m = s.voiced * Math.min(1, s.gains?.tune ?? 1) * 0.16;
-      if (m > 0.002) for (const S of [A, B]) {
-        const on = POLE_SIZES.filter(p => S[p] > 0);
-        if (on.length > 1) on.forEach((p, i) => { const d = s.melody * 0.32 - (i - (on.length - 1) / 2) * 1.2; S[p] *= Math.exp(m * (Math.exp(-d * d) - 0.4)); });
-      }
+      if (m > 0.002) for (const S of [A, B]) POLE_SIZES.forEach((p, i) => { if (S[p] > 0) { const d = s.melody * 0.32 - (i - 1.5) * 1.2; S[p] *= Math.exp(m * (Math.exp(-d * d) - 0.4)); } });
     }
   },
   motion: { len: [13, 22], morph: [6, 9], xforms: { bud, melt, tide }, xform: 'bud', keep: ['bud', 'melt', 'tide'], front: true },

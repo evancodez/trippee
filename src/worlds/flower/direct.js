@@ -87,25 +87,30 @@ export function moves(score, A, M) {
     return false;
   };
   for (let i = 1; i + 1 < g.length; i++) {
-    const G = g[i], from = G.t0 + 0.5, to = G.t1 - (G.morph || 0), body = to - from;
+    const G = g[i], start = G.t0 + 0.5, end = G.t1 - (G.morph || 0), body = end - start;
     if (body < 3 * bar || (i % 4 === 0 && body < 12)) continue;
-    let id = null;
-    for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (fits(c, G)) { id = c; at = (at + n + 1) % rotation.length; break; } }
-    if (!id) continue;
-    const beats = (id === 'pump' || id === 'wring' || id === 'ratchet' || id === 'bellows' || id === 'scissor' || id === 'turnover') ? 'half' : 'bar';
-    // A tile takes one edge a second, near enough, and the rings are already using most of that. So never faster than a hit every so often, whatever the tempo.
-    let hits = hitsFor(beats, { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
-    if (hits.length > 1 && (hits.at(-1) - hits[0]) / (hits.length - 1) < 1.15) hits = hitsFor('bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
-    if (hits.length < 3 && id !== 'ramp') continue;
-    if (id === 'ramp') {
-      const a = (M?.arrivals?.(0.2) ?? []).find(x => x.t > from + 2 && x.t < to - 2)?.t ?? (from + to) / 2, k = rampTrack(G, { hit: a });
-      if (k) { G.uTrack = k; (G.moves ??= []).push({ id: 'ramp', hit: a }); }
-      continue;
+    // A long stay has to earn it: one thing after another, a dozen seconds or so each. A hold's fair if something's happening.
+    const parts = Math.max(1, Math.min(4, Math.round(body / 13)));
+    for (let part = 0; part < parts; part++) {
+      const from = start + (body * part) / parts, to = start + (body * (part + 1)) / parts;
+      let id = null;
+      for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (fits(c, G) && !G.moves?.some(m => m.id === c) && !(c === 'ramp' && part)) { id = c; at = (at + n + 1) % rotation.length; break; } }
+      if (!id) continue;
+      const beats = (id === 'pump' || id === 'wring' || id === 'ratchet' || id === 'bellows' || id === 'scissor' || id === 'turnover') ? 'half' : 'bar';
+      // A tile takes one edge a second, near enough, and the rings are already using most of that. So never faster than a hit every so often, whatever the tempo.
+      let hits = hitsFor(beats, { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
+      if (hits.length > 1 && (hits.at(-1) - hits[0]) / (hits.length - 1) < 1.15) hits = hitsFor('bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
+      if (hits.length < 3 && id !== 'ramp') continue;
+      if (id === 'ramp') {
+        const a = (M?.arrivals?.(0.2) ?? []).find(x => x.t > from + 2 && x.t < to - 2)?.t ?? (from + to) / 2, k = rampTrack(G, { hit: a });
+        if (k) { G.uTrack = k; (G.moves ??= []).push({ id: 'ramp', hit: a }); }
+        continue;
+      }
+      const m = { id, beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - from, 0.5)), coast: Math.min(bar, Math.max(to + 0.5 * bar - hits.at(-1), 0.5)), from, to };
+      // The film's own need setting up by their own cue, which goes in bars.
+      if (id === 'scissor') { m.lead = 0.5; m.coast = 1; m.every = 4; if (!MOVES.scissor.cue(m, { score, A, M, G, at: x => x, bar, beat: M?.beat ?? 0.5, meter: M?.meter ?? 4, tau: score.tau })) continue; }
+      (G.moves ??= []).push(m);
     }
-    const m = { id, beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - G.t0, 0.5)), coast: Math.min(bar, Math.max(G.t1 - hits.at(-1), 0.5)), from: G.t0, to };
-    // The film's own need setting up by their own cue, which goes in bars.
-    if (id === 'scissor') { m.lead = 0.5; m.coast = 1; m.every = 4; if (!MOVES.scissor.cue(m, { score, A, M, G, at: x => x, bar, beat: M?.beat ?? 0.5, meter: M?.meter ?? 4, tau: score.tau })) continue; }
-    (G.moves ??= []).push(m);
   }
   // A colour run now and then: what's born while this one's on wears a cycle, not the tune. Every so often, and never two together.
   const CYCLE = ['fire', 'sea', 'rainbow', 'stick'];
