@@ -39,7 +39,7 @@ export function cast(score, A, M) {
 }
 
 // The ways across. The dusk line's the signature. Between two places on the road or the land it's that, and into a room from outside it's the light that does it.
-const WEIGHT = { line: 3, flare: 2, fall: 2, settle: 2 };
+const WEIGHT = { line: 3, flare: 2, fall: 2, settle: 1.2 };
 export function landings(score) {
   const g = score.gestures, used = {};
   let prev = null;
@@ -66,9 +66,11 @@ export function moves(score, A, M) {
   for (let i = 1; i + 1 < g.length; i++) {
     const G = g[i], start = G.t0 + 0.5, end = G.t1 - (G.morph || 0), body = end - start;
     if (body < 2.5 * bar) continue;
+    // A land's field isn't continuous, and in a mirror its crests only come out as lace. It can have the slit.
+    const isLand = G.pattern.group === 'land';
     if (++since >= 3 && body >= 6 && !G.pattern.lake && !G.pattern.g?.rot) {
-      const id = BIG[big % BIG.length], made = id === 'slit' ? MOVES.slit.cue({ id, beats: 'strong', map: 'sweep', D: Math.min(body, 2 * bar), from: start, to: end }, ctxOf(G)) : MOVES[id].cue({ id, from: G.t0, to: end, open: Math.min(3, (0.3 * body) / bar), close: Math.min(2.5, (0.22 * body) / bar) }, ctxOf(G));
-      big++;
+      const id = isLand ? 'slit' : BIG[big % BIG.length], made = id === 'slit' ? MOVES.slit.cue({ id, beats: 'strong', map: 'sweep', D: Math.min(body, 2 * bar), from: start, to: end }, ctxOf(G)) : MOVES[id].cue({ id, from: G.t0, to: end, open: Math.min(3, (0.3 * body) / bar), close: Math.min(2.5, (0.22 * body) / bar) }, ctxOf(G));
+      if (!isLand) big++;
       if (made) { G.moves = [made]; since = 0; continue; }
     }
     const parts = Math.max(1, Math.min(3, Math.round(body / 12)));

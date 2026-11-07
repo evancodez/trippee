@@ -26,7 +26,8 @@ const easeX = x => x * x * (3 - 2 * x);
 const WIDE = 0.6;
 const across = (id, opts) => ({
   id, enter: glideEnter,
-  levers: { 'a wider front': G => { if (!G.xform || G.xform.W) return null; G.xform.W = 0.85; return () => { delete G.xform.W; }; } },
+  // What a rehearsal that's watched a flash can try in one of these before it takes longer. Where two fields are a long way apart, drifting across all at once goes by a tile too quickly: a front goes a part of the frame at a time.
+  levers: opts.dir ? { 'a wider front': G => { if (!G.xform || G.xform.W) return null; G.xform.W = 0.85; return () => { delete G.xform.W; }; } } : { 'a front instead': G => { const was = G.xform; if (!was || was.id !== id) return null; G.xform = { id: 'line', chosen: true, W: 0.85 }; delete G.plan; return () => { G.xform = was; delete G.plan; }; } },
   plan(a, b, ctx) {
     if (!flat(a) || !flat(b) || ctx.D < 3) return null;
     // Nobody chose (a wander, or a film that didn't say): it isn't always the one thing. Which goes by the two patterns, so the same two always go the same way.

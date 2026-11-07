@@ -81,19 +81,23 @@ export default {
     const wa = waterOf(G, t), wb = N ? waterOf(N, t) : wa;
     E[9] = wa + (wb - wa) * Tx; E[10] = 1; E[11] = t * 0.55;
     // The rings of light out of the sun, on the strong beats. It gathers just before, and it's at its height on the beat, and then it goes out. The two nearest in time, one of which may not have left yet.
-    let r0 = 0, a0 = 0, r1 = 0, a1 = 0;
-    const P = score.react?.pulses, Dp = score.react?.depths, songT = score.react?.M?.T ? score.react.M.T(c) : c;
+    let r0 = 0, a0 = 0, r1 = 0, a1 = 0, strong = 0;
+    const pulsesAt = score.react?.pulses, time = score.time ?? (x => x), P = pulsesAt ? (score.duskPulses ??= Array.from(pulsesAt, time)) : null;
     if (P?.length) {
       let lo = 0, hi = P.length - 1;
-      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= songT) lo = m; else hi = m - 1; }
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= t) lo = m; else hi = m - 1; }
       const one = k => {
         if (k < 0 || k >= P.length) return [0, 0];
-        const x = songT - P[k], drums = Math.min(1, 0.4 + 0.6 * (s?.gains?.drums ?? 1));
+        const x = t - P[k], drums = Math.min(1, 0.4 + 0.6 * (s?.gains?.drums ?? 1));
         return x < -GATHER ? [0, 0] : x < 0 ? [0.12, RING * smooth((x + GATHER) / GATHER) * drums] : [0.12 + 1.6 * x, RING * Math.exp(-x / 1.05) * drums];
       };
-      const near = P[lo + 1] != null && P[lo + 1] - songT < GATHER ? lo + 1 : lo;
+      const near = P[lo + 1] != null && P[lo + 1] - t < GATHER ? lo + 1 : lo;
       [r0, a0] = one(near); [r1, a1] = one(near - 1);
+      // And the whole picture breathes with it, just a little: the tails lengthen into the strong beat, and let go after it.
+      const n1 = P[lo + 1], gather = n1 != null && n1 - t < GATHER ? smooth(1 - (n1 - t) / GATHER) : 0, after = Math.exp(-(t - P[lo]) / 0.55);
+      strong = Math.max(gather, t >= P[lo] ? after : 0);
     }
+    E[4] = Math.max(0.05, E[4] * (1 + 0.28 * strong * (1 - hold))); E[7] += 0.03 * strong * (1 - hold);
     E[12] = r0; E[13] = a0 * (1 - hold); E[14] = r1; E[15] = a1 * (1 - hold);
     // The dusk line's leak, the sun's path, the tremolo's ribs.
     const leak = plan && LEAK[kind] ? LEAK[kind] : 0, pa = G?.pattern?.path ?? 0, pb = N?.pattern?.path ?? 0;
@@ -142,8 +146,8 @@ export default {
     // A string rings on the strong beat, at the room's own rate: anything that's lines.
     if (P?.length && s) {
       let lo = 0, hi = P.length - 1;
-      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= songT) lo = m; else hi = m - 1; }
-      const x = songT - P[lo];
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (P[m] <= t) lo = m; else hi = m - 1; }
+      const x = t - P[lo];
       if (x >= 0) {
         const ring = geo * 0.02 * Math.exp(-x / Math.max(air * 0.35, 0.6)) * Math.sin(Math.min(x * 3, 1) * Math.PI / 2) * Math.cos(x * 7.5);
         for (const [S, p] of [[A, G?.pattern], [B, N?.pattern]]) if (p && (p.group === 'strings' || p.group === 'road') && S[OFF['bend2.a']] === 0) { S[OFF['bend2.a']] = ring; S[OFF['bend2.f']] = 3.1; S[OFF['bend2.ang']] = 0.02; }

@@ -71,7 +71,8 @@ const rays = pool.find(p => p.id === 'dusk.rays');
 rays.g.field = { kind: 0, a: 0, b: 0, ph: 0 }; rays.g['field.k0'] = 0; rays.g.fams = [{ t1: 22, ph: 0.25 }]; rays.g['p1.x'] = -0.5; rays.g['p1.y'] = -0.38; rays.g['p1.q'] = 0; rays.flow = {}; rays.drive = (out, { OFF, phi }) => { out[OFF['f0.ph']] += 0.5 * phi; };
 for (const id of ['dusk.strings', 'dusk.harmonics', 'dusk.windows']) { const p = pool.find(x => x.id === id); p.g.field = { kind: 0, a: 0, b: 0, ph: 0 }; p.g['field.k0'] = 0; }
 // The film's own patterns, in this evening's light: ones with one or two families and no field of their own, which is what a tail can show. Copies, so that a click on one can come by this world's way across, and the library's own stay as they are.
-const film = (from, name) => { const o = byId[from]; return o ? [{ ...o, id: `dusk.${from}`, name: name ?? o.name, group: 'film', family: 'dusk', pool: true, cam: 'sheet', lamps: 0 }] : []; };
+// Bolder than the film has them: a tail wants room, and fewer lines have less far to go in a landing.
+const film = (from, name) => { const o = byId[from]; return o ? [{ ...o, id: `dusk.${from}`, name: name ?? o.name, group: 'film', family: 'dusk', pool: true, cam: 'sheet', lamps: 0, g: { ...o.g, freq: (o.g.freq ?? 1) * 0.62 } }] : []; };
 pool.push(...film('lines.river'), ...film('lines.fall'), ...film('waves.current'), ...film('pole.whirl'), ...film('pole.dipole'), ...film('rooms.nested'), ...film('void.zebra'), ...film('checks.vega'), ...film('rooms.arrows'), ...film('riley.metamorphosis'));
 // How a click on each comes: by this world's own ways across. The next place comes into the window, the light does it, or it drifts.
 const COMES = { land: 'line', road: 'line', strings: 'settle', room: 'flare', film: 'fall' };
