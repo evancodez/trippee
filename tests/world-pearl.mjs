@@ -198,12 +198,8 @@ async function stages({ page, log, save, sleep }) {
     const info = await page.eval(() => {
       const s = app.stage.score, T = s.tables, g = s.gestures;
       return {
-        bpm: s.song?.bpm, meter: s.song?.meter, N: T?.N, rings: T?.rings, cadences: T?.cadences?.map(c => ({ t: +c.t.toFixed(2), from: +c.from.toFixed(2), to: +c.to.toFixed(2), held: +c.held.toFixed(1) })),
-        gestures: g.map(G => `${G.pattern.id.slice(7)} ${G.t0.toFixed(1)}-${G.t1.toFixed(1)} m${(G.morph ?? 0).toFixed(1)} ${G.xform?.id ?? '-'} ${(G.moves ?? []).map(m => m.id).join('+')}`),
-        sets: Array.from(T?.set ?? []).join('').replace(/(.)\1+/g, (m, c) => `${c}x${m.length} `),
-        inks: T?.inks, on: T?.on, blooms: Array.from(T?.bloom ?? []).slice(0, 64).join(''), grounds: Array.from(T?.ground ?? []).slice(0, 64).join(''),
-        guard: app.song.rehearsal?.flash ?? null, refused: s.refused ?? null,
-        ringsPerS: (s.phi(60, g[0]) - s.phi(50, g[0])) * 6 / 10, buzzMean: T ? +(T.buzz.reduce((a, b) => a + b, 0) / T.buzz.length).toFixed(3) : null, buzzMax: T ? +Math.max(...T.buzz).toFixed(2) : null,
+        bpm: s.song?.bpm, meter: s.song?.meter, gestures: g.map(G => `${G.pattern.id.slice(6)} ${G.t0.toFixed(1)}-${G.t1.toFixed(1)} m${(G.morph ?? 0).toFixed(1)} ${G.xform?.id ?? '-'} ${(G.moves ?? []).map(m => m.id).join('+')}`),
+        washes: T?.washes?.map(w => `${w.t.toFixed(0)}:${w.s}`).join(' '), whoa: T?.whoa ?? null, guard: app.song.rehearsal?.flash ?? null, refused: s.refused ?? null,
       };
     });
     log(JSON.stringify(info, null, 0));
@@ -215,6 +211,30 @@ async function stages({ page, log, save, sleep }) {
     // Two frames to look at closely
     const shots = await page.eval(a => { trippee.seek(a + 2); const x = trippee.capture(); trippee.seek(a + 13); return [x, trippee.capture()]; }, a);
     save(`film-${song}-a.png`, shots[0]); save(`film-${song}-b.png`, shots[1]);
+  }
+  if (want.includes('walk')) {
+    // The whole film, as a contact sheet of its own frames at a good size. SONG=..., N=frames, FROM, TO, COLS
+    const songPath = process.env.SONG || 'media/wildflower.mp3', song = basename(songPath).replace(/\.\w+$/, '');
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+    await sleep(400);
+    await dropSong(page, songPath, { resolvePath: resolve, sleep });
+    await enterWorld(page, 'pearl', log);
+    const r = await page.eval(async (N, from, to, cols, tw) => {
+      const d = app.song.duration, a = from || 4, b = to || d - 2, h = Math.round(tw * 9 / 16), rows = Math.ceil(N / cols), cv = document.createElement('canvas'); cv.width = cols * tw; cv.height = rows * h;
+      const g = cv.getContext('2d'); g.font = '12px monospace'; const lines = [];
+      for (let i = 0; i < N; i++) {
+        const t = a + (b - a) * (i + 0.5) / N; trippee.seek(t); for (let k = 0; k < 40 && app.lastFrame.N && !app.lastFrame.kind && app.lastFrame.morph; k++) { await new Promise(r => setTimeout(r, 4)); trippee.seek(t); }
+        const f = app.lastFrame, x = (i % cols) * tw, y = Math.floor(i / cols) * h;
+        g.drawImage(trippee.canvas, x, y, tw, h); const lab = `${t.toFixed(1)} ${f.G.pattern.id.slice(6)} ${f.kind ?? ''} ${(f.G.moves ?? []).map(m => m.id).join('+')}`;
+        g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(x, y, g.measureText(lab).width + 6, 15); g.fillStyle = '#fff'; g.fillText(lab, x + 3, y + 11); lines.push(lab);
+        if (i % 3 === 0) await new Promise(r => setTimeout(r));
+      }
+      const s = app.stage.score;
+      return { sheet: cv.toDataURL('image/jpeg', 0.88), lines, gestures: s.gestures.map(G => `${G.pattern.id.slice(6)} ${G.t0.toFixed(1)}-${G.t1.toFixed(1)} m${(G.morph ?? 0).toFixed(1)} ${G.xform?.id ?? '-'} ${(G.moves ?? []).map(m => m.id).join('+')}`), whoa: s.tables?.whoa ?? null, washes: s.tables?.washes?.map(w => `${w.t.toFixed(0)}:${w.s}`).join(' ') };
+    }, +(process.env.N || 36), +(process.env.FROM || 0), +(process.env.TO || 0), +(process.env.COLS || 6), +(process.env.TW || 320));
+    save(process.env.NAME || `walk-${song}.jpg`, r.sheet);
+    log(r.gestures.join('\n')); log('whoa', JSON.stringify(r.whoa)); log('washes', r.washes);
+    const errs = page.logs.filter(l => /\[error\]|\[exception\]/.test(l)); if (errs.length) log('page errors', errs.slice(0, 4).join('\n'));
   }
   if (want.includes('change')) {
     // From the film into the world and out again: x .46-.54 byte for byte the film's own flight, the program swapped in the middle, and a sheet to look at. Copied from tests/worlds.mjs, STAGE=change.

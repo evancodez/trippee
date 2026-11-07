@@ -209,11 +209,11 @@ vec3 worldColor(int k0,int k1,float c){
   vec4 W=uW[29]; float s=W.y>0.?clamp((W.x-dot(p0,W.zw))/W.y,0.,1.):W.x;
   s=s*s*(3.-2.*s);
   vec3 A=c>0.?wSheen(o,0,s):vec3(0.),B=c<1.?wSheen(o+b.y,1,s):vec3(0.),col=mix(B,A,c);
-  // Bloom: a soft copy of the bright side, added as light. It needs no second picture, since the filter's exact however wide.
+  // Bloom: a soft copy of the bright side, as light. It needs no second picture, since the filter's exact however wide. By screen, so a pastel stays a pastel and doesn't go out to white.
 #ifdef WORLD_CELLS
-  if(V.z!=0.&&uW[0].x<.5&&gRnd[k0/FAM]==0.&&gSum[k0/FAM]==0.){ float g=wTap(k0,k1,th,k,0.,1.+.09*uF[8].y/px); col+=V.z*g*g*wSheen(o+140.,0,s); }
+  if(V.z!=0.&&uW[0].x<.5&&gRnd[k0/FAM]==0.&&gSum[k0/FAM]==0.){ float g=wTap(k0,k1,th,k,0.,1.+.09*uF[8].y/px); col=1.-(1.-col)*(1.-V.z*g*g*wSheen(o+140.,0,s)); }
 #endif
-  col*=1.+V.w+light+.5*min(wBlurNow*2.2,.3);
+  col=1.-(1.-col)*(1.-V.w-light-.3*min(wBlurNow*2.2,.3));
   return gamma(col);
 }
 `;

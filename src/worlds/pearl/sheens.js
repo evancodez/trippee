@@ -35,10 +35,10 @@ export const SHEENS = [
   bake({ name: 'heaven', light: [0xffcfa4, 0xffa3c4, 0xe99aff, 0xffb9d6, 0xffdc9c], deep: [0x2a8fae, 0x2a60b6, 0x5a3eb6, 0xa23a8c, 0x1f7f9e], mist: [70, 90, 150], white: [255, 232, 232] }),
   // Milk: warm, blush and butter, over clay and mauve.
   bake({ name: 'milk', light: [0xfff5de, 0xffe5d0, 0xffdce0, 0xf7e2ec, 0xfff0c7], deep: [0xdba78e, 0xcf98a8, 0xba9ac2, 0xd59a96, 0xe2b98a], mist: [214, 190, 186], white: [255, 250, 240] }),
-  // Bluebell: violet and silver.
-  bake({ name: 'bluebell', light: [0xdcd3ff, 0xb9c5ff, 0xcbe1ff, 0xecd2ff, 0xc4ccff], deep: [0x5a4fc6, 0x3f5cc0, 0x7a40c2, 0x4b76ca, 0x6448c8], mist: [120, 120, 190], white: [242, 240, 255] }),
-  // Treasure: gold leaf and wine.
-  bake({ name: 'treasure', light: [0xf7e2ae, 0xf0c79e, 0xe8afa8, 0xf4d0c0, 0xfbe8b8], deep: [0x7c3f70, 0x5b2d70, 0x8a4a60, 0x69306a, 0x8f4c52], mist: [110, 70, 110], white: [255, 240, 214] }),
+  // Bluebell: violet and silver, with a little rose and sea in the deep.
+  bake({ name: 'bluebell', light: [0xdcd3ff, 0xb9c5ff, 0xcbe1ff, 0xecd2ff, 0xc4ccff, 0xf3dcf2], deep: [0x6a5bcb, 0x4f70c8, 0x8a56c4, 0xb066b0, 0x4f8fc0, 0x7055c8], mist: [130, 130, 190], white: [242, 240, 255] }),
+  // Treasure: gold leaf over wine and old blue.
+  bake({ name: 'treasure', light: [0xf9e6b6, 0xf5cfa8, 0xeeb4ae, 0xf6d6c6, 0xdde6c0, 0xfbe8b8], deep: [0x96477c, 0x6a4398, 0x3f6f90, 0x9a4f68, 0xa8607c, 0x7d4a92], mist: [130, 90, 130], white: [255, 240, 214] }),
 ];
 export const chips = [[250, 226, 232], [176, 232, 220], [202, 190, 248], [255, 244, 222]];
 // By how big the moment is.

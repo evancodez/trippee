@@ -45,7 +45,7 @@ export default {
     const clock = flowClock(score, A);
     score.phi = t => clock(t);
     cast(score, A, M);
-    landings(score);
+    landings(score, hearSong(A, M));
     moves(score, A, M);
     return score;
   },
@@ -76,11 +76,11 @@ export default {
     let thin = 1050 - 1450 * Math.pow(e, 1.2) + 480 * Math.sin(dr / 480), whoa = 0, bump = 620;
     const w = song?.whoa;
     if (w) { const q = smooth((t - (w.t - 11)) / 9) * (1 - smooth((t - w.t) / 7)); whoa = q; thin -= 520 * q; }
-    set(28, thin, bump, 0.2 + 0.1 * (1 - e) + 0.06 * lung, 0.05 * lung + 0.03 * tone);
+    set(28, thin, bump, 0.12 + 0.08 * (1 - e) + 0.05 * lung, 0.03 * lung + 0.02 * tone);
     const sh = sheenAt(song, t), dx = Math.cos(sh.dir - 1.57), dy = Math.sin(sh.dir - 1.57), width = 1.3;
     set(29, -2.2 + sh.x * (4.4 + width), width, dx, dy);
     set(30, 0.11 + 0.1 * lung, 0.66 + 0.1 * (1 - e), 0.018 + 0.012 * lung, 0);
-    set(31, kind === 'breath' ? 0.3 : 0.2, 40 + 110 * e, 0, 0);
+    set(31, kind === 'breath' ? 0.16 : 0.2, 40 + 110 * e, 0, 0);
     // The pearls: the voice, and its echoes along the same path, each a beat or two behind.
     for (let i = 0; i < ORBS; i++) {
       voiceSpot(song, t - i * ORB_LAG, spot);

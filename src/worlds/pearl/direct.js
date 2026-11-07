@@ -5,6 +5,7 @@ import { hitsFor } from '../../score/moves/surge.js';
 import { rampTrack } from '../../score/moves/ramp.js';
 import { MOVES } from '../../score/moves/index.js';
 import { base } from '../../score/slot.js';
+import { voiceSpot } from './song.js';
 
 const SHARE = { contact: 0.3, water: 0.28, shell: 0.27, op: 0.15 };
 const rng = seed => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216; };
@@ -36,13 +37,14 @@ export function cast(score, A, M) {
 
 // The ways across: a rack from where the voice is, a drain down the frame, a breath. Each from its own place. Never the same twice running.
 const WAYS = ['rack', 'drain', 'breath', 'rack', 'rim'];
-export function landings(score) {
+export function landings(score, song) {
+  const spot = [0, 0, 0];
   const g = score.gestures;
   let at = 0;
   for (let i = 0; i + 1 < g.length; i++) {
     const G = g[i], way = WAYS[at++ % WAYS.length];
     if (way === 'rim') G.xform = { id: 'rack', dir: 1, W: 0.6, chosen: true };
-    else if (way === 'rack') G.xform = { id: 'rack', dir: 2, centre: [[-0.7, 0.2], [0.8, -0.3], [0.1, 0.5], [-0.3, -0.5]][i % 4], chosen: true };
+    else if (way === 'rack') { voiceSpot(song, G.t1 - (G.morph || 0) * 0.7, spot); G.xform = { id: 'rack', dir: 2, centre: [spot[0], spot[1]], chosen: true }; }
     else G.xform = { id: way, chosen: true };
   }
 }

@@ -18,7 +18,8 @@ function partners(a, b) {
   return { pair, flip: [false, false, false, false], offset, close, open, ratio: 1 };
 }
 const enter = st => { st.theta = lerp(st.thA, st.thB, st.T); st.solid = lerp(st.sa, st.sb, st.T); st.moveA = true; st.moveB = true; };
-const flat = s => s[OFF['surf.kind']] < 0.5 && s[OFF['droste.lnS']] === 0;
+// Flat, or a flat sheet the camera's tipped (src/score/camera.js puts it on a plane). Each slot's drawn on its own sheet, so a tip's no obstacle: only a real surface is, with a horizon of its own.
+const flat = s => (s[OFF['surf.kind']] < 0.5 || (s[OFF['surf.kind']] < 1.5 && s[OFF['surf.map']] < 0.5 && Math.abs(s[OFF['q.xx']]) + Math.abs(s[OFF['q.yy']]) + Math.abs(s[OFF['q.xy']]) < 1e-4)) && s[OFF['droste.lnS']] === 0;
 
 function write(st, A, B, F) {
   const { plan, T, x } = st;
