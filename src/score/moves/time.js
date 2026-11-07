@@ -10,14 +10,16 @@ import { clamp, lerp, smoother, evalTrack } from '../curves.js';
 import { val } from './long.js';
 import { surged, handClock, cueHits, clockOf, ampOf } from './surge.js';
 import { flag } from '../flags.js';
+import { hearEase } from '../hear.js';
 
 const TAU = Math.PI * 2;
 const rtH = (H, arr, t) => { if (!H || !arr) return 0; const x = clamp(t * H.hz, 0, H.n - 1.001), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
 const rdR = (R, arr, c) => { const x = clamp(c * R.hz, 0, R.n - 1.001), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
 // What the music's doing at the song's own second: the tune, a big moment, how loud.
+// Where the rehearsal found the layer making a flash it gives way (hearEase), and what a trick takes from it goes with it.
 function heard(score, tReal) {
-  const H = score.hear, R = score.heard, on = score.hearNow > 0;
-  return { hit: on ? Math.min(1, rtH(H, H?.hit, tReal)) : 0, mel: on && R?.melNow ? rdR(R, R.melNow, R.C ? R.C(tReal) : tReal) : 0, loud: on ? rtH(H, H?.e, tReal) : 0.5 };
+  const H = score.hear, R = score.heard, on = score.hearNow > 0, k = on ? hearEase(score, tReal) : 0;
+  return { hit: on ? Math.min(1, rtH(H, H?.hit, tReal)) * k : 0, mel: on && R?.melNow ? rdR(R, R.melNow, R.C ? R.C(tReal) : tReal) * k : 0, loud: on ? lerp(0.5, rtH(H, H?.e, tReal), k) : 0.5 };
 }
 // The clock of strong beats: whole on each hit, worn or picked. And how much of it is on: a cut's lane or lead and coast, or by hand, up over a few seconds once the picture's arrived.
 const beatsAt = (c, m) => (m.beats ? evalTrack(clockOf(m), c.t) : timeClock(c));
@@ -111,7 +113,7 @@ function firstOpen(s) {
 function heardAt(c, k, m) {
   const H = c.score.hear;
   if (!H || !(c.score.hearNow > 0)) return 0;
-  return m._hitK === k ? m._hitV : (m._hitK = k, m._hitV = Math.min(1, rtH(H, H.hit, c.tReal)));
+  return m._hitK === k ? m._hitV : (m._hitK = k, m._hitV = Math.min(1, rtH(H, H.hit, c.tReal)) * hearEase(c.score, c.tReal));
 }
 const ghost = {
   id: 'ghost',

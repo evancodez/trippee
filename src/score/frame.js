@@ -14,7 +14,7 @@ import { planSteps } from './xform/plan.js';
 import { xformOf } from './xform/index.js';
 import { songSheet, openFamilies, melOf } from './song-sheet.js';
 import { handSheet } from './hand-sheet.js';
-import { hearSheet, hearStart } from './hear.js';
+import { hearSheet, hearStart, hearEase } from './hear.js';
 import { wearOne } from './camera.js';
 import { timeSheet } from './time-sheet.js';
 
@@ -138,7 +138,8 @@ export function frame(score, t, R, edits) {
   // How far the layer that follows the song is turned up: src/score/hear.js. At 0 nothing it does reaches this frame.
   const hearNow = score.hear ? edits?.hear ?? hearStart() : 0;
   score.hearNow = hearNow;
-  if (score.walk) { score.walk.on = hearNow; score.walk.gain = hearNow * Math.min(1.5, edits?.reactPulse ?? 1); }
+  // The stride goes down with everything else the layer does where the rehearsal found it flashing (hearEase), or giving way there can't clear what the stride makes. Off, it's 0 either way.
+  if (score.walk) { score.walk.on = hearNow; score.walk.gain = hearNow > 0 ? hearNow * Math.min(1.5, edits?.reactPulse ?? 1) * hearEase(score, tReal) : 0; }
   // rho: how much of that clock's speed is left, as it slows into or picks up out of a transformation. A film that walks needs it, and every other clock ignores it.
   const phiOf = (gg, tt, sc = score, rho) => (sc.phi ? (rho == null ? sc.phi(tt, gg) : sc.phi(tt, gg, t, rho)) : tt * 0.25);
   const walkT = hearNow > 0 && score.walk ? (tt, rho = 1) => tt + rho * score.walk(t) : null;

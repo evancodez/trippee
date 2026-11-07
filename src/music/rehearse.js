@@ -559,7 +559,7 @@ async function rehearseOn(R, lent, score, until, onProgress = () => {}, { lastTr
   lap('guard', was); was = performance.now();
   if (flash && onFilm && score.woah && !opening) flash.swaps = await guardWoah(R, score, seen, flash, ctxG);
   lap('swaps', was); was = performance.now();
-  if (flash && score.hear && hearing.on) await guardHeard(R, score, until, colour, ctxG);
+  if (flash && score.hear && hearing.on) await guardHeard(R, score, until, colour, ctxG, seen);
   lap('heard', was);
   ch.port1.close();
   const sitOut = [...new Set(rides.filter(r => r.sitsOut).map(r => r.id))];
@@ -665,10 +665,13 @@ const forget = G => { if (G) G.plan = G.planFor = G.planning = null; };
 
 // ---------------------------------------------------------------- the layer that follows the song
 // Everything above looks at the film with this layer off. So here it's on: the film as it's seen, and for the second or so around whatever's still flashing, the layer itself gives way (score.hear.ease), a little more each time it doesn't clear, and nowhere else. It takes nothing from the rest of the song. What flashes with it all the way down is the film's own.
-const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_SUB_WORLD = 2, HEAR_LOOKS = 8, HEAR_MOST = 2000;      // HEAR_LOOKS: close looks it has to spend, per second of film
+// All of the song is looked at, coarsely, and only what that finds is looked at close up, the worst first. A stretch that flashes as much with the layer off (the first pass's look, on the same frames) is the film's own: giving way there can't clear it, so no look is spent on it.
+// Once the close looks have run out, what the coarse look found is still there: it gives way on that, and nothing it hasn't looked at is taken as fine.
 const CAM_TRIES = 5, CAM_RATE = 0.3;
-async function guardHeard(R, score, until, colour, ctx) {
+const HEAR_ROUNDS = [0.55, 0.3, 0.12], HEAR_EDGE = 0.35, HEAR_EDGE_FILM = 0.9, HEAR_SUB_WORLD = 2, HEAR_LOOKS = 8, HEAR_KEEP = 0.8;      // HEAR_EDGE_FILM: how long the film's layer takes to give way and come back. Over a third of a second, taking the beat's push out turned the whole frame over by itself (Wildflower 141 and 171 s). HEAR_LOOKS: close looks it has to spend, per second of film. HEAR_KEEP: a dip that leaves more than this share of what was flashing gives the layer back
+async function guardHeard(R, score, until, colour, ctx, film = null) {
   const H = score.hear, g = score.gestures, edits = { hear: 1 }, fps = (colour ? HEAR_SUB_WORLD : FILM_SUB) / STEP, HH = colour ? FLASH_H : FLASH_H_FILM, W = Math.max(8, Math.round(HH * ctx.aspect)), n = Math.ceil(until * fps);
+  const t0 = performance.now(), stats = { stretches: 0, own: 0, close: 0, coarse: 0, fine: 0, back: 0 };
   const seen = new FlashSeen(n + 1, W, HH, fps, colour, !colour);
   const look = async (a, b) => {
     a = Math.max(0, a); b = Math.min(n + 1, b);
@@ -681,44 +684,93 @@ async function guardHeard(R, score, until, colour, ctx) {
     await eyes.flush();
   };
   await look(0, n + 1);
-  // What it's got to look with. Past that, whatever's left is said by the judge and not by this, and a film's load time doesn't depend on how much it has going on.
+  stats.scan = +((performance.now() - t0) / 1000).toFixed(2);
+  // What it's got to look close with, so a film's load time doesn't depend on how much it has going on. A coarse look costs SCAN_LOOK of one.
   let spent = 0;
-  const allowed = score.woah ? Math.min(HEAR_LOOKS * until, HEAR_MOST) : Infinity, count = k => { spent += k; }, close = (a, b, strict = false) => (spent > allowed ? { at: [], whole: 0 } : lookClose(R, score, a, b, ctx, count, edits, strict));
+  const allowed = score.woah ? HEAR_LOOKS * until : Infinity, count = k => { spent += k; }, close = (a, b, strict = false) => lookClose(R, score, a, b, ctx, count, edits, strict);
   const dips = H.dips = [];
-  const dip = (a, b, to) => { for (let i = Math.max(0, Math.floor((a - HEAR_EDGE) * H.hz)), e = Math.min(H.n - 1, Math.ceil((b + HEAR_EDGE) * H.hz)); i <= e; i++) { const t = i / H.hz, k = smoother((t - (a - HEAR_EDGE)) / HEAR_EDGE) * smoother((b + HEAR_EDGE - t) / HEAR_EDGE); H.ease[i] = Math.min(H.ease[i], 1 - (1 - to) * k); } };
+  const E = colour ? HEAR_EDGE : HEAR_EDGE_FILM;
+  const dip = (a, b, to) => { for (let i = Math.max(0, Math.floor((a - E) * H.hz)), e = Math.min(H.n - 1, Math.ceil((b + E) * H.hz)); i <= e; i++) { const t = i / H.hz, k = smoother((t - (a - E)) / E) * smoother((b + E - t) / E); H.ease[i] = Math.min(H.ease[i], 1 - (1 - to) * k); } };
   const fine = new Set();
   let left = 0;
-  for (const to of HEAR_ROUNDS) {
-    left = 0;
+  if (colour) {
     // In a world only the whole frame, at the small size it's looked at here: read this coarsely a tile's mostly false alarms, and giving way for those would be most of the film.
-    for (const w of stretches(seen.over(0, seen.n, colour), fps)) {
-      const key = w.b.toFixed(1);
-      if (fine.has(key)) continue;
-      const at = colour ? [w.b - 0.5] : (await close(w.a, w.b)).at;
-      if (!at.length) { fine.add(key); continue; }
-      left++;
-      H.ease ??= new Float32Array(H.n).fill(1);
-      const a = Math.min(...at) - 1.05, b = Math.max(...at) + 0.1;
-      dip(a, b, to);
-      dips.push({ a: +a.toFixed(2), b: +b.toFixed(2), to });
-      const f0 = Math.floor((a - 1.5) * fps), f1 = Math.ceil((b + 1.5) * fps);
-      await look(f0, f1); count((f1 - f0) * SCAN_LOOK);
+    for (const to of HEAR_ROUNDS) {
+      left = 0;
+      for (const w of stretches(seen.over(0, seen.n, true), fps)) {
+        const key = w.b.toFixed(1);
+        if (fine.has(key)) continue;
+        left++;
+        H.ease ??= new Float32Array(H.n).fill(1);
+        const a = w.b - 0.5 - 1.05, b = w.b - 0.5 + 0.1;
+        dip(a, b, to);
+        dips.push({ a: +a.toFixed(2), b: +b.toFixed(2), to });
+        const f0 = Math.floor((a - 1.5) * fps), f1 = Math.ceil((b + 1.5) * fps);
+        await look(f0, f1); count((f1 - f0) * SCAN_LOOK);
+      }
+      if (!left) break;
     }
-    if (!left) break;
+    if (left) {
+      const stuck = stretches(seen.over(0, seen.n, true), fps).filter(w => !fine.has(w.b.toFixed(1))).map(w => w.b - 0.5);
+      const keep = dips.filter(d => !stuck.some(t => d.b > t - 1.3 && d.a < t + 0.2));
+      if (keep.length < dips.length) { H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
+    }
+  } else {
+    // The film without the layer, as the first pass saw it: the same frames, at the same size. A hand cut was looked at another way, and has no such look.
+    const own = film && !film.world && film.fps === fps && film.H === HH && film.W === W ? film : null;
+    const span = w => [Math.max(0, Math.floor(w.a * fps)), Math.min(seen.n, own ? own.n : seen.n, Math.ceil(w.b * fps) + 1)];
+    const coarse = (sn, [fa, fb]) => {
+      const at = sn.over(fa, fb), whole = [];
+      sn.overIn(i => sn.mean[i], FLASH_WHOLE, FILM_SWING_WHOLE, whole, fa, fb);
+      sn.overIn(i => sn.mean[i], FLASH_WHOLE, JUDGE_SWING, whole, fa, fb, JUDGE_WITHIN);
+      return { n: at.length, whole: whole.length, at: [...new Set(at)].sort((x, y) => x - y).map(i => i / fps) };
+    };
+    // How much of a stretch's flashing is the layer's: what the coarse look counts with it on, over what it counts with it off
+    const layer = w => { const f = span(w), on = coarse(seen, f), off = own ? coarse(own, f) : { n: 0, whole: 0 }; return { ...on, more: on.n - off.n, wholeMore: on.whole - off.whole }; };
+    const worst = (x, y) => y.q.wholeMore - x.q.wholeMore || y.q.more - x.q.more || x.a - y.a;
+    for (const to of HEAR_ROUNDS) {
+      left = 0;
+      const ws = stretches(seen.over(0, seen.n), fps).map(w => ({ ...w, key: w.b.toFixed(1), q: layer(w) })).filter(w => !fine.has(w.key));
+      if (to === HEAR_ROUNDS[0]) stats.stretches = ws.length;
+      for (const w of ws.sort(worst)) {
+        if (own && w.q.more <= 0 && w.q.wholeMore <= 0) { if (to === HEAR_ROUNDS[0]) stats.own++; continue; }      // the film's own: it flashes as much with the layer off
+        let at;
+        if (spent < allowed) { at = (await close(w.a, w.b)).at; stats.close++; }
+        else { at = w.q.at; stats.coarse++; }
+        if (!at.length) { fine.add(w.key); stats.fine++; continue; }
+        left++;
+        H.ease ??= new Float32Array(H.n).fill(1);
+        const a = Math.min(...at) - 1.05, b = Math.max(...at) + 0.1;
+        dip(a, b, to);
+        dips.push({ a: +a.toFixed(2), b: +b.toFixed(2), to, was: { n: w.q.n, whole: w.q.whole } });
+        const f0 = Math.floor((a - E - 1.2) * fps), f1 = Math.ceil((b + E + 1.2) * fps);
+        await look(f0, f1); count((f1 - f0) * SCAN_LOOK);
+      }
+      if (!left) break;
+    }
+    // What's still flashing with the layer nearly gone. If giving way took some of it, the dip stays: what's left is the film's own. If it took none, it's only left a dead second, so the layer has it back.
+    // And if the judge's own count, close up, finds nothing left, the dip is doing its job.
+    if (left) {
+      const back = new Set();
+      for (const w of stretches(seen.over(0, seen.n), fps)) {
+        if (fine.has(w.b.toFixed(1))) continue;
+        const near = dips.filter(d => d.b > w.a - 0.5 && d.a < w.b + 0.5);
+        if (!near.length) continue;
+        const now = layer(w), was = near.reduce((m, d) => ({ n: Math.max(m.n, d.was.n), whole: Math.max(m.whole, d.was.whole) }), { n: 0, whole: 0 });
+        if (now.whole < was.whole || now.n <= HEAR_KEEP * was.n) continue;
+        if (spent < allowed && !(await close(w.a, w.b, true)).at.length) continue;
+        for (const d of near) back.add(d);
+      }
+      if (back.size) { stats.back = back.size; const keep = dips.filter(d => !back.has(d)); H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
+    }
   }
-  // What's still flashing by the judge's own count with the layer nearly gone is the film's own. Giving way there has done nothing but leave a dead second, so the layer has it back.
-  if (left) {
-    const stuck = [];
-    for (const w of stretches(seen.over(0, seen.n, colour), fps)) if (!fine.has(w.b.toFixed(1))) stuck.push(...(colour ? [w.b - 0.5] : (await close(w.a, w.b, true)).at));      // what the judge itself would count: anything less and the dip's doing its job
-    const keep = dips.filter(d => !stuck.some(t => d.b > t - 1.3 && d.a < t + 0.2));
-    if (keep.length < dips.length) { H.ease.fill(1); dips.length = 0; for (const d of keep) { dips.push(d); dip(d.a, d.b, d.to); } }
-  }
-  // And the camera (src/score/camera.js): whatever's left, it goes more slowly past, and keeps that only if it helped.
-  if (score.camera && !colour) {
+  // And with no tricks (a hand cut, or ?woah=0), the camera (src/score/camera.js): whatever's left, it goes more slowly past, and keeps that only if it helped. It's the film's own camera, so
+  // the same with the layer off: a generated film's never got this far within its looks, and so doesn't do it at all.
+  if (score.camera && !colour && !score.woah) {
     let tried = 0;
     H.camSlowed = [];
     for (const w of stretches(seen.over(0, seen.n, false), fps)) {
-      if (tried >= (score.woah ? 3 : CAM_TRIES) || fine.has(w.b.toFixed(1))) continue;
+      if (tried >= CAM_TRIES || fine.has(w.b.toFixed(1))) continue;
       const was = await close(w.a, w.b);
       if (!was.at.length) continue;
       tried++;
@@ -730,6 +782,7 @@ async function guardHeard(R, score, until, colour, ctx) {
       else { score.camera.lag = kept; for (const G of g) if (G.t0 < b + 8 && G.t1 > a - 8) forget(G); }
     }
   }
+  H.guardStats = { ...stats, dips: dips.length, looked: +spent.toFixed(0), allowed: Number.isFinite(allowed) ? +allowed.toFixed(0) : null, seconds: +((performance.now() - t0) / 1000).toFixed(2) };
   return dips;
 }
 
