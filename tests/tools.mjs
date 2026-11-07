@@ -103,7 +103,7 @@ export default async ({ page, log, save, sleep }) => {
   const inWorld = id => (WORLD ? `(${JSON.stringify(id)}.length%app.stage.world._pool.length)` : '');
   const pat = id => page.eval(WORLD ? `app.hand.go(app.stage.world._pool[${inWorld(id)}],{dur:3})` : `app.hand.go(${JSON.stringify(id)},{dur:3})`).then(() => sleep(3400));
   const song = async () => {
-    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true})`);
+    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true}).then(() => true)`);
     for (let i = 0; i < 900; i++) { if (await page.eval('app.song.playing')) break; await sleep(100); }
     await sleep(8000);
     await page.eval('app.song.seek(30)'); await sleep(1500);

@@ -121,7 +121,8 @@ export default async ({ page, log, save, sleep }) => {
   };
   let songIn = false;
   const song = async () => {
-    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true})`);
+    // Not the song itself as the answer: sent back by value it's the whole film, its camera's tables and every route, and building that ran the page out of memory (the renderer died at 2-3 GB and the run waited for ever)
+    await page.eval(`app.song.load('/media/ppp.mp3',{autoplay:true}).then(() => true)`);
     for (let i = 0; i < 900; i++) { if (await page.eval('app.song.playing')) break; await sleep(100); }
     songIn = true;
     await sleep(8000);   // past the film's way in

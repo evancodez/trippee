@@ -62,6 +62,7 @@ reapOrphans();
 const slot = await takeSlot();
 process.on('exit', () => { try { rmSync(slot, { force: true }); } catch {} });
 
+const labT0 = Date.now();
 const freePort = () => new Promise(res => { const s = createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const out = resolve(opt('out', 'lab-out'));
@@ -113,6 +114,13 @@ listeners.push(m => {
 });
 await send('Runtime.enable');
 await send('Page.enable');
+// A page whose renderer has died never answers, and a run would wait on it for ever. Say so and stop.
+listeners.push(m => {
+  if (m.method !== 'Inspector.targetCrashed') return;
+  console.log(`lab: the page crashed (its renderer died), ${((Date.now() - labT0) / 1000).toFixed(0)} s in`);
+  finish(3);
+});
+await send('Inspector.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
 
 const save = (name, data) => {
