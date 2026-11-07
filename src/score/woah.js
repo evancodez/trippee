@@ -187,14 +187,15 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     const end = bodyOf(G)[1], copyOut = (H, T) => { for (const f of ['morph', 'peak', 'xform', 'rise', 'noGlide', 'kindOut', 'label', 'visit', 'part', 'quick']) { if (T[f] === undefined) delete H[f]; else H[f] = T[f]; } };
     // What's left after it, as itself
     let after = null;
-    if (end - to >= OWN_LEAST + OWN_MORPH) {
-      const rest = G.moves?.some(m => m.id === 'relay') ? { ...G, moves: G.moves.filter(m => m.id === 'relay').map(m => { const o = { ...m, on: m.on?.filter(u => u - (m.lead ?? 2) > to + 0.3) }; delete o._w; if (o.on && !o.on.length) o.on = [G.t1 + 3600]; return o; }), t0: to } : film.remake({ k: G.k, t0: to, t1: G.t1 }, G.pattern);
+    const out = to + OWN_MORPH;      // its transformation out starts when the trick's run out, on a plain sheet
+    if (end - out >= OWN_LEAST + OWN_MORPH) {
+      const rest = G.moves?.some(m => m.id === 'relay') ? { ...G, moves: G.moves.filter(m => m.id === 'relay').map(m => { const o = { ...m, on: m.on?.filter(u => u - (m.lead ?? 2) > to + 0.3) }; delete o._w; if (o.on && !o.on.length) o.on = [G.t1 + 3600]; return o; }), t0: out } : film.remake({ k: G.k, t0: out, t1: G.t1 }, G.pattern);
       copyOut(rest, G);
       rest.k = G.k;
       after = rest;
     }
-    const own = film.remake({ k: G.k, t0: from - (from > G.t0 ? 0 : 0), t1: after ? to : G.t1 }, pattern);
-    own.k = G.k; own.t1 = after ? to : G.t1;
+    const own = film.remake({ k: G.k, t0: from, t1: after ? out : G.t1 }, pattern);
+    own.k = G.k; own.t1 = after ? out : G.t1;
     if (after) { own.morph = OWN_MORPH; own.kindOut = 'level'; own.label = G.label; own.visit = G.visit; own.part = G.part; own.quick = G.quick; delete own.peak; delete own.xform; }
     else copyOut(own, G);
     own.fixedRange = true; own.range = [0, 1]; own.arcEnd = own.t1 - (own.morph || 0); own.arcs = [];
@@ -329,6 +330,8 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
       if (!c) return null;
       on = c.G;
     }
+    to = Math.min(to, bodyOf(on)[1]);
+    if (to - Math.max(from, on.t0) < 4) return null;
     const made = MAKE[id](on, Math.max(from, on.t0), to, s, more);
     const m = made && cueIt(id, made, on);
     if (!m) return null;
