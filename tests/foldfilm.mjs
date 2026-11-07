@@ -25,15 +25,27 @@ const CUTS = {
     { at: 0, id: 'lines.fall', arcs: true },
     { at: 47.51, from: 39.83, id: 'rooms.nested', via: 'plain', moves: [{ id: 'fan', open: 3, close: 2 }] },
     { at: 77.75, from: 72, id: 'lines.fall', via: 'plain', moves: [{ id: 'forever', open: 2, close: 2 }] },
-    { at: 98.87, from: 96.3, id: 'pole.garden', via: 'plain', moves: [{ id: 'pearls', open: 3, close: 2 }] },
-    { at: 112.79, from: 110, id: 'lines.fall', via: 'plain', moves: [{ id: 'limit', open: 3, close: 2 }] },
+    { at: 98.87, from: 96.3, id: 'pole.garden', via: 'plain', moves: [{ id: 'screen', open: 2, close: 1 }] },
+    { at: 112.79, from: 110, id: 'lines.fall', via: 'plain', moves: [{ id: 'roll', times: { hits: [122.39, 130.07, 137.75] } }] },
     { at: 151.19, from: 143.03, id: 'rooms.nested', via: 'plain', moves: [{ id: 'crumple', open: 4, close: 2 }] },
-    { at: 192.95, from: 185.27, id: 'checks.vega', via: 'plain', moves: [{ id: 'screen', open: 2, close: 1 }] },
+    { at: 170.39, from: 165, id: 'lines.fall', via: 'plain', moves: [{ id: 'limit', open: 2, close: 2 }] },
+    { at: 192.95, from: 185.27, id: 'pole.garden', via: 'plain', moves: [{ id: 'pearls', open: 2, close: 1 }] },
   ],
 };
+// Any other song: one fold to a section of the song, each on a pattern the film uses. FOLDS=fan,limit IDS=lines.fall,rooms.nested
+const LIST = (process.env.FOLDS || 'fan,forever,limit,crumple,screen,pearls,roll').split(','), BASES = (process.env.BASES || 'rooms.nested,lines.fall,lines.fall,pole.garden,checks.vega,pole.garden,lines.fall').split(',');
+export const autoCut = async (page, song) => page.eval(async ({ song, LIST, BASES }) => {
+  await app.song.load(`/media/${song}.mp3`, { seed: 7 }); app.song.pause();
+  const A = app.song.analysis, segs = A.segments.filter(s => s.t1 - s.t0 >= 14), shots = [{ at: 0, id: 'lines.fall', arcs: true }];
+  let i = 0, last = 0;
+  for (const s of segs) { if (s.t0 < 8 || s.t0 - last < 12) continue; shots.push({ at: s.t0, from: Math.max(last + 4, s.t0 - 6), id: BASES[i % BASES.length], via: 'plain', moves: [{ id: LIST[i % LIST.length], open: 3, close: 2 }] }); i++; last = s.t0; }
+  return shots;
+}, { song, LIST, BASES });
 export default async ({ page, save, log }) => {
   const song = process.env.SONG || 'mgmt', SKIP = new Set((process.env.SKIP || '').split(','));
   for (let i = 0; i < 240; i++) { if (await page.eval('typeof window.trippee !== "undefined" && window.trippee.ready === true')) break; await sleep(250); }
+  const shotsFor = CUTS[song] && !process.env.AUTO ? CUTS[song] : await autoCut(page, song);
+  log(JSON.stringify(shotsFor.map(s => [+s.at.toFixed(1), s.id, s.moves?.[0]?.id])));
   const made = await page.eval(async ({ song, shots, rehearseIt }) => {
     await app.R.whenFoldReady();
     await app.song.load(`/media/${song}.mp3`, { seed: 7 }); app.song.pause(); app.ui?.song?.show?.(false);
@@ -52,14 +64,14 @@ export default async ({ page, save, log }) => {
       const o = []; for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) { let s = 0, n = 0; for (let y = (ty * H / 4) | 0; y < ((ty + 1) * H / 4 | 0); y++) for (let X = (tx * W / 4) | 0; X < ((tx + 1) * W / 4 | 0); X++) { s += L_[y * W + X]; n++; } o.push(+(s / n).toFixed(1)); }
       return { mean: +(sum / L_.length).toFixed(2), tiles: o };
     };
-    return { duration: A.duration, refused: sc.refused, gestures: sc.gestures.map(G => ({ t0: +G.t0.toFixed(2), t1: +G.t1.toFixed(2), morph: +(G.morph || 0).toFixed(2), id: G.pattern.id, moves: (G.moves ?? []).map(m => m.id), m: (G.moves ?? []).filter(m => m.from != null).map(m => ({ from: m.from, to: m.to, open: m.open, close: m.close, beats: m.beats?.length })) })) };
-  }, { song, shots: CUTS[song], rehearseIt: !!process.env.REHEARSE });
+    return { duration: A.duration, refused: sc.refused, gestures: sc.gestures.map(G => ({ t0: +G.t0.toFixed(2), t1: +G.t1.toFixed(2), morph: +(G.morph || 0).toFixed(2), id: G.pattern.id, moves: (G.moves ?? []).map(m => m.id), m: (G.moves ?? []).filter(m => m.from != null).map(m => ({ from: m.from, to: m.to, open: m.open, close: m.close, beats: m.beats?.length })), hits: (G.moves ?? []).find(m => m.id === 'roll')?.hits })) };
+  }, { song, shots: shotsFor, rehearseIt: !!process.env.REHEARSE });
   log(`refused ${JSON.stringify(made.refused)}`);
-  log(made.gestures.map(g => `  ${g.t0}-${g.t1} morph ${g.morph} ${g.id} [${g.moves}] ${JSON.stringify(g.m)}`).join('\n'));
+  log(made.gestures.map(g => `  ${g.t0}-${g.t1} morph ${g.morph} ${g.id} [${g.moves}] ${JSON.stringify(g.m)} ${g.hits ?? ''}`).join('\n'));
   if (!SKIP.has('sheets')) {
     for (const g of made.gestures) {
-      if (!g.moves.length || !g.m.length) continue;
-      const m = g.m[0], a = m.from - 2, b = m.to + 3, N = 96, cols = 12, tw = 150, th = 84;
+      if (g.moves.at(-1) === 'cue' || !g.moves.length) continue;
+      const m = g.m[0] ?? { from: g.t0, to: g.t1 - g.morph }, a = m.from - 2, b = m.to + 3, N = 96, cols = 12, tw = 150, th = 84;
       const url = await page.eval(async ({ a, b, N, cols, tw, th }) => {
         const c = document.createElement('canvas'); c.width = cols * tw; c.height = Math.ceil(N / cols) * th; const x = c.getContext('2d'); x.font = '10px monospace';
         for (let i = 0; i < N; i++) { const t = a + (b - a) * i / N; window.trippee.seek(t); x.drawImage(window.trippee.canvas, (i % cols) * tw, (i / cols | 0) * th, tw - 1, th - 1); x.fillStyle = '#f33'; x.fillText(t.toFixed(1), (i % cols) * tw + 2, (i / cols | 0) * th + 10); if (i % 12 === 0) await new Promise(r => setTimeout(r)); }

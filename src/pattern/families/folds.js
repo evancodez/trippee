@@ -7,6 +7,7 @@ import { screenWith } from '../../score/moves/screen.js';
 import { limitWith } from '../../score/moves/limit.js';
 import { crumpleWith } from '../../score/moves/crumple.js';
 import { pearlsWith } from '../../score/moves/pearls.js';
+import { rollDrive } from '../../score/moves/roll.js';
 
 const ZOOM = { id: 'zoom', name: 'zoom', path: 'scale', min: 0.5, max: 2.5, log: true };
 const TURN = { id: 'turn', name: 'turn', path: 'rot', min: -1.6, max: 1.6 };
@@ -27,5 +28,7 @@ export default [
   item('crumple', 'Crumple', { g: { fams: [plane(3.6, 30)] }, drive: crumpleWith() }),
   item('crumplerings', 'Crumple, Rings', { g: { fams: [ring(3)] }, drive: crumpleWith({ shrink: 0.85, turn: 0.95 }) }),
   item('pearls', 'Pearls', { g: { fams: [plane(2.2, 30)] }, flow: { 'f0.ph': 1 }, drive: pearlsWith({ n: 5, r: 0.5, far: 1 }) }),
+  item('roll', 'Roll', { g: { fams: [plane(2.4, 30)] }, flow: { 'f0.ph': 1 }, drive: rollDrive }),
+  item('rollwaves', 'Roll, Waves', { g: waves(2.2), drive: rollDrive }),
   item('pearlscheck', 'Pearls, Check', { g: check(1.4), drive: pearlsWith({ n: 3 }) }),
 ];

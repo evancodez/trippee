@@ -5,5 +5,6 @@ import screen from './screen.js';
 import limit from './limit.js';
 import crumple from './crumple.js';
 import pearls from './pearls.js';
+import roll from './roll.js';
 
-export default { fan, forever, screen, limit, crumple, pearls };
+export default { fan, forever, screen, limit, crumple, pearls, roll };
