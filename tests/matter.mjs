@@ -112,7 +112,7 @@ export default async ({ page, log, save, sleep }) => {
       for (let i = 0; i < frames; i++) { const t = 4 + (dur - 12) * i / (frames - 1); app.t = t; trippee.seek(t); const f = app.lastFrame; S.add(`${t.toFixed(1)} ${f.G.pattern.id.replace(/^\w+\./, '')}${f.kind ? ' ' + f.kind : ''}`); out.push(app.R.variant); }
       return { url: S.url(), variants: [...new Set(out)] };
     }, { frames, dur: plan.dur });
-    save('film-sheet.jpg', sheet.url);
+    save(`film-sheet-${(process.env.SONG || 'media/mgmt.mp3').replace(/^.*\//, '').replace(/\.\w+$/, '')}.jpg`, sheet.url);
     log('film sheet programs', sheet.variants.join(','));
     // A division passage, at 12 fps, and each shatter, from a bar before it to a bar after it heals.
     const div = await page.eval(() => { const g = app.stage.score.gestures.find(G => G.mitosis && G.mitosis.hits.length >= 8); return g ? g.mitosis.hits[2] - 1 : null; });

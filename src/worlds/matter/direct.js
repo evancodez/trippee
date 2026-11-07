@@ -222,7 +222,8 @@ export function moves(score, A, M) {
       // Once a bar: on a half note these sit at the film's two flashes a second on a tile, and a mode has one.
       const hits = hitsFor('bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
       if (hits.length < 3) continue;
-      (G.moves ??= []).push({ id, beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - from, 0.5)), coast: Math.min(bar, Math.max(to + 0.5 * bar - hits.at(-1), 0.5)), from, to });
+      // And half as hard as the film's: a full wring on these bold sheets swung a corner of the frame three times a second (PPP 86.5 s, on River).
+      (G.moves ??= []).push({ id, beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - from, 0.5)), coast: Math.min(bar, Math.max(to + 0.5 * bar - hits.at(-1), 0.5)), from, to, amp: id === 'wring' ? 0.55 : 0.5 });
     }
   }
 }
