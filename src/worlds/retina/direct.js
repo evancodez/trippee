@@ -1,7 +1,7 @@
 // Retina's director. The film's own direction first, all of it (src/score/direct.js), so between its big moments Retina is the black-and-white film. Then its own two things, which make room
 // for themselves: one or two Afterimage Drops (drops.js) and one Afterspin (afterspin.js). What it decided and why is in score.retina.notes.
 import { direct as filmDirect } from '../../score/direct.js';
-import { OFF, SLOT_FLOATS, FRAME } from '../../pattern/layout.js';
+import { OFF, FRAME } from '../../pattern/layout.js';
 import { smoother } from '../../score/curves.js';
 import { dropCandidates, putDrop, MOST, APART } from './drops.js';
 import { spinCandidates, putSpin } from './afterspin.js';
@@ -73,23 +73,13 @@ function keepDip(H, a, b, E, to = 0) {
   H.ease.kept.push(put); put(H.ease);
 }
 
-// The build's camera: what the film's camera was doing lets go over a second and a half, and from then on it's only a push in about the middle, steady, with no pan, turn, whip or tip.
-const SWITCH = new Set(['surf.kind', 'surf.map', 'q.zw'].map(k => OFF[k])), SCALE = OFF.scale, held = new Float32Array(SLOT_FLOATS);
+// The build's camera: only a push in about the middle, steady, with no pan, turn, whip or tip, for the whole of the gesture, which nobody sees before it arrives.
+// Letting the film's camera go over a second and a half instead was a slide of a whole frame on a dial the camera had been circling, four flashes a second on a tile (MGMT 57.8 s).
+const SCALE = OFF.scale;
 function dressDrop(G, d) {
-  const orig = G.cam, E = 1.5, a0 = d.a - E;
+  const E = 1.5, a0 = d.a - E;
   const push = t => { const x = t - a0; return x <= 0 ? 0 : d.push * (x < E ? E * I5(x / E) : E / 2 + x - E); };
-  G.cam = (out, t, GG) => {
-    const w = smoother((t - a0) / E);
-    if (w <= 0) { orig?.(out, t, GG); return; }
-    held.set(out);
-    orig?.(out, t, GG);
-    if (w >= 1) out.set(held);
-    else for (let i = 0; i < out.length; i++) {
-      if (out[i] === held[i] || SWITCH.has(i)) continue;
-      out[i] = i === SCALE && held[i] > 0 && out[i] > 0 ? held[i] * Math.pow(out[i] / held[i], 1 - w) : out[i] + (held[i] - out[i]) * w;
-    }
-    out[SCALE] *= Math.exp(push(t));
-  };
+  G.cam = (out, t) => { out[SCALE] *= Math.exp(push(t)); };
 }
 const still = () => {};
 

@@ -2,14 +2,14 @@
 //
 // The inducers: the two zones' inks for the 16 to 24 seconds before a big arrival. Black lines print in the deep ink, white lines in the pale one. What matters is the zone's average, because
 // that's what the eye gets used to, and when the colour runs out the eye answers with its opposite on the black and white. So each rung is named for what it leaves behind, not for what it shows.
-// Never a saturated red: the deepest warm ink here is a brown and the reddest a rose.
+// Never a saturated red: the deepest warm ink here is a brown and the reddest a rose. Every deep ink is above the Dark measure's black (relative luminance .03, tools/look.mjs), so a build has no empty black in it at all.
 //   glow    a warm glow for a bright, major chorus: a teal middle and violet round it, which leave rose in the middle and gold-green outside
 //   dawn    in between: a blue middle and jade round it, which leave amber and pink
 //   frost   a cool glow for a dark, minor chorus: an amber middle and rose round it, which leave blue and green
 export const RUNGS = {
-  glow: { mid: { deep: [0.0, 0.33, 0.37], pale: [0.55, 0.93, 0.9] }, out: { deep: [0.22, 0.06, 0.45], pale: [0.8, 0.7, 1.0] }, leaves: 'rose in the middle, gold-green round it' },
-  dawn: { mid: { deep: [0.03, 0.14, 0.45], pale: [0.62, 0.78, 1.0] }, out: { deep: [0.0, 0.3, 0.18], pale: [0.62, 0.95, 0.75] }, leaves: 'amber in the middle, pink round it' },
-  frost: { mid: { deep: [0.4, 0.2, 0.0], pale: [1.0, 0.86, 0.56] }, out: { deep: [0.38, 0.02, 0.26], pale: [1.0, 0.75, 0.88] }, leaves: 'blue in the middle, green round it' },
+  glow: { mid: { deep: [0.0, 0.33, 0.37], pale: [0.55, 0.93, 0.9] }, out: { deep: [0.26, 0.09, 0.5], pale: [0.8, 0.7, 1.0] }, leaves: 'rose in the middle, gold-green round it' },
+  dawn: { mid: { deep: [0.06, 0.18, 0.5], pale: [0.62, 0.78, 1.0] }, out: { deep: [0.0, 0.3, 0.18], pale: [0.62, 0.95, 0.75] }, leaves: 'amber in the middle, pink round it' },
+  frost: { mid: { deep: [0.4, 0.2, 0.0], pale: [1.0, 0.86, 0.56] }, out: { deep: [0.4, 0.04, 0.28], pale: [1.0, 0.75, 0.88] }, leaves: 'blue in the middle, green round it' },
 };
 export const ORDER = ['glow', 'dawn', 'frost'];
 
