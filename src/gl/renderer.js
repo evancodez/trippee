@@ -79,13 +79,15 @@ export class Renderer {
   // Every program a fold can be drawn with. For tests, and for a rehearsal that has one to look at.
   whenFoldReady() { this.wantFold(); return this._whenFold; }
   // The ones a fold's likely to want, or just this one. It's a program's first draw that's the stall, so they're warmed one at a time with the picture carrying on, as at the start.
-  wantFold(v = null) {
+  wantFold(v = null, now = false) {
     if (v == null) this.foldAsked = true;
     const add = v != null ? [v] : ORDER.slice(0, this.bare ? 4 : 8).map(n => n | FOLD);       // the hand's only if it's ever drawn over one
     const more = add.filter(n => !this.order.includes(n));
     if (!more.length) return;
     this.order = [...this.order, ...more];
-    this._soon();
+    // A frame that's drawing a fold now can't wait a quarter second for it: it went without the fold that long and then popped into it
+    if (now) { if (!this._pending && !this._warming) this._next(); }
+    else this._soon();
   }
   // Start building on a frame of its own. Asked for from the middle of composing a film, a build starting there made that one long frame longer by what the GPU takes to begin it.
   _soon() {
@@ -205,7 +207,7 @@ export class Renderer {
       if (!this.progs[v | TIME] && this.bare) this._buildNow(v | TIME);      // the rehearsal's eyes have to see what will be shown
       if (this.progs[v | TIME]) v |= TIME; else this._wantTime(v);
     }      // one still building, the frame goes without it. What asks comes up from nothing
-    if (v & FOLD && !this.progs[v]) this.wantFold(v);
+    if (v & FOLD && !this.progs[v]) this.wantFold(v, true);
     // Something the sheet in space isn't built with up front (it's on a pattern that also slips, say) is built when it's first asked for, and meanwhile it goes without.
     if (!this.progs[v] && (!this.parallel || v & SPACE) && !this._pending) { this._start(v); this._poll(); }
     const fold = this.progs[v & (FLIGHT | EXTRA | FOLD)] ? v & (FLIGHT | EXTRA | FOLD) : v & (FLIGHT | FOLD);      // one still building, a fold goes without whatever else it can before it goes without the fold
