@@ -3,9 +3,9 @@
 // A little turn on each level adds up: the tenth level is turned ten times as far, so the tower twists as the tune bends it, and the deep levels swing the most.
 //
 //   G.moves = [{ id: 'screen', S, turn, per, ... }]     and the options in cueFold (foldkit.js)
-//     S      how big each level is against the last. Default .42
-//     turn   how far each is turned, radians. Default .34
-//     per    strong beats to a level going by. Default 3
+//     S      how big each level is against the last. Default .5
+//     turn   how far each is turned, radians. Default .5
+//     speed  how fast the camera flies, ln a second on the strong beats' surge. Default .3, and a big moment throws it a level further on
 //     par    1: each level is the negative of the last, so its edge always shows. Default 1
 // By hand: screenDrive.
 import { OFF } from '../../pattern/layout.js';
@@ -17,15 +17,15 @@ const RX = 2.35, RY = 1.32, FROM = 0.002;
 
 function write(out, { k, tau, Sz, turn, S }) {
   const open = smoother(clamp(k / 0.8));
-  boldUp(out, k, 2.6);
-  writeFeedback(out, { S: FROM * Math.pow(Sz / FROM, open), turn: turn * smoother(clamp((k - 0.3) / 0.7)) + 0.09 * S.mel * k, rx: RX, ry: RY, tau });
+  boldUp(out, k, 1.7);
+  writeFeedback(out, { S: FROM * Math.pow(Sz / FROM, open), turn: turn * smoother(clamp((k - 0.3) / 0.7)) + 0.12 * S.mel * k, rx: RX, ry: RY, tau });
 }
 
-export const screenWith = ({ Sz = 0.42, turn = 0.34, per = 3, par = 1 } = {}) => (out, c) => {
+export const screenWith = ({ Sz = 0.5, turn = 0.5, speed = 0.3, par = 1, rx, ry } = {}) => (out, c) => {
   if (c.G.moves?.some(m => m.id === 'screen')) return;
-  const S = songNow(c, 3, 1.5);
+  const S = songNow(c);
   out[OFF['sf.par']] = par;
-  write(out, { k: 1, tau: (S.s / per) % 1, Sz, turn, S });
+  write(out, { k: 1, tau: (S.sec * speed / Math.log(1 / Sz) + S.big) % 1, Sz, turn, S });
 };
 export const screenDrive = screenWith();
 
@@ -34,14 +34,14 @@ export default {
   needs: () => true,
   cue(m, ctx) {
     if (!cueFold(m, ctx)) return null;
-    m.S ??= 0.42; m.turn ??= 0.34; m.per ??= 3; m.par ??= 1;
-    const go = m.from + m.open * 0.9, stop = m.stay ? m.to + 1e3 : m.to - m.close * 0.95;
+    m.S ??= 0.5; m.turn ??= 0.5; m.speed ??= 0.3; m.par ??= 1;
+    const go = m.from + m.open * 0.9, stop = m.stay ? m.to + 600 : m.to - m.close * 0.95;
     if (stop - go < 2) return null;
-    m._go = journey(m, { go, stop, perBeat: 1 / m.per, ease: ctx.bar });
+    m._go = journey(m, { go, stop, speed: m.speed / Math.log(1 / m.S), lurch: 1, ramp: ctx.bar });
     return m;
   },
   write(out, c) {
-    const { m, t } = c, S = songNow(c, 3, 1.5), k = inBy(m, t), w = m._go(t);
+    const { m, t } = c, S = songNow(c), k = inBy(m, t), w = m._go(t);
     if (k <= 0) return;
     out[OFF['sf.par']] = m.par;
     write(out, { k, tau: w - Math.floor(w), Sz: m.S, turn: m.turn, S });

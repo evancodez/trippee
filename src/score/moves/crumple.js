@@ -6,7 +6,7 @@
 //     c       how far the first is from the middle. Default about three of the sheet's lines, so a piece is never all one colour
 //     shrink  each is this much nearer than the last. Default .74
 //     turn    how far each is turned from the last, radians. Default 1.1
-//     swing   how far a strong beat swings `turn`, radians. Default .02
+//     speed   how fast `turn` itself goes, radians a second on the strong beats' surge. Default .03. It swings back and forth, and a big moment throws it .25 further
 // By hand: crumpleDrive.
 import { clamp, smoother } from '../curves.js';
 import { cueFold, inBy, songNow, boldUp, writeChain, lineM } from './foldkit.js';
@@ -27,14 +27,16 @@ function creases({ folds, c, shrink, turn, k }) {
   return list;
 }
 
-function write(out, { k, folds = 8, c, lines = 3.6, shrink = 0.76, turn = 1.1, swing = 0.02, S }) {
-  const f = boldUp(out, k, 4), t = turn + swing * (S.s % 64 > 32 ? 64 - S.s % 64 : S.s % 64) + 0.05 * S.mel;
+const RANGE = 1.1;
+function write(out, { k, folds = 8, c, lines = 3.6, shrink = 0.76, turn = 1.1, speed = 0.03, S }) {
+  const f = boldUp(out, k, 4), x = (speed * S.sec + 0.25 * S.big) / RANGE;      // to and fro, RANGE radians one way, so it can't wander off to where the pieces are slivers
+  const w = x - 2 * Math.floor(x / 2), t = turn + RANGE * (smoother(w < 1 ? w : 2 - w) - 0.5) + 0.05 * S.mel;
   writeChain(out, creases({ folds, c: (c ?? clamp(lines / f, 0.6, 1.8)) * (1 + 0.06 * S.mel), shrink, turn: t, k }), 1);
 }
 
 export const crumpleWith = o => (out, c) => {
   if (c.G.moves?.some(m => m.id === 'crumple')) return;
-  const S = songNow(c, 3, 1.5);
+  const S = songNow(c);
   write(out, { k: 1, S, ...o });
 };
 export const crumpleDrive = crumpleWith();
@@ -44,8 +46,8 @@ export default {
   needs: () => true,
   cue(m, ctx) { return cueFold(m, ctx); },
   write(out, c) {
-    const { m, t } = c, S = songNow(c, 3, 1.5), k = inBy(m, t);
+    const { m, t } = c, S = songNow(c), k = inBy(m, t);
     if (k <= 0) return;
-    write(out, { k, S, folds: m.folds, c: m.c, shrink: m.shrink, turn: m.turn, swing: m.swing });
+    write(out, { k, S, folds: m.folds, c: m.c, shrink: m.shrink, turn: m.turn, speed: m.speed });
   },
 };

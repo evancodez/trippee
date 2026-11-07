@@ -5,7 +5,7 @@
 //   G.moves = [{ id: 'forever', n, D, per, tw, ... }]     and the options in cueFold (foldkit.js)
 //     n       mirrors. Default 6. They open over the first half of the way in.
 //     inner, outer  ln of the two circles. Default -.55, .35. Their difference is how wide a ring is, and the frame's corners are at .71.
-//     per     strong beats to one ring going by. Default 2.
+//     speed   how fast the camera flies, in ln a second, on the strong beats' surge. Default .42, and a big moment throws it a ring or so further on
 //     tw      how far the twist goes, at the song's loudest. Default .45
 // The tune turns the whole star. Loudness leans it. Each strong beat throws the camera on, and it hangs between.
 // By hand: foreverDrive.
@@ -18,18 +18,18 @@ const FAR_IN = -7, FAR_OUT = 4;
 function write(out, { k, off, n, inner, outer, tw, S, rot0 = 0.2 }) {
   // The circles come in from nothing and from past the corners. Then the mirrors part.
   const c = smoother(clamp(k / 0.65)), lerp = (a, b, x) => a + (b - a) * x;
-  boldUp(out, k);
-  const fan = smoother(clamp((k - 0.2) / 0.8)), rot = rot0 + 0.3 * S.mel + 0.01 * S.s;
+  boldUp(out, k, 3);
+  const fan = smoother(clamp((k - 0.2) / 0.8)), rot = rot0 + 0.3 * S.mel + 0.012 * S.sec;
   writeFan(out, { x: 0, y: 0, al: Math.PI / (1 + (n - 1) * fan), rot });
   writeLog(out, { a: lerp(FAR_IN, inner, c), b: lerp(FAR_OUT, outer, c), off, tw: tw * smoother(clamp((k - 0.5) / 0.5)) * (0.35 + 0.65 * S.en) });
-  out[OFF.rot] += 0.008 * S.s * k;
+  out[OFF.rot] += 0.01 * S.sec * k;
 }
 
-const D0 = 0.9;
-export const foreverWith = ({ n = 6, tw = 0.45, per = 2, turn = 0.2 } = {}) => (out, c) => {
+const IN0 = -0.55, OUT0 = 0.35;
+export const foreverWith = ({ n = 6, tw = 0.45, speed = 0.42, turn = 0.2 } = {}) => (out, c) => {
   if (c.G.moves?.some(m => m.id === 'forever')) return;
-  const S = songNow(c, 3, 1.5);
-  write(out, { k: 1, off: -S.s * 2 * D0 / (2 * per), n, inner: -0.55, outer: 0.35, tw, S, rot0: turn });
+  const S = songNow(c);
+  write(out, { k: 1, off: -(S.sec * speed + (OUT0 - IN0) * S.big), n, inner: IN0, outer: OUT0, tw, S, rot0: turn });
 };
 export const foreverDrive = foreverWith();
 
@@ -38,15 +38,16 @@ export default {
   needs: () => true,
   cue(m, ctx) {
     if (!cueFold(m, ctx)) return null;
-    m.inner ??= -0.55; m.outer ??= 0.35; m.n ??= 6; m.tw ??= 0.45; m.per ??= 2;
+    m.inner ??= IN0; m.outer ??= OUT0; m.n ??= 6; m.tw ??= 0.45; m.speed ??= 0.42;
     m._D = m.outer - m.inner;
-    const go = m.from + m.open * 0.75, stop = m.stay ? m.to + 1e3 : m.to - m.close * 0.9;
+    const go = m.from + m.open * 0.75, stop = m.stay ? m.to + 600 : m.to - m.close * 0.9;
     if (stop - go < 2) return null;
-    m._go = journey(m, { go, stop: Math.min(stop, go + 3600), perBeat: 0.5 / m.per, ease: 2 * ctx.bar });
+    m._go = journey(m, { go, stop, speed: m.speed / (2 * m._D), lurch: 0.5, ramp: 2 * ctx.bar });
     return m;
   },
   write(out, c) {
-    const { m, t } = c, S = songNow(c, 3, 1.5), k = inBy(m, t), wholes = m._go(t), period = 2 * m._D;
+    const { m, t } = c, S = songNow(c), k = inBy(m, t), wholes = m._go(t), period = 2 * m._D;
+    if (k <= 0) return;
     const off = -(wholes - Math.floor(wholes)) * period;      // at a whole number it's the same picture, exactly: that's how it gets out at the end
     write(out, { k, off, n: m.n, inner: m.inner, outer: m.outer, tw: m.tw, S });
   },

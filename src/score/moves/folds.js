@@ -4,5 +4,6 @@ import forever from './forever.js';
 import screen from './screen.js';
 import limit from './limit.js';
 import crumple from './crumple.js';
+import pearls from './pearls.js';
 
-export default { fan, forever, screen, limit, crumple };
+export default { fan, forever, screen, limit, crumple, pearls };
