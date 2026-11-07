@@ -103,7 +103,7 @@ export default async ({ page, save, log }) => {
   // A whole film by hand: src/score/cuts/mgmt-restless.js, composed and rehearsed the way a cut is, then watched for flashes.
   if (STAGES.includes('film')) {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 640, height: 360, deviceScaleFactor: 1, mobile: false });
-    await page.goto('http://localhost:5300/');
+    await page.goto((process.env.LAB_URL || 'http://localhost:5300/'));
     for (let i = 0; i < 240; i++) { if (await page.eval('typeof window.trippee !== "undefined" && window.trippee.ready === true')) break; await sleep(250); }
     const made = await page.eval(async () => {
       await app.song.load('/media/mgmt.mp3', { seed: 7 }); app.song.pause(); app.ui?.song?.show?.(false);

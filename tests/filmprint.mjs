@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 export default async ({ page, save, log }) => {
-  const SONGS = (process.env.SONGS || 'mgmt,ppp').split(','), WHICH = process.env.WHICH || 'cut', TAG = process.env.TAG || 'now', BASE = process.env.BASE || 'http://localhost:5300/', QUERY = process.env.QUERY || '', STEP = +(process.env.STEP || 1.7);
+  const SONGS = (process.env.SONGS || 'mgmt,ppp').split(','), WHICH = process.env.WHICH || 'cut', TAG = process.env.TAG || 'now', BASE = process.env.BASE || process.env.LAB_URL || 'http://localhost:5300/', QUERY = process.env.QUERY || '', STEP = +(process.env.STEP || 1.7);
   for (const song of SONGS) {
     await page.goto(BASE + QUERY);
     for (let i = 0; i < 240; i++) { if (await page.eval('typeof window.trippee !== "undefined" && window.trippee.ready === true')) break; await sleep(250); }

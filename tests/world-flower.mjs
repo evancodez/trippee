@@ -49,7 +49,7 @@ export default async ctx => {
     const lines = [], log = (...a) => { lines.push(a.join(' ')); console.log(...a); };
     for (const k of Object.keys(c.env ?? {})) process.env[k] = c.env[k];
     try {
-      await page.goto(c.url ?? 'http://localhost:5300/');
+      await page.goto(c.url ?? (process.env.LAB_URL || 'http://localhost:5300/'));
       for (let i = 0; i < 240; i++) { if (await page.eval('typeof window.trippee !== "undefined" && window.trippee.ready === true')) break; await sleep(250); }
       page.logs.length = 0;
       if (c.script) { const m = await import(`${pathToFileURL(resolve(c.script)).href}?n=${++n}`); await m.default({ ...ctx, log }); }

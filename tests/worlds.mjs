@@ -848,7 +848,7 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
 
   // ---- 8. The strip: a first-time click-through, with real input
   if (has('strip')) {
-    await page.goto('http://localhost:5300/?worlds=test');
+    await page.goto((process.env.LAB_URL || 'http://localhost:5300/') + '?worlds=test');
     for (let i = 0; i < 120; i++) { if (await page.eval('typeof window.trippee !== "undefined" && window.trippee.ready === true')) break; await sleep(250); }
     await page.eval(helpers);
     const move = (x, y) => page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });

@@ -41,7 +41,7 @@ export default async ({ page, log, save, out }) => {
 
   if (stage.includes('boot')) {
     // A real page load, untouched, with the loop running
-    await page.goto('http://localhost:5300/');
+    await page.goto((process.env.LAB_URL || 'http://localhost:5300/'));
     for (let i = 0; i < 80; i++) { if (await page.eval('window.trippee?.ready===true')) break; await sleep(250); }
     await page.eval(() => {
       const c = document.createElement('canvas'); c.width = 160; c.height = 90; const g = c.getContext('2d', { willReadFrequently: true });

@@ -67,7 +67,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const out = resolve(opt('out', 'lab-out'));
 mkdirSync(out, { recursive: true });
 const [w, h] = opt('size', '1280,720').split(',').map(Number);
-const url = opt('url', 'http://localhost:5300/');
+const url = opt('url', (process.env.LAB_URL || 'http://localhost:5300/'));
 const port = await freePort();
 const profile = mkdtempSync(join(tmpdir(), `trippee-lab-${process.pid}-`));
 const proc = spawn(chrome, [
