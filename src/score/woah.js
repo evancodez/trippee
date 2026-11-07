@@ -479,7 +479,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
         }
       }
     }
-    return out.filter(x => !OFF_CAST.has(x.id) || directing.woahOnly?.includes(x.id)).sort((x, y) => y.v - x.v);
+    return out.filter(x => (!OFF_CAST.has(x.id) || directing.woahOnly?.includes(x.id)) && !wish?.off?.includes(x.id)).sort((x, y) => y.v - x.v);      // modes lane: wish.off is a mode's own OFF_CAST
   };
 
   // ---------------------------------------------------------------- the climax: what's saved
@@ -532,7 +532,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     // The first stretch of song from here that has anything it can wear. So there's no hole in a film just because of where a window happened to fall.
     let done = false;
     for (let a = lo, b = hi; a < tEnd - END_KEEP && !done; a = b, b += 0.5 * gapHere) {
-      const cands = candidates(a, b);
+      const all = candidates(a, b), cands = wish ? [...all.filter(c => !uses.get(c.id)), ...all.filter(c => uses.get(c.id))] : all;      // modes lane: in a mode nothing goes on twice while something it hasn't had fits here (Dusk on MGMT had pearls twice and the slit twice out of six)
       for (let n = 0; n < cands.length && !done; n++) {
         const c = cands[n], alts = cands.filter(x => x.id !== c.id && x.kind === c.kind).slice(0, 6).map(x => x.id);
         if (place(c, [...new Set(alts)])) { entry = c.from; done = true; }
@@ -569,7 +569,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     const suits = id => (slot.f ? SUIT[id](slot.f) : 0) + (fond[id] ?? 0) * 0.2;
     const pool = slot.kind === 'change'
       ? CHANGES.filter(id => TRICKS.includes(id) && !OFF_CAST.has(id) && (slot.climax || !SAVED.has(id)))
-      : STRETCHES.filter(id => id !== 'rewind' && TRICKS.includes(id) && !OFF_CAST.has(id) && slot.to - slot.from >= LEAST[id] && directFits(id, slot.G));
+      : STRETCHES.filter(id => id !== 'rewind' && TRICKS.includes(id) && !OFF_CAST.has(id) && !wish?.off?.includes(id) && slot.to - slot.from >= LEAST[id] && directFits(id, slot.G));
     const more = pool.filter(id => !slot.alts.includes(id)).sort((a, b) => suits(b) - suits(a));
     // What the film hasn't got elsewhere first, so a swap doesn't make a second screen or a second pearls
     const elsewhere = id => slots.filter(x => x !== slot && x.id === id).length;
