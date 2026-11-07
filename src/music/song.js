@@ -376,7 +376,7 @@ export function init(app) {
       if (was) startSource();
       else tEst = offset;
       if (app.manual) { app.t = offset; }
-      else app.edits.hearJumped = true;     // the song's camera doesn't jump with it: src/score/hear.js
+      else { app.edits.hearJumped = true; app.reclock = true; }     // the song's camera doesn't jump with it: src/score/hear.js. And the frame that's drawn next is at the new time (main.js render)
     },
     // A seek by hand, in the middle of the film: a jump in the music. The song lets go of the sheet first and comes back over the flight, as D does. The last click wins.
     jump(t) {

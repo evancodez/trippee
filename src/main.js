@@ -36,6 +36,8 @@ fit();
 function render(dtReal = 0) {
   const pt = app.pictureT();
   stage.update(pt, dtReal);
+  // A seek inside the stage's update (D, a strip click landing, a veil) has moved the song: this frame is drawn at where it's gone, or the new film shows one frame at the old time and then jumps, and the song's camera eases across the wrong frame (src/score/hear.js carry)
+  if (app.reclock) { app.reclock = false; if (app.clock && !app.manual) app.t = app.clock(); }
   app.edits.staticG = stage.staticG;
   app.edits.inHandover = stage.handingOver(app.pictureT());
   app.lastFrame = frame(stage.score, app.t, R, app.edits);

@@ -150,7 +150,14 @@ export class Stage {
     const g = this.score.gestures, N = g[g.indexOf(H) + 1], by = H.plan?.onClock ? 0 : clockOfTo(H, t) - t, sc = this.score;
     // What the next pattern's flow shows right now, in the morph being cut short. Its clock leans on the song by how much of its speed is left (rho), and that goes to all of it the moment it lands, so without this a hurried landing jumps the flow.
     const rho = 1 - Math.min(1, (H.t1 - t) / Math.min(H.morph * 0.4, 3.5)), was = sc.phi ? sc.phi(t + by, N, t, rho) : 0;
+    // The camera (src/score/camera.js) had N on N's own clock in the morph, along the route it laid for N's own start. Landing moves that start, and a route's laid again when its gesture's times change, from somewhere else:
+    // a jump of the whole sheet on the landing frame, and on every frame of a flight from it. So N keeps the route it was on, and its camera stays on the clock it was showing.
+    const camBy = N.cam ? clockOfTo(H, t) - t : 0, route = N.route;
     H.t1 = t; N.t0 = t;
+    if (N.cam && route) {
+      N.route = { ...route, t0: N.t0, t1: N.t1 };
+      if (Math.abs(camBy) > 1e-6) { const cw = N.cam; N.cam = (out, tt, G) => cw(out, tt + camBy, G); }
+    }
     const shifted = () => {
       if (sc.__shifts) return;
       sc.__shifts = true;
@@ -234,6 +241,7 @@ export class Stage {
       ringsFrom: t - 8,                 // the flight in brings the song's rings back as it lands, and with the film paused t doesn't move: if they waited for t they'd drop out on landing
     };
     delete G.moves; delete G.xform; delete G.over;
+    delete G.camBear; delete G.camLocks; delete G.route;      // what the camera reads of a pattern is the picked one's, not what the gesture it replaces had (src/score/camera.js)
     // What came before stays as it was, up to now. Its morph has to fit in what's left of it, or seeking back into it would start part way through a transformation.
     const headLen = t - g[i].t0, head = headLen > 0 ? [{ ...g[i], t1: t, morph: headLen >= HEAD_MIN ? Math.min(g[i].morph || 0, HEAD_MORPH * headLen) : 0, plan: null, planFor: null, planning: null }] : [];
     g.splice(i, k - i + 1, ...head, G);
