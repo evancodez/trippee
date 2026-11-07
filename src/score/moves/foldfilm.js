@@ -24,7 +24,7 @@ export function wearFolds(score, ctxOf, { A, bar, seed = 1 }) {
     const mid = (a + end) / 2, label = A.segments?.find(s => mid >= s.t0 && mid < s.t1)?.label ?? '';
     const said = worn.get(label);
     // A big moment in the middle of it: a roll takes it there and back, and nothing else is needed.
-    const rolled = MOVES[ROLL].cue({ id: ROLL, from: a, to: end, D: Math.max(6, 3 * bar) }, ctxOf(G));
+    const rolled = MOVES[ROLL].cue({ id: ROLL, from: a, to: end, D: Math.max(7, 3.5 * bar) }, ctxOf(G));
     if (rolled && r() < 0.35 && prev !== ROLL) { G.moves = [rolled]; prev = ROLL; continue; }
     let id = said && said !== prev ? said : left[at++ % left.length];
     for (let tries = 0; tries < left.length && (id === prev || (LINES_ONLY.has(id) && crossed(G))); tries++) id = left[at++ % left.length];

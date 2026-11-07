@@ -3,7 +3,7 @@
 //
 //   G.moves = [{ id: 'roll', hits, D, R, way, ... }]
 //     hits   under times: song seconds, the moments it's inside out on, crossing at top speed. Leave them out, and it's the song's own biggest moments in the shot.
-//     D      how long a roll takes, seconds. Default 6, or 3 bars
+//     D      how long a roll takes, seconds. Default 7, or 3.5 bars
 //     R      how big the sphere is. Default 1.5. Bigger is a slower, flatter roll.
 //     way    which way the first goes, in turns. Each after it goes off by a golden angle.
 // Each strong beat throws it on, and it hangs between them. The tune leans the way it's rolling. By hand: rollDrive.
@@ -14,6 +14,7 @@ import { cueFold, songNow, boldUp, writeChain, writeMobius, circleOut, TAU } fro
 
 const RIM = 2.3, GOLD = 0.382;
 const circle = circleOut(0, 0, RIM);
+const gentle = x => { x = clamp(x); return x * x * (3 - 2 * x); };      // its fastest frame's what flashes a tile, so a cubic, which tops out a fifth slower than the usual quintic
 
 // a: how far round, 0 to pi being a whole turn. The rotation of the sphere by 2a, about the axis through the frame's edge `dir`.
 function write(out, a, R, dir) {
@@ -38,7 +39,7 @@ export default {
   needs: () => true,
   cue(m, ctx) {
     const { G, A, M, bar, score } = ctx;
-    const from = m.from ?? G.t0, to = m.to ?? G.t1 - (G.morph || 0), D = m.D ?? Math.max(6, 3 * bar);
+    const from = m.from ?? G.t0, to = m.to ?? G.t1 - (G.morph || 0), D = m.D ?? Math.max(7, 3.5 * bar);
     let hits = m.hits ?? (A && M?.bar ? momentsOf(A, M).filter(x => x.sign > 0 && x.s >= 0.45).map(x => (score?.time ?? (t => t))(x.t)) : []);
     hits = hits.filter(t => t - D / 2 >= from && t + D / 2 <= to).reduce((a, t) => { if (!a.length || t - a.at(-1) >= D + 1) a.push(t); return a; }, []);
     if (!hits.length) return null;
@@ -52,6 +53,6 @@ export default {
     for (let k = 0; k < m.hits.length; k++) if (Math.abs(t - m.hits[k]) < m.D / 2) { i = k; break; }
     if (i < 0) return;
     const u = (t - m.hits[i] + m.D / 2) / m.D, S = m._clock ? songNow({ ...c, m: m._clock }) : null;
-    write(out, Math.PI * smoother(S ? heave(u, S, m.D) : u), m.R, (m.way + i * GOLD) * TAU + (S ? 0.1 * S.mel : 0));
+    write(out, Math.PI * gentle(S ? heave(u, S, m.D) : u), m.R, (m.way + i * GOLD) * TAU + (S ? 0.1 * S.mel : 0));
   },
 };
