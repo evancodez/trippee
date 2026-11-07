@@ -113,7 +113,7 @@ export function direct(score, A, M) {
   const quiet = (a, b) => !cast.some(h => a < h.wb && b > h.wa);     // nobody's on: their own transformations out of a gesture are free for others to use
   // How much of the film the big moves can have between them, with pace: they're for what they do, and the rest of the film has to get a turn.
   const budget = (P ? 0.26 : Infinity) * (g.at(-2)?.t1 ?? A.duration), spent = () => cast.reduce((n, h) => n + (h.kind === 'lock' || h.kind === 'riley' || h.kind === 'shock' || h.kind === 'fall' ? 0 : h.b - h.a), 0);
-  const put = (kind, G, at, a, b, wa, wb, more = {}) => { const h = { kind, G, at, a, b, wa, wb, gain: QUIET, ...more }; cast.push(h); cast.sort((x, y) => x.at - y.at); return h; };
+  const put = (kind, G, at, a, b, wa, wb, more = {}) => { const h = { kind, G, at, a, b, wa, wb, gain: P ? 0.55 : QUIET, ...more }; cast.push(h); cast.sort((x, y) => x.at - y.at); return h; };
   const twiceRunning = (kind, at) => {
     let before = null, after = null;
     for (const h of cast) { if (h.at <= at) before = h; else { after = h; break; } }
@@ -175,8 +175,8 @@ export function direct(score, A, M) {
     }
     m.mirror = false;
     let a = g.findIndex(x => x.t1 > H.t0);
-    while (a > 0 && H.t0 - g[a].t0 < Math.max(10, (g[a].morph ?? 0) * 1.5)) a--;
-    return a < 0 || a >= b || H.t0 - g[a].t0 < 6 || (a === 0 && H.t0 < COUNT_OPENING) ? null : { H, a, b, cut };
+    while (a > 0 && H.t0 - g[a].t0 < (P ? Math.max(2 * bar, (g[a].morph ?? 0) * 1.2) : Math.max(10, (g[a].morph ?? 0) * 1.5))) a--;
+    return a < 0 || a >= b || H.t0 - g[a].t0 < (P ? 3 : 6) || (a === 0 && H.t0 < COUNT_OPENING) ? null : { H, a, b, cut };
   };
   const putCountdown = (L, pat, mirror = false) => {
     if (!pat || !flag('countdown') || !flag('slip') || lagged(L - 24, L + bar)) return null;
@@ -218,7 +218,7 @@ export function direct(score, A, M) {
     const dir = rand() < 0.5 ? 1 : -1;
     // It lands broad, so past the landing it draws back as it pours: going the other way, a few big shapes are all that's left of it by the end of a long tail.
     const tail = Math.max(g[j].t1 - (g[j].morph || 0) - l.B, 1), after = -Math.min(0.045, COIN_GROWS / tail);
-    const H = spliceCoin(score, l.B, pat, { beats, dir, w0: rand() * Math.PI * 2, after });
+    const H = spliceCoin(score, l.B, pat, { beats, dir, w0: rand() * Math.PI * 2, after, ...(P ? { least: 3 * bar } : null) });
     return H ? put('coin', H, l.B, H.t0, H.t1, H.t0 + 2 * bar, l.B + bar) : null;
   };
 
@@ -401,7 +401,7 @@ export function direct(score, A, M) {
       if (again) lockOf(again, true);
     }
     // A film with nothing dull in it gets something dull, on the longest gesture that's doing nothing else, because that's what it takes to show a checker nobody drew.
-    if (!n && score.remake) {
+    if (!n && score.remake && !P) {
       const spots = g.slice(1, lastG()).filter(G => isPlain(G) && G.replayOf == null && G.k != null && G.t1 - G.t0 - LOCK_MORPH >= span + 2 && quiet(G.t0, G.t1)).sort((a, b) => (b.t1 - b.t0) - (a.t1 - a.t0));
       const bodies = (score.patterns ?? []).filter(p => realFams(p) <= 2 && p.family !== 'dots' && flatBody(base(p)) && slipFor(base(p))).map(p => [rand(), p]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
       search: for (const G of spots.slice(0, 2)) for (const p of bodies.slice(0, 16)) {
@@ -423,13 +423,13 @@ export function direct(score, A, M) {
     const tm = G.t1 - (G.morph || 0);
     if (tm - G.t0 < 8 || !quiet(G.t0 + 2, tm)) return null;
     G.hero = rileyKind(G.pattern);
-    return put('riley', G, G.t0 + 0.01, G.t0 + 3, tm, G.t0 + 3, tm, { gain: QUIET_BODY });
+    return put('riley', G, G.t0 + 0.01, G.t0 + 3, tm, G.t0 + 3, tm, { gain: P ? 1 : QUIET_BODY });
   };
   if (flag('heroRiley')) {
     let n = 0;
     for (const G of g.slice(0, lastG())) if (n < RILEYS && putRiley(G)) n++;
     // None? One of the plain gestures becomes one. Not at the very start: the film opens in its own family.
-    if (!n && score.remake) {
+    if (!n && score.remake && !P) {
       const spots = g.slice(1, lastG()).filter(G => isPlain(G) && G.replayOf == null && G.k != null && G.t1 - G.t0 >= 16 && free(G.t0, G.t1));
       const G = spots[Math.floor(rand() * spots.length)];
       if (G) {

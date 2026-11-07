@@ -289,7 +289,7 @@ export function compose(A, seed = 1, opts = {}) {
     for (let j = n - 1; j > 0 && from[j] >= 0; j = from[j]) pick.push(j);
     return pick.reverse();
   };
-  const bonus = nodes.map(n => (n.boundary && n.S >= mandatory ? 8 : 0) + (form ? 8 * clamp((n.peak ?? 0) / 0.5) : 0) + (P ? P.dropWorth(n.dE ?? 0) : 0));
+  const bonus = nodes.map(n => (n.boundary && n.S >= mandatory ? 8 : 0) + (form ? 8 * clamp((n.peak ?? 0) / 0.5) : 0) + (P ? P.dropWorth(n.dE ?? 0, n.bar) : 0));
   // A rest is somewhere to land: the next world arrives and the film stops on it, until the band comes back.
   if (form) for (const r of M.rests) {
     let best = -1, d = 1.5 * M.bar;
@@ -344,7 +344,7 @@ export function compose(A, seed = 1, opts = {}) {
   }
 
   // A way of changing runs its stretch of landings together into one gesture, whose steps are those landings
-  if (P) land = P.passages(land, segAt);
+  if (P) land = P.passages(land, segAt, time);
 
   // ----- 3. Which earlier gesture does each gesture replay?
   const nG = land.length - 1, spec = [];
@@ -601,7 +601,7 @@ export function compose(A, seed = 1, opts = {}) {
     const srcG = !over && s.replayOf !== null ? gestures[s.replayOf] : null;
     const pat = over?.pattern ?? s.pat;
     // It has become the next pattern exactly on the boundary. Where the music falls away it takes longer over it; where it rises it's quicker.
-    const morph = morphFor(a, b, P ? P.leadOf(P.parts[k], pat, spec[k + 1]?.pat, len) : clamp(len * (l1.kind === 'fall' || l1.kind === 'break' ? 0.5 : l1.kind === 'rise' ? 0.3 : 0.4), 7, 13), pat);
+    const morph = morphFor(a, b, P ? P.leadOf(P.parts[k], pat, spec[k + 1]?.pat, len, l1.kind) : clamp(len * (l1.kind === 'fall' || l1.kind === 'break' ? 0.5 : l1.kind === 'rise' ? 0.3 : 0.4), 7, 13), pat);
     // Its clock comes to rest in the transformation out of it (frame.js), so that's where its long move should end, or the last third of the ride would never be seen and the rest would be slow.
     const seen = form ? len - morph + Math.min(morph * 0.4, 3.5) / 2 : len;
     let arcs, flowOver, change = null;
