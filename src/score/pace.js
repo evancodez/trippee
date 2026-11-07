@@ -188,7 +188,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   // Something nobody's seen yet, for the climax
   const saved = bags.relay.length > 3 ? bags.relay.pop() : null;
   const take = bag => { const k = bag.shift(); if (k !== undefined) bag.push(k); return k; };
-  const menuAt = { riot: 0, travel: 0, chill: 0 }, turn = { loud: Math.floor(rand() * 2), mid: Math.floor(rand() * 2), quiet: Math.floor(rand() * 2) };
+  const turn = { loud: Math.floor(rand() * 2), mid: Math.floor(rand() * 2), quiet: Math.floor(rand() * 2) };
   const wardrobe = new Map();
   const has = way => way === 'suite' || bags[way].length > 0;
   const wardrobeOf = (key, cls) => {
@@ -219,8 +219,8 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
     for (let k = 0; k + 1 < land.length; k++) {
       const a = land[k], b = land[k + 1], mid = (a + b) / 2, seg = segAt(mid), level = levelAt(mid), label = seg.label;
       // What a kind of section wears goes by the kind of section, so it's the same each time it comes back. A long stretch that isn't like the rest of it, an outro on the end of a chorus, has its own.
-      const own = classOfLabel(label), here = classAt(mid), key = (own === 'loud' && here === 'quiet') || (own === 'quiet' && here === 'loud') ? `${label}.${here}` : label;
-      const w = wardrobeOf(key, key === label ? own : here), last = out.at(-1), forced = a < OPENS || b === climaxAt;
+      const usual = classOfLabel(label), here = classAt(mid), key = (usual === 'loud' && here === 'quiet') || (usual === 'quiet' && here === 'loud') ? `${label}.${here}` : label;
+      const w = wardrobeOf(key, key === label ? usual : here), last = out.at(-1), forced = a < OPENS || b === climaxAt;
       // A section coming back starts its routine from the top
       if (!last || last.w !== w || last.seg.visit !== seg.visit) { w.at = 0; w.used = {}; }
       let way = forced ? 'suite' : w.ways[w.at % w.ways.length];
@@ -254,7 +254,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   };
 
   // ---------------------------------------------------------------- which patterns
-  const counts = new Map(), worn = new Map(), steps = new Map();
+  const counts = new Map(), worn = new Map();
   // What pattern a passage wears. choose asks the composer for one that suits here; prev is what's just been on.
   const wear = (q, part, prev, choose) => {
     const { w, seg } = part, visit = `${w.key}/${seg.visit || 0}`;
