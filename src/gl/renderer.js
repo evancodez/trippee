@@ -8,7 +8,7 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
 // The first four are what a film needs to run; the rest build behind it.
 export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8;
-export const TIME = 64;      // src/gl/chunks/time.js: only ever built when something first asks for it. 16 and 32 are a world's own (src/worlds/engine.js).
+export const TIME = 1024;      // src/gl/chunks/time.js: only ever built when something first asks for it. 16 and 32 are a world's own, and a world's variants go up in 64s (src/worlds/engine.js).
 const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
 export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & TIME ? '#define TIME\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
@@ -58,7 +58,7 @@ export class Renderer {
 
     this.vs = compile(gl, gl.VERTEX_SHADER, VERT);
     this.progs = new Array(16).fill(null);
-    this.timeOn = false; this.timeT = null; this.timeLoc = {};      // set by src/score/time-sheet.js for a frame that wants time local to each pixel
+    this.timeOn = false; this.timeT = null; this._tLocs = new Map();      // set by src/score/time-sheet.js for a frame that wants time local to each pixel
     this.variant = 0;
     this._start(0);
     this._whenReady = new Promise(res => { this._resolveReady = res; });
@@ -93,7 +93,6 @@ export class Renderer {
     gl.useProgram(prog);
     gl.uniform1i(gl.getUniformLocation(prog, 'uPush'), 0);
     this.progs[v] = prog;
-    if (v & TIME) this.timeLoc[v] = gl.getUniformLocation(prog, 'uT');
     if (v === 0) {
       this.prog = prog;
       this.ubo = gl.createBuffer();
@@ -166,7 +165,7 @@ export class Renderer {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { console.error('Shader failed:', gl.getShaderInfoLog(fs)); return; }
     gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'Block'), 0);
     gl.useProgram(prog); gl.uniform1i(gl.getUniformLocation(prog, 'uPush'), 0);
-    this.timeLoc[v] = gl.getUniformLocation(prog, 'uT'); this.progs[v] = prog;
+    this.progs[v] = prog;
   }
 
   _initBrush() {
@@ -311,8 +310,13 @@ export class Renderer {
     F[res] = w; F[res + 1] = h; F[res + 2] = w / h; F[res + 3] = this.pushOn ? 1 : 0;
     gl.bindFramebuffer(gl.FRAMEBUFFER, low ? low.fbo : null);
     gl.viewport(0, 0, w, h);
-    gl.useProgram(this._programFor(F));
-    if (this.variant & TIME) gl.uniform4fv(this.timeLoc[this.variant], this.timeT);
+    const prog = this._programFor(F);
+    gl.useProgram(prog);
+    if (this.timeOn) {
+      let loc = this._tLocs.get(prog);
+      if (loc === undefined) this._tLocs.set(prog, loc = gl.getUniformLocation(prog, 'uT'));
+      if (loc) gl.uniform4fv(loc, this.timeT);
+    }
     this.costKey = this.variant + (F[FRAME.xf * 4] > 0.5 ? 0.5 : 0);     // a shock draws two patterns in a plain program: it costs what it costs, and what's plain stays sharp
     gl.activeTexture(gl.TEXTURE0);
     if (this.brushOk) gl.bindTexture(gl.TEXTURE_2D, this.brushA.tex);

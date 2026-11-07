@@ -286,9 +286,10 @@ function writeEchoMove(out, m, s) { out[OFF.rot] += (m.turn ?? 0.4) * s; }
 // ---------------------------------------------------------------- Rewind
 // A tape going back. Over a build the picture's clock turns round: everything you've just watched happens backward, faster and faster, every morph un-happening, and it comes forward again at a rush and lands on the hit with the song, at speed. The song's own reactions don't go with it: they're on the song's seconds.
 //   { id: 'rewind', times: { hit: 192.95 }, back: 8, bars: 4 }   back: seconds of film it goes back over. bars: how long the whole thing takes, ending on the hit.
-export function rewindTrack({ hit, back, len, turn = 0.55, land = 2, tail = 2 }) {
-  const a = hit - len, m = a + len * turn, low = a - back, V = Math.min(land * (hit - low) / (hit - m), 6);
-  return [{ t: a, x: a, v: 1 }, { t: m, x: low, v: 0 }, { t: hit, x: hit, v: V }, { t: hit + tail, x: hit + tail, v: 1 }];
+export function rewindTrack({ hit, back, len, turn = 0.55, land = 2.2, tail = 4 }) {
+  // It crosses the hit at land times the song's speed and takes the tail to come back to it. More than about 3 and it would have to stop and go back again to make that up.
+  const a = hit - len, m = a + len * turn, low = a - back;
+  return [{ t: a, x: a, v: 1 }, { t: m, x: low, v: 0 }, { t: hit, x: hit, v: land }, { t: hit + tail, x: hit + tail, v: 1 }];
 }
 export const rewindClock = list => t => { for (const k of list) if (t > k[0].t && t < k.at(-1).t) return evalTrack(k, t); return t; };
 const rewind = {
@@ -296,7 +297,7 @@ const rewind = {
   needs() { return true; },
   cue(m, { score, bar }) {
     if (m.hit == null) return null;
-    const k = rewindTrack({ hit: m.hit, back: m.back ?? 4 * bar, len: (m.bars ?? 4) * bar, tail: (m.tail ?? 1) * bar, land: m.land ?? 1.4 });
+    const k = rewindTrack({ hit: m.hit, back: m.back ?? 4 * bar, len: (m.bars ?? 4) * bar, tail: (m.tail ?? 2) * bar, land: m.land ?? 2.2 });
     (score.rewinds ??= []).push(k);
     score.rewind = rewindClock(score.rewinds);
     return m;

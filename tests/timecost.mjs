@@ -5,7 +5,7 @@ export default async ({ page, log }) => {
   for (const id of ids) {
     const r = await page.eval(async ({ id }) => {
       const t = window.trippee, app = t.app, R = app.R; app.governor.enabled = false; R.drawScale = 1;
-      R._wantTime(0); for (let i = 0; i < 400 && !R.progs[64]; i++) await new Promise(r => setTimeout(r, 25));
+      R._wantTime(0); for (let i = 0; i < 400 && !R.progs[1024]; i++) await new Promise(r => setTimeout(r, 25));
       t.load(id, {}); app.manual = false; app.t = 12;
       const costs = {}, was = R.onCost; R.onCost = (k, s, ms) => { (costs[k] ??= []).push(ms); };
       const js = []; const orig = t.step;

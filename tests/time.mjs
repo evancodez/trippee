@@ -11,7 +11,7 @@ export default async ({ page, save, log }) => {
       else t.load(id, { arcs: true });
       app.manual = true; app.t = from; t.step(0.016);
       // let the time program build if it's wanted
-      app.R._wantTime(0); for (let i = 0; i < 400 && !app.R.progs[64]; i++) await new Promise(r => setTimeout(r, 25));
+      app.R._wantTime(0); for (let i = 0; i < 400 && !app.R.progs[1024]; i++) await new Promise(r => setTimeout(r, 25));
       const n = Math.round(secs / every), W = tile, H = Math.round(W * t.canvas.height / t.canvas.width), rows = Math.ceil(n / cols);
       const sheet = document.createElement('canvas'); sheet.width = cols * W; sheet.height = rows * H;
       const g = sheet.getContext('2d'); g.font = '12px monospace';

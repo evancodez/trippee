@@ -14,7 +14,7 @@ export default async ({ page, save, log }) => {
     const sc = compose(A, 7, { patterns: app.patterns, aspect: 16 / 9, cut });
     app.song.score = sc; app.stage.setScore(sc);
     const T = window.trippee; app.manual = true; app.governor.enabled = false; app.R.drawScale = 1; app.paused = false;
-    app.R._wantTime(0); for (let i = 0; i < 400 && !app.R.progs[64]; i++) await new Promise(r => setTimeout(r, 25));
+    app.R._wantTime(0); for (let i = 0; i < 400 && !app.R.progs[1024]; i++) await new Promise(r => setTimeout(r, 25));
     if (colour) { document.dispatchEvent?.(new Event('x')); app.beyond?.set?.(true); }
     const times = [];
     for (const part of at.split(',')) { const [range, step] = part.split(':'), [a, b] = range.split('-').map(Number); if (b == null) times.push(a); else for (let t = a; t <= b + 1e-6; t += +step) times.push(t); }
