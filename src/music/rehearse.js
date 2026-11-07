@@ -710,8 +710,9 @@ async function buildFor(R, score, until, breathe) {
 const drawnNot = (R, score, t, edits) => { const h = score.world ? score.handover : null; if (h) score.handover = null; frame(score, t, R, edits); if (h) score.handover = h; };
 
 // ---------------------------------------------------------------- a trick the guard can't clear
-// It's swapped for the next thing that could go there, and what clears it most is kept. Nothing's dropped unless nothing else can go there, and all of it's in score.refused.
-const SWAP_TRIES = 3, SWAP_FOR = 8;
+// It's swapped for the next thing that could go there, and what clears it most is kept. It's never dropped: what's least bad stays, and all of it's in score.refused.
+// SWAP_TRIES: for any one slot; SWAP_ALL: for the film. SWAP_FILM: how many the flash guard tries on a slot first, before anything that would slow it.
+const SWAP_TRIES = 3, SWAP_ALL = 10, SWAP_FOR = 3, SWAP_FILM = 3, JUMP_SWAPS = 6;
 function swapLooks(R, score, seen, ctx) {
   const g = score.gestures, fps = seen.fps;
   const scan = async ([a, b]) => {
@@ -735,7 +736,7 @@ async function swapForJumps(R, score, seen, jumps, ctx) {
     done.add(slot);
     const range = frames(slot.from - 1, slot.to + 1), before = jumpsIn(range).length, was = slot.id;
     let cleared = false;
-    for (const alt of slot.alts) {
+    for (const alt of W.altsFor(slot).slice(0, JUMP_SWAPS)) {
       const undo = W.swap(slot, alt);
       if (!undo) continue;
       const kept = seen.keep(range);
@@ -767,7 +768,7 @@ async function jumpsFirst(R, score, until, ctx) {
     done.add(slot);
     const a = Math.max(0, Math.floor((slot.from - 1) / STEP)), b = Math.min(n + 1, Math.ceil((slot.to + 1) / STEP)), was = slot.id, before = jumpsIn(a, b).length;
     let cleared = false;
-    for (const alt of [...slot.alts, null]) {
+    for (const alt of [...W2.altsFor(slot).slice(0, JUMP_SWAPS), null]) {
       const undo = W2.swap(slot, alt);
       if (!undo) continue;
       await look(a, b);
@@ -784,41 +785,29 @@ async function guardWoah(R, score, seen, flash, ctx) {
   const worse = r => r.whole * 100 + r.at.length;
   const at = t => flash.left.some(x => x >= t.a && x <= t.b);
   const slots = W.slots.map(slot => ({ slot, a: slot.from - 1, b: slot.to + 1 })).filter(at);
-  let tries = 0;
+  let all = 0;
   for (const { slot, a, b } of slots) {
-    let best = await realIn(frames(a, b)), cur = slot.id;
+    let best = await realIn(frames(a, b)), cur = slot.id, tries = 0;
     if (!best.whole && best.at.length < SWAP_FOR) continue;       // a tile a little over isn't worth another trick, and it's reported as it is
     // Only around what's wrong: what it's swapped for has the rest of its time looked at with everything else, by guardHeard
     const range = frames(Math.max(a, Math.min(...best.at) - 3.2), Math.min(b, Math.max(...best.at) + 1.5));
     best = await realIn(range);
     const first = cur;
-    for (const alt of slot.alts) {
-      if (!worse(best) || tries >= SWAP_TRIES) break;
+    for (const alt of W.altsFor(slot)) {
+      if (!worse(best) || tries >= SWAP_TRIES + (best.whole ? 2 : 0) || all >= SWAP_ALL) break;
       if (alt === cur) continue;
       const undo = W.swap(slot, alt);
       if (!undo) continue;
-      tries++;
+      tries++; all++;
       const kept = seen.keep(range);
       await scan(range);
       const now = await realIn(range);
       if (worse(now) < worse(best)) { best = now; cur = alt; }
       else { undo(); seen.back(range, kept); }
     }
-    // A whole-frame flash has no allowance. If there's nothing that clears it and it goes when the trick goes, the trick goes, and it says so.
-    if (best.whole && tries < SWAP_TRIES) {
-      const undo = W.swap(slot, null);
-      if (undo) {
-        tries++;
-        const kept = seen.keep(range);
-        await scan(range);
-        const now = await realIn(range);
-        if (now.whole < best.whole) { best = now; cur = 'nothing'; refused.push({ t: +slot.from.toFixed(2), what: `${first} taken off`, why: `a whole-frame flash nothing else that could go here cleared, and without it there are ${now.whole}` }); }
-        else { undo(); seen.back(range, kept); }
-      }
-    }
-    if (cur === 'nothing') { swaps.push({ t: +slot.from.toFixed(2), was: first, now: cur, left: best.at.length }); continue; }
+    // Never taken off: a slot cast as nothing is a hole in the film, and what's least bad of what could go there stays, and is reported
     if (cur !== first) { swaps.push({ t: +slot.from.toFixed(2), was: first, now: cur, left: best.at.length }); refused.push({ t: +slot.from.toFixed(2), what: `${first} became ${cur}`, why: best.at.length ? `it flashed, and this flashes less (${best.at.length} left)` : 'it flashed, and this does not' }); }
-    else if (slot.alts.length) refused.push({ t: +slot.from.toFixed(2), what: first, why: `flash left: ${best.at.length}, ${tries >= SWAP_TRIES ? 'out of tries' : 'nothing that could go here was better'}` });
+    else if (tries) refused.push({ t: +slot.from.toFixed(2), what: first, why: `flash left: ${best.at.length}${best.whole ? ', whole frame' : ''}, ${tries} tried and none was better` });
     else refused.push({ t: +slot.from.toFixed(2), what: first, why: `flash left: ${best.at.length}, and nothing else can go here` });
   }
   return swaps;
@@ -938,7 +927,7 @@ async function guardFilm(R, score, seen, ctx) {
   const frames = (a, b) => [Math.max(0, Math.floor(a * fps)), Math.min(seen.n, Math.ceil(b * fps) + 1)];
   const say = (t, what, why) => refused.push({ t: +t.toFixed(2), what, why });
 
-  const todo = [];
+  const todo = [], swapped = new Set();
   // What might be the whole frame first, then the rest while there's anything left to look with: it's the whole frame that has no allowance
   const wholeFrames = []; seen.overIn(i => seen.mean[i], FLASH_WHOLE, FILM_SWING_WHOLE, wholeFrames);
   const flagged = stretches(seen.over(), fps).map(w => ({ ...w, wholeAt: wholeFrames.some(i => i / fps >= w.a && i / fps <= w.b) })).sort((x, y) => y.wholeAt - x.wholeAt || x.a - y.a);
@@ -951,6 +940,7 @@ async function guardFilm(R, score, seen, ctx) {
   todo.sort((x, y) => y.whole - x.whole || x.a - y.a);
   for (const spot of todo) {
     if (looks <= 0) { unlooked = true; break; }
+    spot.reached = true;
     const tHit = spot.at[0], { k, kind } = spot.kinds[0], G = g[k], N = g[k + 1];
     if (!G || (opening && k > 1) || !mayChangeFor(G)()) continue;
     const what = `${G.pattern.id}${kind && N ? '>' + N.pattern.id : ''}`, loud = isLoud(tHit), first = Math.min(...spot.at) - 1, last = Math.max(...spot.at) + SLOW_AROUND;
@@ -970,6 +960,7 @@ async function guardFilm(R, score, seen, ctx) {
         known = new Map();
         still = now.at.filter(t => t >= first - 0.5 && t <= last + 0.5).length;
         fixes.push({ t: +tHit.toFixed(2), id: G.pattern.id, kind: kind ?? 'body', did });
+        if (!still) spot.cleared = true;
         say(tHit, what, `flashed: ${why}`);
         return true;
       }
@@ -977,6 +968,22 @@ async function guardFilm(R, score, seen, ctx) {
       seen.back(range, kept);
       return false;
     };
+    // In a trick's slot it's the trick that's flashing, so another of the same weight goes there first, before anything that would slow it or calm it
+    const slot = score.woah?.slots?.find(s => tHit >= s.from - 0.5 && tHit <= s.to + 0.5);
+    if (slot && !swapped.has(slot) && !opening) {
+      swapped.add(slot);
+      const Wo = score.woah;
+      let n = 0;
+      for (const alt of Wo.altsFor(slot)) {
+        if (!still || n >= SWAP_FILM || looks <= 0) break;
+        const was = slot.id, u = Wo.swap(slot, alt);
+        if (!u) continue;
+        u(); n++;
+        let undo = null;
+        await change(frames(slot.from - 1, slot.to + 1), () => { undo = Wo.swap(slot, alt); }, () => { undo?.(); }, `${was} became ${alt}`, `${was} became ${alt}`);
+      }
+      if (!still) { spot.cleared = true; continue; }
+    }
     // For those seconds only, the song lifts the sheet less
     const calmer = () => {
       if (G.calm != null && G.calm < 1) return false;      // 1 is a move saying the song carries on as it was
@@ -1034,13 +1041,20 @@ async function guardFilm(R, score, seen, ctx) {
       }
     }
   }
-  // What's left. Nothing's dulled to clear it, and it's said out loud.
+  // What's left. Nothing's dulled to clear it, and it's said out loud. Once the looks have run out, what was found and not cleared is still left: it's what a trick's swap (guardWoah) works from, so saying nothing there would leave it all in.
   const left = [];
-  for (const w of stretches(seen.over(), fps)) {
+  let w0 = 0;
+  const ws = stretches(seen.over(), fps);
+  for (; w0 < ws.length; w0++) {
+    const w = ws[w0];
     if (looks <= -0.2 * allowed) { unlooked = true; break; }
     const r = await closely(w.a, w.b, true);
     for (const t of r.at) left.push(+t.toFixed(1));
     if (r.at.length) say(r.at[0], g.find(G => G.t0 <= r.at[0] && r.at[0] < G.t1)?.pattern.id ?? '?', `flash left in${r.whole ? ', whole frame' : ''}: ${unlooked ? 'out of looks before getting to it, perhaps' : 'nothing cleared it without dulling the stretch'}`);
+  }
+  if (w0 < ws.length) {
+    const from = ws[w0].a;
+    for (const spot of todo) if (!spot.cleared && spot.b >= from) for (const t of spot.at) if (t >= from) left.push(+t.toFixed(1));
   }
   return { fixes, left: [...new Set(left)].sort((a, b) => a - b), seconds: +((performance.now() - t0) / 1000).toFixed(2), falseAlarms, looked: allowed - looks, allowed, tried, clock };
 }

@@ -25,17 +25,17 @@ const backAndForth = t => {
 export default [
   // A rolling shutter. A board of spokes and rings turns, and each row of the frame sees it a little later than the one above, as a phone's camera sees a propeller.
   slit('shutter', 'Rolling Shutter', { fams: [logring(10 / (2 * Math.PI)), spokes(12)] }, { map: 'sweep', D: 1.6, turn: 0.5, spin: 0.12, ang: Math.PI / 2 }),
-  // The middle of the frame is now and the rim is a few seconds ago: every beat leaves the middle and runs out.
-  slit('target', 'Now in the Middle', { fams: [plane(2.2, 45), plane(2.2, -45)] }, { map: 'target', D: 2.4, turn: 0.55, push: 0.25 }),
-  // The same in rings, each its own moment. They fall out of step and a big moment puts them back.
-  slit('rings', 'Rings out of Step', { fams: [plane(2, 0), plane(2, 90)] }, { map: 'target', D: 2.8, bands: 7, turn: 0.55, push: 0.2 }),
+  // The middle of the frame is now and the rim is a few seconds ago: every beat leaves the middle and runs out. Bold stripes, so each ring of time bends them its own way into a swirl. (Five of these seven were checks, and in a film or the library they all read as checks.)
+  slit('target', 'Now in the Middle', { fams: [plane(1.9, 30)] }, { map: 'target', D: 2.4, turn: 0.55, push: 0.25 }),
+  // The same in rings, each its own moment, on a star: its rays break at every ring as they fall out of step, and a big moment puts them back.
+  slit('rings', 'Rings out of Step', { fams: [spokes(10)] }, { map: 'target', D: 2.8, bands: 7, turn: 0.55, push: 0.2 }),
   // Bands across the frame, each a moment behind the next.
   slit('venetian', 'Late Bands', { fams: [spokes(10), logring(1.6)] }, { map: 'sweep', D: 2.4, bands: 9, turn: 0.6, spin: 0.1, ang: Math.PI / 2 }),
   // A wave of delay crosses the sheet.
-  slit('wave', 'Delay Wave', { fams: [plane(2.4, 30), plane(2.4, 120)] }, { map: 'wave', D: 1.2, wave: 3, waveV: 0.6, turn: 0.3, spin: 0.1, ang: 0.4 }),
+  slit('wave', 'Delay Wave', { fams: [plane(2.2, 0)] }, { map: 'wave', D: 1.2, wave: 3, waveV: 0.6, turn: 0.3, spin: 0.1, ang: 0.4 }),
 
   // A spiral of time, with a seam where the past meets the future; and cells, two moments of the sheet interleaved.
-  slit('spiral', 'Time Spiral', { fams: [plane(2.2, 0), plane(2.2, 90)] }, { map: 'spiral', D: 3, arms: 1, wind: 0.9, turn: 0.5, push: 0.2 }),
+  slit('spiral', 'Time Spiral', { fams: [plane(2.6, 0), plane(1.3, 90)] }, { map: 'spiral', D: 3, arms: 1, wind: 0.9, turn: 0.5, push: 0.2 }),
   slit('cells', 'Two Moments', { fams: [plane(3.2, 0), plane(3.2, 90)] }, { map: 'cells', D: 2, wave: 1.1, turn: 0.55, spin: 0.1, ang: 0.3 }),
 
   // A hand that exists only while it moves. At rest there's only the sheet. Bold lines: at 5.5 and 4.4 the tiles were hairline wallpaper.
@@ -59,7 +59,8 @@ export default [
   item('ouchi', 'Floating Disc', { fams: [plane(6.4, 0), plane(1.6, 90)] }, { fine: true, time: { id: 'ouchi' } }),
 
   // The sheet XOR-ed with itself a moment ago. At 3.4 it was grey mush and hairline crosses (MGMT 123-137).
-  item('echo', 'Echo', { fams: [plane(2.4, 0), plane(2.4, 90)] }, {
+  // Diamonds, not square checks: PPP 280-303 was check after check.
+  item('echo', 'Echo', { fams: [plane(2.4, 0), plane(2.4, 60)] }, {
     time: { id: 'echo' },
     drive(out, c) { if (c.G.moves?.some(m => m.id === 'echo')) return; writeEchoMove(out, { turn: 0.4 }, surged(timeClock(c))); },
   }),

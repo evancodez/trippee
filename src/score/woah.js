@@ -413,7 +413,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if (!did) { putBack(G, slot.keptG); if (N) putBack(N, slot.keptN); return null; }
     slot.undo = did.undo ?? null;
     if (did.on) { slot.G = did.on; slot.keptG = did.before; slot.N = null; slot.keptN = null; }
-    slot.alts = alts.filter(x => !OWN[x] && !OWN_IF[x]);
+    slot.alts = alts.filter(x => !OWN[x] && !OWN_IF[x]); slot.f = f; slot.climax = !!c.climax;
     forget(G); forget(g[i - 1]);
     const out = { id, kind, at: +(kind === 'change' ? hit : from).toFixed(2), t0: +from.toFixed(2), t1: +to.toFixed(2), pattern: (did.on ?? G).pattern.id, why: Object.entries(f).filter(([k, v]) => v >= 0.5 && k !== 'lv').map(([k]) => k).join(' '), ...(rel.again ? { again: true } : {}), ...(rel.answers ? { answers: rel.answers } : {}), ...(c.climax ? { climax: true } : {}) };
     list.push(out); slots.push(slot); slot.out = out;
@@ -550,8 +550,24 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if (!did) { putBack(G, kept.G); if (N) putBack(N, kept.N); return null; }
     slot.id = id; slot.undo = did.undo ?? null; slot.out.id = id ?? 'none';
     forget(G); forget(N); forget(g[g.indexOf(G) - 1]);
-    return () => { slot.undo?.(); putBack(G, kept.G); if (N) putBack(N, kept.N); slot.id = kept.id; slot.undo = kept.undo; slot.out.id = kept.id; forget(g[g.indexOf(G) - 1]); };
+    restat();
+    return () => { slot.undo?.(); putBack(G, kept.G); if (N) putBack(N, kept.N); slot.id = kept.id; slot.undo = kept.undo; slot.out.id = kept.id; forget(g[g.indexOf(G) - 1]); restat(); };
   };
+  // Everything that could go in a slot in place of what's there, the likeliest to suit the place first: what was thought of when it was cast, then anything else the sheet can wear as it stands. So the guard has something to swap for nearly always, and never has to leave a slot bare.
+  const altsFor = slot => {
+    const k = slots.filter(x => x !== slot).sort((a, b) => a.from - b.from), before = k.filter(x => x.from < slot.from).at(-1)?.id, after = k.find(x => x.from > slot.from)?.id;
+    const suits = id => (slot.f ? SUIT[id](slot.f) : 0) + (fond[id] ?? 0) * 0.2;
+    const pool = slot.kind === 'change'
+      ? CHANGES.filter(id => TRICKS.includes(id) && !OFF_CAST.has(id) && (slot.climax || !SAVED.has(id)))
+      : STRETCHES.filter(id => id !== 'rewind' && TRICKS.includes(id) && !OFF_CAST.has(id) && slot.to - slot.from >= LEAST[id] && directFits(id, slot.G));
+    const more = pool.filter(id => !slot.alts.includes(id)).sort((a, b) => suits(b) - suits(a));
+    // What the film hasn't got elsewhere first, so a swap doesn't make a second screen or a second pearls
+    const elsewhere = id => slots.filter(x => x !== slot && x.id === id).length;
+    return [...slot.alts, ...more].filter(id => id !== slot.id && id !== before && id !== after).map((id, n) => ({ id, n, e: elsewhere(id) })).sort((a, b) => a.e - b.e || a.n - b.n).map(x => x.id);
+  };
+  // What the film says it's cast is what's on it: a swap says so here as well
+  const statsOf = () => list.filter(x => x.id !== 'none').map(x => `${x.id}@${Math.round(x.at)}`).join(' ');
+  const restat = () => { if (film.stats) film.stats.woah = statsOf(); };
 
-  return { list, slots, swap, climaxIdea, take: { lean, pace }, stats: list.map(x => `${x.id}@${Math.round(x.at)}`).join(' ') };
+  return { list, slots, swap, altsFor, climaxIdea, take: { lean, pace }, get stats() { return statsOf(); } };
 }
