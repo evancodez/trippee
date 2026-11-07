@@ -1,7 +1,7 @@
 // Time and illusion, in the shader. Only in programs built with TIME (src/gl/renderer.js), and those are only built when a frame first asks for one, so nothing else pays. All the motion is worked out in
 // src/score/time-sheet.js and src/score/moves/time.js, and it's all a pure function of the score and t: there's no history buffer anywhere.
 //
-// A slit-scan with no frames kept: a frame is a pure function of t, so "the picture a moment ago" is only some numbers. The table holds how the camera and each family's phase differ at 64 moments, from what they are
+// A slit-scan with no frames kept: a frame is a pure function of t, so "the picture a moment ago" is only some numbers. The table holds how the camera and each family's phase differ at 48 moments, from what they are
 // now. Each pixel picks its own moment and reads the table, so it's looking at the sheet as it was then, or as it's going to be. The lines stay exact: it all goes in before the gradient.
 //   uT[0]  x: the map (0 off, 1 sweep, 2 target, 3 wave, 4 spiral, 5 cells), y: how many bands it's cut into (0 none), z: the wave's phase, w: unused
 //   uT[1]  x, y: its centre; z, w: its direction
@@ -13,7 +13,7 @@
 //   uT[7]  Snakes: x: how much shade; y: how dark the dark tone is; z: how light the light tone is; w: 0 one way, 1 the other. uT[8] x, y: which family runs along, and which across
 //   T_B..  the table: two vec4 for each moment. (ln zoom, turn, x, y) and the four families' phases. All relative to now, so a moment at no delay is exactly nothing.
 //   T_C..  capsules (ax, ay, bx, by), then their radii, four to a vec4.  T_G..  bumps (x, y, rx, ry) and (height, 0, 0, 0)
-export const T_N = 64, T_B = 10, T_C = T_B + 2 * T_N, CAPS = 40, T_R = T_C + CAPS, T_G = T_R + 10, BUMPS = 24, T_ALL = T_G + 2 * BUMPS;
+export const T_N = 48, T_B = 10, T_C = T_B + 2 * T_N, CAPS = 36, T_R = T_C + CAPS, T_G = T_R + 9, BUMPS = 20, T_ALL = T_G + 2 * BUMPS;      // 191 vec4: WebGL2 promises 224
 
 export default `#ifdef TIME
 vec4 gTimePh=vec4(0.);

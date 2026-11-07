@@ -1,5 +1,5 @@
 // What a frame's time program is told. frame() calls this once a frame: a gesture wearing nothing from moves/time.js costs one look at G.moves and R.timeOn stays false.
-// The table is the sheet at 64 other moments, as a difference from now: fillSlot and the song's camera at each, so it's as pure as the rest of the frame, and no frame is kept anywhere.
+// The table is the sheet at 48 other moments, as a difference from now: fillSlot and the song's camera at each, so it's as pure as the rest of the frame, and no frame is kept anywhere.
 //   A move or a hand-picked pattern says what it wants through sheet(want, m, c), c being { t, tReal, st, score, edits, G, aspect }:
 //     want.map 'sweep' | 'target' | 'wave' | 'spiral' | 'cells', want.bands, want.D (seconds of delay end to end, negative for the future), want.now (where along the map no delay is, 0..1), want.cx, cy, ang, reach, wave (frequency), wavePh
 //     want.ghost { slide, shares, capsules: [[ax, ay, bx, by, r]] }, want.fringe { amp, shares, turn, size, bumps: [[x, y, rx, ry, a]] }, want.snakes { amt, dark, light, way, along, across }
@@ -61,7 +61,7 @@ export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
   if (!mv?.sheet) return;
   const t = st.t, aspect = R.canvas ? R.canvas.width / R.canvas.height : 16 / 9;
   // A transformation under way takes it down, so what's flying arrives as itself. Picked by hand, it waits for what's flying it in.
-  const out = st.kind ? 1 - Math.min(1, st.x / 0.3) : 1;
+  const out = st.kind ? 1 - Math.min(1, st.x / 0.5) : 1;
   const want = {};
   mv.sheet(want, m, { t, tReal, st, score, edits, G, aspect, fade: out * out * (3 - 2 * out), hand: m === G.pattern.time, begin: handBegin(G, score), phi: phiOf(G, t) });
   if (want.echo) writeEcho(want.echo, st, score, edits, tReal, phiOf, walkT, G, t);
