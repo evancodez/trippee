@@ -138,7 +138,7 @@ export function sliceDrive(out, { t, G }, m = {}) {
 // How each of them sits on the same relief
 export const TERRACES = { Q: 0.2, A: 0.46, F: 1.7, P: 0.92, fly: 0.4 };
 const move = (id, kind, numbers, more = {}) => ({
-  id,
+  id, flies: true,      // src/score/moves/index.js: at the end of its time it's flat, but not where it started
   needs() { return true; },
   write(out, { t, c, G, m }) { writeSpace(out, kind, numbers(G, t, c ?? t, { ...more, ...m })); },
 });
@@ -149,5 +149,5 @@ export default {
   pleats: move('pleats', 4, pleatNumbers),
   ride: move('ride', 5, rideNumbers),
   hall: move('hall', 7, hallNumbers),
-  slice: { id: 'slice', needs(slot) { return [0, 1, 2, 3].every(i => slot[OFF[`f${i}.on`]] >= 0.5); }, write(out, c) { sliceDrive(out, c, c.m); } },
+  slice: { id: 'slice', flies: true, needs(slot) { return [0, 1, 2, 3].every(i => slot[OFF[`f${i}.on`]] >= 0.5); }, write(out, c) { sliceDrive(out, c, c.m); } },
 };
