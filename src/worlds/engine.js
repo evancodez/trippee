@@ -1,6 +1,6 @@
 // What a world is to the renderer and the stage: its programs, its second block of numbers and ink table, and how the picture gets from one world to another. See docs/MODES.md, section 4.
 // None of this is loaded until someone asks for a world. With none chosen, the film runs exactly as if this file weren't here.
-import { sourceOf, PLATES, FLIGHT, EXTRA, FOLD, TIME } from '../gl/renderer.js';
+import { sourceOf, HAND, PLATES, FLIGHT, EXTRA, FOLD, TIME } from '../gl/renderer.js';
 import helpers, { MACROS } from '../gl/chunks/world.js';
 import { Trace } from '../gl/trace.js';
 import { OFF, FRAME, FAMILIES } from '../pattern/layout.js';
@@ -97,7 +97,7 @@ class WorldPrograms {
     }
     this.table = new Table(gl, W.table?.h ?? 1);
     this.trace = W.pass ? new Trace(R) : null;
-    this.order = R.order.filter(v => !(v & (PLATES | FOLD)));      // a fold's programs only when someone wears one (program, below)
+    this.order = R.order.filter(v => !(v & ~(HAND | FLIGHT | EXTRA)));      // the film's base ones only: a fold's programs when someone wears one (program, below), and none of the film's later ones. Its SPACE is 16, which is this world's COVER
     if (W.fuller) this.order = [0, FLIGHT, FULL, FULL | FLIGHT, ...this.order.slice(2), ...this.order.slice(2).map(v => v | FULL)];
     this.ready = false; this.failed = null;
     this.whenReady = new Promise(res => { this._ready = res; });

@@ -42,8 +42,12 @@ export default async ({ page, log, save, sleep: _s, out }) => {
   if (has('boot')) {
     const scripts = await page.eval(worldScripts);
     check(log, 'no world code loads at boot', scripts.length === 0, scripts.join(' ') || 'none of src/worlds, chunks/world.js or gl/trace.js');
-    const v = await page.eval(() => ({ progs: app.R.progs.filter(Boolean).length, worlds: !!app.R.worldPrograms, wp: app.R.wp, world: app.stage.world, stamped: 'world' in app.stage.score }));
-    check(log, 'sixteen film programs and no world programs', v.progs === 16 && !v.worlds && !v.wp && !v.world && !v.stamped, JSON.stringify(v));
+    const v = await page.eval(async () => {
+      for (let i = 0; i < 400 && (app.R._pending || app.R._warming || app.R.order.some(n => !app.R.progs[n])); i++) await new Promise(r => setTimeout(r, 25));      // up to 10 s for what builds behind the picture to settle
+      return { progs: app.R.progs.filter(Boolean).length, worlds: !!app.R.worldPrograms, wp: app.R.wp, world: app.stage.world, stamped: 'world' in app.stage.score, parallel: !!app.R.parallel && !app.R.bare };
+    });
+    // Sixteen, and once those are warm the four the sheet in space wants first (SPACE_LATER), where programs build behind the picture
+    check(log, 'sixteen film programs (and space\'s four) and no world programs', (v.progs === 16 || (v.parallel && v.progs === 20)) && !v.worlds && !v.wp && !v.world && !v.stamped, JSON.stringify(v));
   }
 
   // ---- 2. Compile: the longest gap in the frames while a world's programs build
@@ -94,7 +98,7 @@ export default async ({ page, log, save, sleep: _s, out }) => {
       const W = await m.loadWorld('mirror'), wp = await app.R.prepareWorld(W);
       await wp.whenAll;
       const put = on => { app.stage.world = on ? W : null; app.stage.score = app.stage.score; };
-      const ids = T.list().map(p => p.id), bad = [], kinds = {}; let n = 0;
+      const ids = T.list().map(p => p.id).filter(id => !id.startsWith('space.')), bad = [], kinds = {}; let n = 0;      // a world draws no sheet in space: no world's pool has one
       for (const id of ids) for (const u of [.25, .5, .75]) {
         put(false); T.still(id, u); const a = await W_.sha();
         put(true); T.still(id, u); const b = await W_.sha(); n++;
