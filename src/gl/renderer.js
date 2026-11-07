@@ -8,7 +8,7 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
 // The first four are what a film needs to run; the rest build behind it.
 export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8;
-export const FOLD = 64;      // mirrors in front of the sheet (chunks/fold.js). 16 and 32 are a world's own. These build last, behind everything else, and nothing waits for them.
+export const FOLD = 64;      // mirrors in front of the sheet (chunks/fold.js). 16 and 32 are a world's own. Nothing's built for these until something asks: wantFold, by a film with one in it at compose, or by the first frame that draws one.
 const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
 export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & FOLD ? '#define FOLD\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
@@ -31,7 +31,7 @@ export class Renderer {
   constructor(canvas, { bare = false } = {}) {
     this.canvas = canvas;
     this.order = bare ? ORDER.slice(0, 4) : ORDER;
-    this.later = bare ? [] : ORDER.map(v => v | FOLD);      // nothing waits for these, and a world builds its own only when it's asked to
+    this.foldAsked = false;
     this.bare = bare;
     const gl = this.gl = canvas.getContext('webgl2', {
       antialias: false, alpha: false, depth: false, stencil: false,
@@ -72,7 +72,18 @@ export class Renderer {
 
   whenReady() { return this._whenReady; }
   whenAllReady() { return this._whenAll; }
-  whenFoldReady() { return this._whenFold; }
+  // Every program a fold can be drawn with. For tests, and for a rehearsal that has one to look at.
+  whenFoldReady() { this.wantFold(); return this._whenFold; }
+  // The ones a fold's likely to want, or just this one. It's a program's first draw that's the stall, so they're warmed one at a time with the picture carrying on, as at the start.
+  wantFold(v = null) {
+    if (v == null) this.foldAsked = true;
+    const add = v != null ? [v] : ORDER.slice(0, this.bare ? 4 : 8).map(n => n | FOLD);       // the hand's only if it's ever drawn over one
+    const more = add.filter(n => !this.order.includes(n));
+    if (!more.length) return;
+    this.order = [...this.order, ...more];
+    if (!this._pending && !this._warming) this._next();
+  }
+  _next() { const next = this.order.find(n => !this.progs[n]); if (next !== undefined) { this._start(next); this._poll(); } else this._warmAll(); }
 
   _start(v) {
     const gl = this.gl, fs = compile(gl, gl.FRAGMENT_SHADER, sourceOf(v));
@@ -115,12 +126,12 @@ export class Renderer {
   _warmAll() {
     // ...then the ones nothing's waiting for, the same way.
     const list = this.progs.filter((p, v) => p && !(this._warm ??= new Set()).has(v) && this._warm.add(v));
+    this._warming = true;
     const done = () => {
+      this._warming = false;
       this._resolveAll();
-      const next = this.later.find(n => !this.progs[n]);
-      if (next === undefined) { this._resolveFold(); return; }
-      this.order = [...this.order, ...this.later]; this.later = [];
-      this._start(next); this._poll();
+      if (this.order.some(n => !this.progs[n])) { this._next(); return; }
+      if (this.foldAsked) this._resolveFold();
     };
     if (!list.length) { done(); return; }
     const gl = this.gl, c = this.canvas;
@@ -152,6 +163,7 @@ export class Renderer {
   _programFor(F) {
     if (this.wp) return this.wp.program(F);
     const v = this._variantOf(F);
+    if (v & FOLD && !this.progs[v]) this.wantFold(v);
     if (!this.progs[v] && !this.parallel && !this._pending) { this._start(v); this._poll(); }
     const fold = this.progs[v & (FLIGHT | EXTRA | FOLD)] ? v & (FLIGHT | EXTRA | FOLD) : v & (FLIGHT | FOLD);      // one still building, a fold goes without whatever else it can before it goes without the fold
     const got = this.progs[v] ? v : this.progs[fold] ? fold : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;

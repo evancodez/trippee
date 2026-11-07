@@ -15,6 +15,7 @@ import { fillSlot, noHorizon, withTravel } from '../score/slot.js';
 import { OFF, SLOT_FLOATS } from '../pattern/layout.js';
 import { clamp, evalTrack, smoother } from '../score/curves.js';
 import { XFORMS } from '../score/xform/index.js';
+import FOLD_SET from '../score/moves/folds.js';
 
 const JUMP_H = 54, STEP = 0.2, JUMP = 0.3;     // a jump: 30% of full scale in a fifth of a second
 const LOOK_H = 360, SAMPLES = 12;              // 13 points, at a third of 1080p: enough to tell a 16 px line period at 1080p from a 45 px one
@@ -416,6 +417,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
   const R = await getRig();
   // A world's programs on this renderer too, all of them: as with the film's, anything not built yet would be judged as a different picture. If it fails to build it draws as the film, as it would on screen.
   if (score.world) { await R.prepareWorld(score.world); await R.worldPrograms.get(score.world).whenAll; }
+  if (score.gestures.some(G => G.moves?.some(m => FOLD_SET[m.id]))) await R.whenFoldReady();      // the same for a film with a fold in it
   const aspect = score.aspect ?? (globalThis.app?.canvas?.width && app.canvas.height ? app.canvas.width / app.canvas.height : 16 / 9);
   const stage = globalThis.app?.stage, live = () => stage?.score === score;
 

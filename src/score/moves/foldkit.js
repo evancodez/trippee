@@ -58,6 +58,7 @@ export function cueFold(m, ctx) {
   m.open = (m.open ?? 4) * bar; m.close = (m.close ?? 3) * bar;
   m.coast ??= 2; m.lead ??= 2;
   m._R = score?.react ?? null;
+  globalThis.app?.R?.wantFold?.();      // a film with a fold in it: its programs build now, behind everything, and not on the frame it's first drawn
   m._big = bigOf(A && M?.bar ? momentsOf(A, M) : []);
   if (!cueHits(m, ctx)) return null;
   m._P = medianGap(m.beats);

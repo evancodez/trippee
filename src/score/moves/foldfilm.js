@@ -1,4 +1,4 @@
-// How a generated film wears the fold set, behind directing.folds (?folds=1). A pure function of the song and the seed, like everything else that makes a film. It runs where a long plain stay is given something to do (pace.js, earn), and it goes first.
+// How a generated film wears the fold set, behind directing.folds (?folds=1). A pure function of the song and the seed, like everything else that makes a film. It runs last, in compose, when everything's where it's going to be.
 // One fold to a gesture, on the patterns the film's already chosen, going in and out with its body: the transformation either side of it is as it was. A section that comes back wears what it wore, and two gestures running don't wear the same one.
 import { rng } from '../curves.js';
 import { MOVES } from './index.js';
