@@ -16,7 +16,7 @@ const check = (k, a = 0) => ({ fams: [plane(k, a), plane(k, a + 90)] });
 const waves = k => ({ fams: [plane(k, 90)], bend1: { a: 0.1, f: 2.2 } });
 
 export default [
-  item('fan', 'Fan', { g: { fams: [{ l1: 2.6 }], 'p1.q': 1, 'p1.ay': 1.6 }, flow: { 'f0.ph': -1 }, drive: fanDrive }),
+  item('fan', 'Fan', { g: { fams: [plane(2.4, 20)], bend1: { a: 0.14, f: 1.8 } }, flow: { 'f0.ph': -1 }, drive: fanDrive }),      // bent stripes: log rings about an off-frame pole swept the whole frame black and white as the fan opened
   item('fanrings', 'Fan, Rings', { g: { fams: [ring(2.2), plane(1.3, 20)] }, flow: { 'f0.ph': -1 }, drive: fanDrive }),
   item('forever', 'Forever', { g: waves(2.6), drive: foreverWith() }),
   item('foreverstar', 'Forever, Three', { g: { ...check(2.4, 45), sf: { par: 1 } }, drive: foreverWith({ n: 3, tw: 0.8 }) }),
