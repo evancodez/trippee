@@ -147,8 +147,9 @@ float prepare(int K,int b,vec2 p){
   vec2 fq=lensView?vec2(1.,tn.x):vec2(tn.x);          // and the lines knob only changes what runs along it
   float sl=moveSlip(b,X.xy,b1),fS=fieldS(b,X.xy),tuneShare=uF[F_SPARE][K==1?3:2];    // how much of the tune's rings this slot has: a slot that's shut has none, or they'd open it
 #ifdef SPACE
-  // Strata (chunks/space.js, kind 8): the slope of the view ray, through the view into the sheet's own units. Only on a sheet the view moves as a whole.
-  vec2 stV=gSt&&!lensView?rot(-v.y)*gStS/max(v.x,1e-5):vec2(0.);
+  // Strata (chunks/space.js, kind 8): how far apart this slot's panes are, times the slope of the view ray, through the view into the sheet's own units. Only on a sheet the view moves as a whole. Any other kind: nothing
+  vec4 stK=uG[b+I_spaceK];
+  vec2 stV=rot(-v.y)*gStS*((stK.x>7.5&&!lensView?stK.y:0.)/max(v.x,1e-5));
 #endif
   for(int i=0;i<FAM;i++){
     vec4 fa=uG[b+3*i],fb=uG[b+3*i+1],fc=uG[b+3*i+2];
@@ -158,7 +159,7 @@ float prepare(int K,int b,vec2 p){
     // the smooth part of the phase; angles are added afterwards, with their exact gradient, so a wrap never shows
 #ifdef SPACE
     // On its own pane a family reads its point shifted by its height times the slope (only stripes have a pane: src/score/moves/space.js leaves rings and spokes at 0). A multiply and an add, as every program here pays for it on every pixel
-    float sm=dot(fa.xyz,vec3((X.xy-gStH[i]*stV)*fq,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
+    float sm=dot(fa.xyz,vec3((X.xy-uG[b+I_spaceE][i]*stV)*fq,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
 #else
     float sm=dot(fa.xyz,vec3(X.xy*fq,X.z))+fb.x*b1.x+fb.y*b1.y+fc.x*b2.x+fc.y*b2.y;
 #endif

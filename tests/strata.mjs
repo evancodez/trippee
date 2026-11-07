@@ -5,10 +5,10 @@
 //                                                                                      with it and with the panes held together, and one-frame pops at 60 fps
 //   SEED=8                another take
 //   MODE=loop             the library's Strata, one round of it with no song: a sheet and time-slices
-//   MODE=cost             GPU ms a frame of the library's Strata, with the panes apart and together, and a plain sheet. --size 3024,1964 for a laptop's screen
+//   MODE=cost             GPU ms a frame (median, and the tenth fastest of 50) of the library's Strata with the panes apart and together, a plain sheet, and the same sheet on the space program. --size 3024,1964 for a laptop's screen
 //   MODE=off              no toggle: says strata isn't cast and no gesture wears it
 //
-// The lock: the frame on the landing is drawn with the panes together, so it's the flat sheet by construction, and the frame one 60th before it is compared with the same frame with the panes held together.
+// The lock: the frame on the landing is drawn with the panes together, so it's the flat sheet by construction, and the frame one 60th before it is compared with the same frame with the panes held together, through the rehearsal's eyes at 960x540.
 // Flashes: opposing swings of 10% of full scale within a second, the judge's count, on the whole frame and on each of 16 tiles, at 20 fps from a second before it comes loose to two after it locks.
 import { resolve } from 'node:path';
 import { dropSong } from '../tools/look.mjs';
@@ -72,7 +72,10 @@ export default async ({ page, log, save }) => {
         const slice = sl.toDataURL('image/jpeg', 0.9);
         // The lock
         const diff = (p, q) => { let mx = 0, sum = 0; for (let k = 0; k < p.length; k += 4) { const d = Math.abs(p[k + 1] - q[k + 1]); if (d > mx) mx = d; sum += d; } return { max: mx, mean: +(sum / (p.length / 4)).toFixed(4) }; };
-        const at = t => { T.seek(t - 1 / 30); T.seek(t); const p = full(); together(true); T.seek(t - 1 / 30); T.seek(t); const q = full(); together(false); return diff(p, q); };      // the same frame before each, as the song's camera carries a little from the frame before
+        // Through the rehearsal's own eyes, which go straight to the frame's numbers: the picture's camera eases a jump out over real seconds, so two seeks to one moment aren't always one frame
+        const { getRig, shot } = await import(new URL('src/music/rehearse.js', location.href).href), R = await getRig(), LW = 960, LH = 540, p = new Uint8Array(LW * LH * 4), q = new Uint8Array(LW * LH * 4);
+        await Promise.race([R.whenBuilt?.([16]), new Promise(r => setTimeout(r, 4000))]);
+        const at = t => { shot(R, S, t, LW, LH, p); together(true); shot(R, S, t, LW, LH, q); together(false); return diff(p, q); };
         const lock = { on: at(s.lands), before: at(s.lands - 1 / 60), beat: at(s.lands - 0.25) };
         // Flashes, with it and with the panes held together
         const scan = held => {
@@ -136,7 +139,7 @@ async function loopOrCost(page, log, save, MODE) {
         ms.push(gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6); gl.deleteQuery(q);
       }
       ms.sort((p, q) => p - q);
-      return { ms: +ms[ms.length >> 1].toFixed(2), variant: R.variant };
+      return { ms: +ms[ms.length >> 1].toFixed(2), low: +ms[5].toFixed(2), variant: R.variant };      // low: the tenth fastest, as other work on the GPU only ever adds
     };
     const sheet = { 'space.kind': 8, 'space.dist': 2.4, 'space.pitch': 0.25, 'space.bowl': -1, 'space.q': 0, 'space.pix': 1 };
     return { size: [T.canvas.width, T.canvas.height], plainLattice: await measure('lattice.kagome', 10), strataTogether: await measure('space.strata', 1), strataApart: await measure('space.strata', 17), kagomeOnSpaceProgram: await measure('lattice.kagome', 10, { ...sheet, 'space.amp': 0 }), kagomeStrata: await measure('lattice.kagome', 10, { ...sheet, 'space.amp': 0.25 }), swell: await measure('space.swell', 20) };
