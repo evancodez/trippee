@@ -9,10 +9,11 @@
 // All of it is a pure function of the picture's clock: the layout from a seed, each shard's turn, slide and tip from the time. They go to the shader in the mode's own numbers and its table.
 //   uW[4]        on (and the geometry share), the point x, y, how many spokes
 //   uW[5]        how many rings across, the lens's distance, the angle the spokes are laid out from
-//   uW[6..10]    each spoke's direction, two to a vec4
-//   uW[11..30]   where each ring crosses each spoke, ring by ring, two to a vec4
-//   uW[34..58]   each shard's pivot, two to a vec4
-//   table row 0  each shard's turn, slide x, y and tip. Row 1: the line it tips about
+//   table row 0  each shard's turn, slide x, y and tip, every frame
+//   row 1        the line it tips about, and its pivot
+//   row 2        each spoke's direction
+//   row 3        where each ring crosses each spoke, ring by ring
+// Fetched, not indexed out of the block: on this GPU a uniform read at an index worked out per pixel cost 5 ms a frame at 3024x1964.
 import { rng, clamp } from '../../score/curves.js';
 
 const TAU = Math.PI * 2;
@@ -104,26 +105,28 @@ export function shardsAt(S, t, tune, T) {
 }
 
 // Into the mode's numbers. geo: the geometry share, which is 0 at the middle of a change of mode.
-export function writeShatter(Ua, Ub, S, geo) {
+export function writeShatter(Ua, S, geo) {
   const L = S.L;
   Ua[0] = geo; Ua[1] = L.cx; Ua[2] = L.cy; Ua[3] = NS;
   Ua[4] = NR; Ua[5] = LENS; Ua[6] = L.base; Ua[7] = 0;
-  for (let j = 0; j < NS; j++) { Ua[8 + 2 * j] = Math.cos(L.ang[j]); Ua[9 + 2 * j] = Math.sin(L.ang[j]); }
-  for (let i = 0; i < NR * NS; i++) { const j = i % NS; Ua[28 + 2 * i] = L.rad[i] * Math.cos(L.ang[j]); Ua[29 + 2 * i] = L.rad[i] * Math.sin(L.ang[j]); }
-  for (const c of L.cell) { Ub[2 * c.i] = c.x; Ub[2 * c.i + 1] = c.y; }
 }
 
 // The table: row 0 what each shard's doing, row 1 the line it tips about.
 export function fillShatter(tex, L, T) {
-  if (tex._matterL !== L) { for (const c of L.cell) tex.set(c.i, 1, c.ax, c.ay, 0, 0); tex._matterL = L; }
+  if (tex._matterL !== L) {
+    for (const c of L.cell) tex.set(c.i, 1, c.ax, c.ay, c.x, c.y);
+    for (let j = 0; j < NS; j++) tex.set(j, 2, Math.cos(L.ang[j]), Math.sin(L.ang[j]), 0, 0);
+    for (let i = 0; i < NR * NS; i++) { const j = i % NS; tex.set(i, 3, L.rad[i] * Math.cos(L.ang[j]), L.rad[i] * Math.sin(L.ang[j]), 0, 0); }
+    tex._matterL = L;
+  }
   for (let i = 0; i < CELLS; i++) tex.set(i, 0, T[4 * i], T[4 * i + 1], T[4 * i + 2], T[4 * i + 3]);
 }
 
 // ---------------------------------------------------------------- the shader. Only in the mode's fuller programs: most of a film has nothing broken.
 export const WARP = `
 #ifdef WORLD_FULL
-vec2 wMatterSpoke(int j){ vec4 v=uW[6+j/2]; return j%2==0?v.xy:v.zw; }
-vec2 wMatterNode(int i){ vec4 v=uW[11+i/2]; return i%2==0?v.xy:v.zw; }
+vec2 wMatterSpoke(int j){ return texelFetch(uWT,ivec2(j,2),0).xy; }
+vec2 wMatterNode(int i){ return texelFetch(uWT,ivec2(i,3),0).xy; }
 float wMatterX(vec2 a,vec2 b){ return a.x*b.y-a.y*b.x; }
 #endif
 vec2 worldWarp(vec2 p0,vec2 p){
@@ -145,8 +148,8 @@ vec2 worldWarp(vec2 p0,vec2 p){
   if(dFdx(id)!=0.||dFdy(id)!=0.) gBreak=true;      // across a crack the phase jumps, and that one pixel's gradient isn't a real one: it would draw an outline
   vec4 T=texelFetch(uWT,ivec2(cell,0),0)*sh.x;
   if(T==vec4(0.)) return p;
-  vec4 Pv=uW[34+cell/2];
-  vec2 C=cell%2==0?Pv.xy:Pv.zw,ax=texelFetch(uWT,ivec2(cell,1),0).xy,ay=vec2(-ax.y,ax.x);
+  vec4 Pv=texelFetch(uWT,ivec2(cell,1),0);
+  vec2 C=Pv.zw,ax=Pv.xy,ay=vec2(-ax.y,ax.x);
   vec2 q=rot(-T.x)*(p-C-T.yz);
   // A tile tipped about the line ax by T.w, seen through the lens: where on it this pixel looks
   float D=uW[5].y,ct=cos(T.w),st=sin(T.w),da=dot(q,ax),de=dot(q,ay);

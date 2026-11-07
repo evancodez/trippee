@@ -39,7 +39,7 @@ export default {
   pool, borrow, ink: null, pass: null, needs: [],
   glsl: { field: FIELD, warp: WARP, color: 'vec3 worldColor(int k0,int k1,float c){ return film(c); }\n' },
   fuller: S => S[FULL] > 0.5,
-  table: { h: 2, fill(tex) { if (!live.on) return false; fillShatter(tex, live.L, T); return true; } },
+  table: { h: 4, fill(tex) { if (!live.on) return false; fillShatter(tex, live.L, T); return true; } },
   direct(score, A, M) {
     if (!score.tau || !score.react) return score;
     cast(score, A, M);
@@ -74,7 +74,7 @@ export default {
     // The shatter, if one's on.
     const sh = shatterAt(score, t, from ?? G);
     live.on = false; U.a[0] = 0;
-    if (sh && geo > 0 && shardsAt(sh, t, tune, T)) { writeShatter(U.a, U.b, sh, geo); live.on = true; live.L = sh.L; A[FULL] = 1; }
+    if (sh && geo > 0 && shardsAt(sh, t, tune, T)) { writeShatter(U.a, sh, geo); live.on = true; live.L = sh.L; A[FULL] = 1; }
   },
   // src/score/woah.js casts these on the bold sheets, by the music. Never on the dots while they're dividing, and never on a sheet that's going to break: each of those is its own big moment.
   // Not limit, pearls or echo: their small tiles and rings swung a corner of the frame twice a second on these bold sheets (MGMT 158 s, PPP 89 s), and a mode has once.
