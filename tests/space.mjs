@@ -2,6 +2,7 @@
 //   PAIR=a,b VIA=flood D=14 [O='{"amp":.5}'] node tools/lab.mjs tests/space.mjs --out lab-out/s     a dense sheet across one transformation, with the frame just before and just after
 //   LOAD=space.swell S=30 node tools/lab.mjs tests/space.mjs --out lab-out/s                       a dense sheet of one pattern moving
 //   OVER='{"space.kind":1,...}' LOAD=lines.fall ...                                                any numbers on any pattern
+import { resolve, basename } from 'node:path';
 const E = process.env;
 export default async ({ page, save, log }) => {
   const errs = () => page.logs.filter(l => /\[error\]|\[exception\]/.test(l));
@@ -24,6 +25,59 @@ export default async ({ page, save, log }) => {
     log('wrote', name);
   };
   const N = cols * rows;
+  // A hand cut using all of it on a real song, the song's reaction on, muted. Whole-film scan for flashes at 20 fps, the judge's count: opposing swings of 10% of full scale in a second, none for the whole frame, two for a tile.
+  if (E.MODE === 'film') {
+    const songPath = E.SONG || 'media/mgmt.mp3';
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 640, height: 360, deviceScaleFactor: 1, mobile: false });
+    await new Promise(r => setTimeout(r, 300));
+    const data = { items: [], files: [resolve(songPath)], dragOperationsMask: 1 };
+    await page.send('Input.dispatchDragEvent', { type: 'dragEnter', x: 320, y: 180, data });
+    await page.send('Input.dispatchDragEvent', { type: 'drop', x: 320, y: 180, data });
+    for (let i = 0; i < 1800; i++) { if (await page.eval('app.ui.song.state==="ready"')) break; await new Promise(r => setTimeout(r, 100)); }
+    const made = await page.eval(async () => {
+      const here = u => new URL(u, location.href).href, { applyCut } = await import(here('src/score/cut.js'));
+      app.song.pause(); app.ui.song.show(false); app.manual = true; app.governor.enabled = false; app.R.drawScale = 1;
+      const S = app.song.score, A = app.song.analysis, M = S.react.M, bars = Array.from(A.bars), near = t => bars.reduce((b, x) => (Math.abs(x - t) < Math.abs(b - t) ? x : b), bars[0]);
+      const T = [0, 40, 64, 88, 112, 136, 160, 184].map(near);
+      const shots = [
+        { at: T[0], id: 'lines.river' },
+        { at: T[1], from: T[1] - 8, via: 'flood', id: 'checks.crush', tail: 3 },
+        { at: T[2], from: T[2] - 9, via: 'tube', id: 'lattice.master', tail: 4 },
+        { at: T[3], from: T[3] - 7, via: 'drop', id: 'waves.silk', tail: 3, moves: [{ id: 'swell', lead: 5, coast: 5 }] },
+        { at: T[4], from: T[4] - 6, via: 'pleat', id: 'space.pleats', tail: 3, moves: [{ id: 'pleats' }] },
+        { at: T[5], id: 'space.crystal', moves: [{ id: 'slice' }] },
+        { at: T[6], id: 'space.ride', moves: [{ id: 'ride', lead: 7, coast: 7 }] },
+        { at: T[7], id: 'lines.fall' },
+      ];
+      applyCut(S, { hash: A.hash, name: 'space-test', shots }, A, M);
+      return { T, refused: S.refused, gestures: S.gestures.map(G => [+G.t0.toFixed(1), +G.t1.toFixed(1), +(G.morph || 0).toFixed(1), G.pattern.id, G.xform?.id ?? '', (G.moves || []).map(m => m.id).join(',')].join(' ')), pulses: S.react.pulses?.length };
+    });
+    log(JSON.stringify(made, null, 0));
+    const a = +(E.A ?? 20), b = +(E.B ?? 200);
+    const r = await page.eval(async ({ a, b }) => {
+      const T = window.trippee, c = document.createElement('canvas'); c.width = 320; c.height = 180; const x = c.getContext('2d', { willReadFrequently: true });
+      const sheet = document.createElement('canvas'), W = 192, H = 108, cols = 12, n = Math.ceil((b - a) / 1.5); sheet.width = W * cols; sheet.height = H * Math.ceil(n / cols); const g = sheet.getContext('2d'); g.font = '11px monospace';
+      const means = [], tiles = Array.from({ length: 16 }, () => []), ts = [], kinds = [];
+      let i = 0, shot = 0;
+      for (let t = a; t < b; t += 0.05, i++) {
+        T.seek(t);
+        x.drawImage(T.canvas, 0, 0, 320, 180); const d = x.getImageData(0, 0, 320, 180).data; const tile = new Float64Array(16); let sum = 0;
+        for (let k = 0, y = 0; y < 180; y++) for (let X = 0; X < 320; X++, k += 4) { const v = d[k] * 0.2126 + d[k + 1] * 0.7152 + d[k + 2] * 0.0722; sum += v; tile[(y / 45 | 0) * 4 + (X / 80 | 0)] += v; }
+        means.push(sum / 57600); tile.forEach((v, q) => tiles[q].push(v / 3600)); ts.push(+t.toFixed(2)); kinds.push(app.lastFrame?.kind || '');
+        if (i % 30 === 0) { g.drawImage(T.canvas, (shot % cols) * W, (shot / cols | 0) * H, W - 1, H - 1); g.fillStyle = '#000'; g.fillRect((shot % cols) * W, (shot / cols | 0) * H, 80, 13); g.fillStyle = '#f33'; g.fillText(`${t.toFixed(1)} ${app.lastFrame?.kind || ''}`, (shot % cols) * W + 2, (shot / cols | 0) * H + 10); shot++; }
+      }
+      return { means, tiles, ts, kinds, url: sheet.toDataURL('image/jpeg', 0.8) };
+    }, { a, b });
+    save(`film-${basename(songPath)}.jpg`, r.url);
+    const swings = series => { const o = []; let dir = 0, p = series[0]; series.forEach((v, i) => { if (dir >= 0 && v > p) { p = v; dir = 1; } if (dir <= 0 && v < p) { p = v; dir = -1; } if (dir === 1 && p - v >= 25.5) { o.push(i); dir = -1; p = v; } else if (dir === -1 && v - p >= 25.5) { o.push(i); dir = 1; p = v; } }); return o; };
+    const spans = (series, limit) => { const sw = swings(series), out = []; let worst = 0; for (let i = 0; i < sw.length; i++) { let j = i; while (j < sw.length && sw[j] - sw[i] < 20) j++; const n = Math.floor((j - i) / 2); worst = Math.max(worst, n); if (n > limit) out.push([r.ts[sw[i]], n]); } return { worst, at: out.slice(0, 16) }; };
+    log('whole', JSON.stringify(spans(r.means, 0)));
+    const perTile = r.tiles.map(q => spans(q, 2)), worstTile = Math.max(...perTile.map(q => q.worst));
+    log('tile worst', worstTile, JSON.stringify(perTile.flatMap(q => q.at).sort((p, q) => p[0] - q[0]).slice(0, 24)));
+    const seen = {}; r.kinds.forEach(k => { seen[k] = (seen[k] || 0) + 1; }); log('kinds (frames at 20 fps)', JSON.stringify(seen));
+    log('errors', errs().length, errs().slice(0, 3).join(' | ').slice(0, 1000));
+    return;
+  }
   // A pop is one frame much further from its neighbours than they are from theirs. Every transformation, on real pairs from the film's pool, at 60 fps across each end and 30 across the middle.
   if (E.MODE === 'pops') {
     const PAIRS = (E.PAIRS || 'checks.vega,lines.fall;lattice.master,body.planet;rooms.room,waves.dune;waves.silk,rooms.hall;lines.river,checks.crush;void.diamond,dots.inflate').split(';').map(p => p.split(','));
@@ -78,14 +132,15 @@ export default async ({ page, save, log }) => {
   }
   if (E.PAIR) {
     const [a, b] = E.PAIR.split(','), D = +(E.D || 14), name = E.NAME || `${E.VIA}-${a}-${b}`;
-    const info = await page.eval(async ({ a, b, D, via, o }) => {
+    const info = await page.eval(async ({ a, b, D, via, o, beyond }) => {
       const T = window.trippee, app = T.app;
       T.morph(a, b, D, 1);
       const G = app.stage.score.gestures[0];
       G.xform = { id: via, ...o }; delete G.plan; delete G.planFor; delete G.planning;
+      if (beyond) { app.beyond.on(); app.beyond.snap(0.6); }
       app.t = 0; T.step(0); app.t = 2; T.step(0); app.t = 3; T.step(0);
       return { kind: app.lastFrame?.kind, plan: G.plan?.kind, variant: app.R.variant };
-    }, { a, b, D, via: E.VIA, o: JSON.parse(E.O || '{}') });
+    }, { a, b, D, via: E.VIA, o: JSON.parse(E.O || '{}'), beyond: !!E.BEYOND });
     log(JSON.stringify(info));
     const ts = Array.from({ length: N }, (_, i) => 1 + D * (i / (N - 1)));
     if (E.AT) { for (const t of E.AT.split(',')) save(`${name}.${t}.png`, await page.eval(`app.t=${+t};trippee.step(0);trippee.capture()`)); return; }

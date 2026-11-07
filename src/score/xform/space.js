@@ -61,7 +61,7 @@ const kinds = { flood, drop, pleat, tube };
 
 function make(id) {
   return {
-    id,
+    id, long: true,
     plan(a, b, ctx) {
       if (ctx.R?.wp) return null;      // a world's programs don't have it
       return { kind: id, o: ctx.xform ?? {}, close: [0] };

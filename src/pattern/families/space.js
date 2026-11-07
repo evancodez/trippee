@@ -3,7 +3,7 @@
 import { plane, ring, spokes } from '../kit.js';
 import MOVES, { writeSpace, reliefNumbers, pleatNumbers, rideNumbers, TERRACES, sliceDrive } from '../../score/moves/space.js';
 
-const item = (id, name, via, g, drive, more = {}) => ({ id: `space.${id}`, name, family: 'space', pool: false, via: via && { id: via }, g, arcs: [], flow: {}, drive, lambda: 0.2, ...more });
+const item = (id, name, via, g, drive, more = {}) => ({ id: `space.${id}`, name, family: 'space', pool: false, via: via && { id: via, D: 13 }, g, arcs: [], flow: {}, drive, lambda: 0.2, ...more });
 const worn = G => G?.fixedRange || G?.moves?.some(m => MOVES[m.id]);       // a cut says what it wants. In a shot that wears nothing, it's the pattern as it stands: flat.
 const relief = more => (out, { t, G }) => { if (!worn(G)) writeSpace(out, 1, reliefNumbers(G, t, t, more)); };
 

@@ -219,7 +219,7 @@ export function applyCut(score, cut, A, M) {
       G.t1 = N.t0 = hit + tailT;
       G.morph = G.t1 - from;
       if (G.morph < MORPH_LEAST) { G.morph = Math.min(MORPH_LEAST, G.t1 - G.t0); refuse(s.at, `${G.pattern.id}>${N.pattern.id}`, `a change this quick is a cut: ${(G.t1 - from).toFixed(2)} s`); }
-      G.peak = { hit, q: s.q ?? 2 };
+      G.peak = { hit, q: s.q ?? (XFORMS[want]?.long ? 0 : 2) };      // a long journey (src/score/xform/space.js) takes its time and isn't squeezed onto the hit: say from and tail so that its middle is
       if (want === 'rise') { G.rise = true; G.noGlide = true; } else if (want === 'dive') { G.rise = false; G.noGlide = true; }
     }
     G.cutAsked = { xform: G.xform?.id ?? null, rise: G.rise ?? null, q: G.peak?.q ?? 0, morph: G.morph, noGlide: !!G.noGlide };
