@@ -78,7 +78,7 @@ export default {
     set(26, Math.sin(lean), -Math.cos(lean), dr * 0.0042, t * (0.5 + e));
     set(27, spot[0], spot[1], 300 + 240 * e, 1 / (RING * AGE_CELL));
     // Energy thins it from pale to rich. The drain goes round a long way on top of that. A whoa runs it out as thin as it'll go.
-    let thin = 1050 - 1450 * Math.pow(e, 1.2) + 480 * Math.sin(dr / 480), whoa = 0, bump = 620;
+    let thin = 820 - 1300 * Math.pow(e, 1.2) + 480 * Math.sin(dr / 480), whoa = 0, bump = 620;
     const w = song?.whoa;
     if (w) { const q = smooth((t - (w.t - 11)) / 9) * (1 - smooth((t - w.t) / 7)); whoa = q; thin -= 520 * q; }
     set(28, thin, bump, 0.12 + 0.08 * (1 - e) + 0.05 * lung, 0.03 * lung + 0.02 * tone);
