@@ -147,16 +147,20 @@ export class Stage {
   _land(H, t) {
     delete H.rush; this._rushed = null;
     if (H === this.score.handover) { this.score.handover = null; return; }
-    const g = this.score.gestures, N = g[g.indexOf(H) + 1], by = H.plan?.onClock ? 0 : clockOfTo(H, t) - t;
+    const g = this.score.gestures, N = g[g.indexOf(H) + 1], by = H.plan?.onClock ? 0 : clockOfTo(H, t) - t, sc = this.score;
+    // What the next pattern's flow shows right now, in the morph being cut short. Its clock leans on the song by how much of its speed is left (rho), and that goes to all of it the moment it lands, so without this a hurried landing jumps the flow.
+    const rho = 1 - Math.min(1, (H.t1 - t) / Math.min(H.morph * 0.4, 3.5)), was = sc.phi ? sc.phi(t + by, N, t, rho) : 0;
     H.t1 = t; N.t0 = t;
-    if (by) {
-      N.phiShift = (N.phiShift || 0) + by;
-      const sc = this.score;
-      if (!sc.__shifts) {
-        sc.__shifts = true;
-        const wrap = f => (tt, G, now, rho) => f(G?.phiShift ? tt + G.phiShift : tt, G, now, rho);
-        if (sc.__hand) sc.__hand.orig = wrap(sc.__hand.orig); else sc.phi = wrap(sc.phi);
-      }
+    const shifted = () => {
+      if (sc.__shifts) return;
+      sc.__shifts = true;
+      const wrap = f => (tt, G, now, rhoNow) => f(G?.phiShift ? tt + G.phiShift : tt, G, now, rhoNow) + (G?.phiAdd || 0);
+      if (sc.__hand) sc.__hand.orig = wrap(sc.__hand.orig); else sc.phi = wrap(sc.phi);
+    };
+    if (by) { N.phiShift = (N.phiShift || 0) + by; shifted(); }
+    if (sc.phi) {
+      const gap = was - sc.phi(t, N, t, 1);
+      if (Math.abs(gap) > 1e-5) { N.phiAdd = (N.phiAdd || 0) + gap; shifted(); }
     }
   }
 

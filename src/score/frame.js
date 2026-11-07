@@ -128,9 +128,9 @@ export function frame(score, t, R, edits) {
     const { from, to, tf, t0, D, phiFrom } = m;
     const stop = Math.min(D * 0.4, 3.5), dtf = tf - t;
     const h = m.handover && m.holder.wall ? m.holder : null;
-    const rhoA = h?.still ? 0 : 1 - Math.min(1, (t - t0) / stop), rhoB = m.handover ? 1 : 1 - Math.min(1, (t0 + D - t) / stop);
-    // What's being left stays on its own film's song, wherever a seek has just put this frame: the flow's clock leans on the song's bars, and a jump in them would jump it.
-    const nowA = m.handover ? tf : t, pf = tt => (phiFrom ? phiFrom(tt, from, nowA, rhoA) : phiOf(from, tt, score, rhoA));
+    const rhoA = h?.still ? 1 : 1 - Math.min(1, (t - t0) / stop), rhoB = m.handover ? 1 : 1 - Math.min(1, (t0 + D - t) / stop);
+    // What's being left stays on its own film's song, wherever a seek has just put this frame: the flow's clock leans on the song's bars, and a jump in them would jump it. A paused picture stays exactly where it was.
+    const nowA = h?.still ? h.ts : m.handover ? tf : t, pf = tt => (phiFrom ? phiFrom(tt, from, nowA, rhoA) : phiOf(from, tt, score, rhoA));
     const tA = h?.still ? h.ts : easeOut(tf, t0 + dtf, stop);
     const tB = m.handover ? t : easeIn(t, t0 + D, stop);
     // A click's plan hasn't had a look ahead. Looking all at once would stall the picture the moment it's clicked, so what's showing carries on for the few frames it takes,
