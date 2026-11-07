@@ -173,8 +173,8 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
     return c;
   })();
   const classAt = t => ['quiet', 'mid', 'loud'][classes[clamp(barAt(t), 0, classes.length - 1)] ?? 1];
-  // A world goes about things in its own way (motion.pace): how many bars at each level, and how long its own transformation can take. It wears nothing of the film's.
-  const own = world?.motion?.pace ?? null;
+  // A world goes about things in its own way (world.pace): how many bars at each level, and how long its own transformation can take. It wears nothing of the film's.
+  const own = world?.pace ?? null;
   const barsWanted = t => (own ? own.bars : BARS[name])[levelAt(t)];
 
   const jumpAt = new Map();
@@ -296,17 +296,18 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
   };
 
   // ---------------------------------------------------------------- how long each change takes
-  const flightOf = l => Math.max(FLIGHT_LEAST, (LEAD[name][l] + TAIL[name][l]) * bar);
+  // How long a flight takes: not all the same, and a part keeps the one it drew
+  const flightOf = (l, part) => { const D = Math.max(FLIGHT_LEAST, (LEAD[name][l] + TAIL[name][l]) * bar); return part ? (part.flight ??= D * (1 + 2 * JITTER * rand())) : D; };
   const leadOf = (part, pat, next, len, kind) => {
     const l = part.level;
     if (own) return clamp(LEAD.chill[l] * bar, own.morph[0], Math.max(own.morph[0], Math.min(own.morph[1], 0.75 * len)));
     // Not all the same length: that's what a generator does. It goes by how the song's moving, and a little by nothing at all.
     const by = (KIND_LEAD[kind] ?? 1) * (1 + JITTER * (2 * rand() - 1));
-    const lead = glides(pat, next) ? LEAD[name][l] * bar * by : FLIGHT_LEAD * flightOf(l) * by;
+    const lead = glides(pat, next) ? LEAD[name][l] * bar * by : FLIGHT_LEAD * flightOf(l, part) * by;
     return clamp(lead, 1.5, Math.max(0.72 * len, 1.5));
   };
   const tailOf = (part, pat, next) => {
-    return glides(pat, next) ? TAIL[name][part.level] * bar : (1 - FLIGHT_LEAD) * flightOf(part.level);
+    return glides(pat, next) ? TAIL[name][part.level] * bar : (1 - FLIGHT_LEAD) * flightOf(part.level, part);
   };
 
   // ---------------------------------------------------------------- what a gesture's wearing
@@ -342,7 +343,7 @@ export function readPace(A, M, { seed = 7, songHash = 0, library = [], world = n
         return;
       }
       const m = { id: part.riot, beats: lvl >= 4 ? 'half' : 'strong', from: a, to: end };
-      if (part.riot === 'scissor') m.teeth = part.hits.map(time);
+      if (part.riot === 'scissor' && part.hits.length) m.teeth = part.hits.map(time);
       const made = MOVES[part.riot].cue(m, ctx(G)) ?? MOVES[part.riot].cue({ ...m, beats: 'half' }, ctx(G));
       if (made) { fixed(); G.moves = [made]; G.hero = part.riot; }
     });

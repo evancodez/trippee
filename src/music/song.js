@@ -2,7 +2,7 @@
 // Without a song none of this runs and the stage wanders.
 import { compose } from '../score/compose.js';
 import { ANALYSIS_VERSION, SR, analyse } from './analysis.js';
-import { rehearse, warmRehearsal, getRig, shot, FlashSeen } from './rehearse.js';
+import { rehearse, warmRehearsal, getRig, drawn, Eyes, FlashSeen } from './rehearse.js';
 import { flag } from '../score/flags.js';
 import { cutFor } from '../score/cuts/index.js';
 import { auditCut } from '../score/cut.js';
@@ -11,7 +11,7 @@ const VISUAL_LEAD = 0.025;      // the picture a touch ahead: an edge seen just 
 const END_HOLD = 2.5;           // seconds the film's last picture holds after the song has finished
 const ARRIVE = 7, FLIP = 6;     // seconds: a song's film flying in, and one film of a compared song flying into the other
 const HUSH = 0.45, HUSH_BACK = 2.5;      // seconds the song lets go of the sheet before a jump back in the music, and takes to come back after it
-const FLIGHT_MOST = 15, FLIGHT_FPS = 60, FLIGHT_H = 90;     // a flight that flashes takes longer, up to this. The rehearsal's way of counting, at the judge's rate and closer to its size: there's only the one flight to look at, and smaller and slower it passed flights the judge doesn't
+const FLIGHT_MOST = 15, FLIGHT_FPS = 60, FLIGHT_H = 180;     // a flight that flashes takes longer, up to this. At the judge's rate and size, and by its count (FlashSeen.real): there's only the one flight to look at, and smaller and slower it passed flights the judge doesn't
 
 // ---------------------------------------------------------------- the analysis cache: a song is only analysed once
 const DB = 'trippee', STORE = 'analysis';
@@ -202,13 +202,15 @@ export function init(app) {
       const look = { ...sc, flownPast: null, handover: app.stage.flightFrom(snap, t, D, true) };
       if (sc.runway) sc.runway(t, D);
       else { look.gestures = sc.gestures.map(G => ({ ...G, plan: null, planFor: null, planning: null })); app.stage._clearRunway(t, D, look); }
-      const n = Math.ceil(D * FLIGHT_FPS), seen = new FlashSeen(n, W, H, FLIGHT_FPS, false, !sc.cut);
+      const n = Math.ceil(D * FLIGHT_FPS), seen = new FlashSeen(n, W, H, FLIGHT_FPS, false, !sc.cut), eyes = new Eyes(R, W, H, 32, () => new Promise(res => setTimeout(res)));
       for (let i = 0; i < n; i++) {
-        const f = shot(R, look, t + i / FLIGHT_FPS, W, H, px);
-        seen.take(i, px, f, look.gestures);
-        if (performance.now() - breath > 4) { await new Promise(res => setTimeout(res)); breath = performance.now(); if (stale()) return best; }
+        const f = drawn(R, look, t + i / FLIGHT_FPS, W, H), o = { from: f.from, G: f.G, kind: f.kind };
+        if (eyes.read(p => seen.take(i, p, o, look.gestures))) await eyes.flush();
+        if (performance.now() - breath > 4) { await new Promise(res => setTimeout(res)); breath = performance.now(); if (stale()) { eyes.free(); return best; } }
       }
-      const over = seen.over().length;
+      await eyes.flush();
+      eyes.free();
+      const over = seen.real().frames.length;
       if (over < least) { least = over; best = D; }
       if (!over || D >= FLIGHT_MOST) break;
     }

@@ -121,7 +121,7 @@ export function songSheet(st, score, edits) {
   // A click takes the film to another take, which has its own heroes. How far things had stepped back goes with what's showing, and comes round to the new take's as it flies.
   if (hOn && hd.ambient != null) { chordRoom = lerp(hd.ambient * coinAmbient(hd.G, hd.ts ?? st.t), chordRoom, hx); ambient = lerp(hd.ambient, ambient, hx); }
   // A gesture the rehearsal found flashing with the song on it takes less of it (src/music/rehearse.js), letting go of that at both ends so nothing steps.
-  const calm = G.calm ? lerp(1, G.calm, smoother((st.t - G.t0) / 1.5) * smoother((G.t1 - st.t) / 1.5)) : 1;
+  const calmFrom = G.calmWin?.[0] ?? G.t0, calmTo = G.calmWin?.[1] ?? G.t1, calm = G.calm ? lerp(1, G.calm, smoother((st.t - calmFrom) / 1.5) * smoother((calmTo - st.t) / 1.5)) : 1;
   let mPulse = (edits?.reactPulse ?? 1) * amt * ambient * calm * (hOn && hd.pulse != null ? lerp(hd.pulse, score.pulseLane?.(st.t) ?? 1, hx) : score.pulseLane?.(st.t) ?? 1), mMel = (edits?.reactMelody ?? 1) * amt * (hearOn(score, 2) ? Math.max(ambient, TUNE_AMBIENT) : ambient), mTone = (edits?.reactTone ?? 1) * amt * ambient, mHarm = (edits?.reactHarmony ?? 1) * amt * chordRoom, mLung = (edits?.reactLung ?? 1) * amt * ambient * calm;
   // A world's own balance. It comes in with the handover, so nothing steps as the world changes.
   const H = score.world?.hear;

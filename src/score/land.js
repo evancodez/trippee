@@ -1,8 +1,8 @@
 // Where a transformation's fastest frame falls. T = smoother(x) with x linear is fastest half a morph before it lands, and at the landing it has come to rest with the next pattern's long move not yet
 // started, so the song's hit was the slowest frame of the film. This runs last, after every placement, and moves a change so that it crosses on its hit (docs/DIRECTION.md section 3, Timing). Only behind
-// directing.peak: with that off nothing here runs and a film is exactly the film.
+// directing.peak, on unless ?peak=0: with that off nothing here runs and a film is exactly the film it was before this.
 //
-//   Plain, slide, bend, flight   it coasts past the hit, by 2 bars if there's room, and peaked() in morphclock.js puts the fastest frame on the hit
+//   Plain, slide, bend, flight   it coasts past the hit, by its share of the change if there's room, and peaked() in morphclock.js puts the fastest frame on the hit
 //   A Shock in from the rim      most of a ring's sweep is near the rim, so its centre arriving on the hit is the least of it. The hit goes .35 of the way before the end instead
 //   Fall, Iris                   they already cross at speed, and are left alone. The hit's written down, for tests
 //   What has to be home on time  a landing on a rest, where the film stops, and one into a Countdown, whose board breaks whole from there. Or just no room. Nothing moves: it crosses on the strongest bar
@@ -11,11 +11,15 @@
 // A change starts at most LEAD tails before its hit. T's top speed is 1.875 / tail however long the lead is, and the shape of its crossing hardly changes, so a longer lead buys only a hang: what's
 // showing has come to rest and T hasn't started. On MGMT that was 5 s with nothing moving before a hit. So what's showing carries on until it's nearly time.
 //
+// It keeps the length it was given, up to that: a one-bar change stays one bar, moved along so that it crosses on the hit, and its tail is its share of that. It doesn't grow by a tail, or every short change would be three bars.
+//
 // G.peak = { hit, q }. hit is what tests read as the hit, in the film's seconds; q how long the decay after it is, and q 0 is no warp at all. What it did goes in score.landed, and what it couldn't in score.refused.
 import { directing } from './flags.js';
 
-const TAIL_BARS = 2;        // how far past the hit a change coasts
-const TAIL_LEAST = 0.75;    // bars, and at least 1.5 s. Any less and it goes by in a whip
+const TAIL_BARS = 2;        // how far past the hit a change coasts, at most
+const TAIL_SHARE = 0.4;     // of the change
+const TAIL_LEAST = 0.6;     // bars, up to 1.2 s. Any less and it goes by in a whip
+const TAIL_LEAST_S = 1.2;
 const LEAD = 1.5;           // tails
 const ROOM = 4;             // seconds the next pattern keeps to itself, between the tail and its own transformation
 const SHOCK_PAST = 0.35;    // how much of a rim Shock comes after its hit
@@ -83,12 +87,13 @@ export function land(score, A, M, cast = []) {
       continue;
     }
     const end = G.t1, atRest = score.landings?.find(l => Math.abs(l.B - end) < 0.05)?.rest;
-    const tail = atRest ? 0 : toStop(end, Math.min(TAIL_BARS * bar, roomIn(N, cast)));
-    if (tail >= Math.max(TAIL_LEAST * bar, 1.5)) {
+    // How long it's going to take, and how much of that comes after the hit
+    const total = Math.min(G.morph, (LEAD + 1) * TAIL_BARS * bar), least = Math.min(TAIL_LEAST * bar, TAIL_LEAST_S);
+    const tail = atRest ? 0 : toStop(end, Math.min(Math.max(TAIL_SHARE * total, least), TAIL_BARS * bar, roomIn(N, cast)));
+    if (tail >= least && tail < total) {
       const was = N.t0;
       G.t1 = N.t0 = end + tail;
-      G.morph += tail;
-      shorter(G, tail);
+      G.morph = Math.min(total, (LEAD + 1) * tail);     // with little room for a tail, it starts later, not hanging
       G.peak = { hit: end, q: Q };
       shiftArcs(N, was); restEnd(G); forget(G);
       landed.push(['plain', +end.toFixed(2), +tail.toFixed(2), +G.morph.toFixed(2)]);

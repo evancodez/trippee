@@ -777,12 +777,13 @@ export function compose(A, seed = 1, opts = {}) {
   const film = (W?.direct ?? direct)({
     gestures, landings, stats, tau, rate, family, pool: pool.map(p => p.id), patterns, seed, aspect,
     library, remake: (G, pattern) => gestureFor(G.k, { pattern, a: G.t0, b: G.t1 }),
+    pace: P,
     // Flow surges on the strong beats and glides between, so it stays locked and never jolts
     phi: walk || ears[11]
       // Hearing 1 and 11. Told how much of the clock's speed is left (rho) and what the time really is, it walks to the beats you can hear while that clock slows into a transformation. Asked with neither, it's just walking.
       ? (t, G, now = t, rho = 1) => { const off = t + rho * ((walk ? walk(now) * walkFlow(G) : 0) + (turn ? turn(now) : 0)), s = walk ? tau(off) : surged(off), v = G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8; return G.phiScale ? v * G.phiScale : v; }
       : (t, G) => { const s = surged(t), v = G.phiTrack ? evalTrack(G.phiTrack, s) : s / 8; return G.phiScale ? v * G.phiScale : v; },       // phiScale: a hero the rehearsal found flashing runs on a slower clock
-    react, time, ears, pace: P,
+    react, time, ears,
     song: { duration, bpm: A.bpm, hash: A.hash, meter, phraseBars: A.phraseBars },
   }, A, react.M);
   // A world's own: the tables it wants from the song, and how it goes about things. With none, nothing has been touched and no random number has been drawn.
