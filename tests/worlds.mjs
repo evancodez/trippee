@@ -98,18 +98,22 @@ export default async ({ page, log, save, sleep: _s, out }) => {
       const W = await m.loadWorld('mirror'), wp = await app.R.prepareWorld(W);
       await wp.whenAll;
       const put = on => { app.stage.world = on ? W : null; app.stage.score = app.stage.score; };
+      // Either side builds a fold's or a time trick's program on first use and draws without it meanwhile, and this loop never yields, so a compile can't finish inside it. Each side is drawn again
+      // until it draws with what it asked for: otherwise the row measures build timing, not drawing (folds.fan, time.shutter: the side whose program wasn't up yet differed, and matched once it was).
+      const R = app.R, want = () => (app.stage.world ? wp.base + wp.variantOf(R.frame) : R._variantOf(R.frame)) | (R.timeOn ? 1024 : 0);
+      const settled = async draw => { draw(); for (let i = 0; i < 300 && R.variant !== want(); i++) { await new Promise(r => setTimeout(r, 16)); draw(); } };
       const ids = T.list().map(p => p.id).filter(id => !id.startsWith('space.')), bad = [], kinds = {}; let n = 0;      // a world draws no sheet in space: no world's pool has one
       for (const id of ids) for (const u of [.25, .5, .75]) {
-        put(false); T.still(id, u); const a = await W_.sha();
-        put(true); T.still(id, u); const b = await W_.sha(); n++;
+        put(false); await settled(() => T.still(id, u)); const a = await W_.sha();
+        put(true); await settled(() => T.still(id, u)); const b = await W_.sha(); n++;
         if (a !== b || app.R.variant < 16) bad.push(`${id}@${u} v${app.R.variant}`);
         if (n % 32 === 0) await new Promise(r => setTimeout(r));
       }
       // Flights through a slot's move, the bend, the slide: each from fresh, on both sides
       const badM = [];
       for (const [a, b] of PAIRS) for (const t of [2.5, 5, 7.5]) {
-        put(false); T.morph(a, b, 8, 1); T.seek(t); const A = await W_.sha(), k = app.lastFrame.kind;
-        put(true); T.morph(a, b, 8, 1); T.seek(t); const B = await W_.sha(), k2 = app.lastFrame.kind; n++;
+        put(false); await settled(() => { T.morph(a, b, 8, 1); T.seek(t); }); const A = await W_.sha(), k = app.lastFrame.kind;
+        put(true); await settled(() => { T.morph(a, b, 8, 1); T.seek(t); }); const B = await W_.sha(), k2 = app.lastFrame.kind; n++;
         kinds[k] = (kinds[k] || 0) + 1;
         if (A !== B || k !== k2) badM.push(`${a}>${b}@${t} ${k}/${k2} v${app.R.variant}`);
       }
