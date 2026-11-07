@@ -4,7 +4,7 @@ The owner says the film is about 75% of what they want: smooth, but not always i
 
 Build order in one line: fast frames on the hits, a hand cut of two songs, one key to compare them with the generated film, and only then, if they say yes, a generator that writes films like the cuts.
 
-Where it stands: Stage A shipped in v2.4. The hit timing is behind `?peak=1` for the generated film and always on in a cut. MGMT and PPP have hand cuts, Wildflower has a chill one, and `?cut=restless` shows MGMT's restless one. The generator waits for the owner's answer.
+Where it stands: Stage A shipped in v2.4. The hit timing is on by default for the generated film since the owner's note of 6 Nov (`?peak=0` turns it off), and always on in a cut. MGMT and PPP have hand cuts, Wildflower has a chill one, and `?cut=restless` shows MGMT's restless one. The generator waits for the owner's answer.
 
 ## 1. The diagnosis
 
@@ -79,7 +79,21 @@ A scratch copy of the tree, nothing in the real one. Nobody watched it.
 | Peak within a beat of hit, % | 7 → 46 | 17 → 17 | 29 → 43 | 0 → 13 |
 | Time transforming, % | 33 → 38 | 34 → 39 | 35 → 40 | 38 → 43 |
 
-The picture answers roughly twice as often and the control doesn't move. What it costs:
+**Made again on 6 Nov**, with the flash measure reading whole tiles and the guard only softening what's really flashing, on the films of that day. This is `tests/shotlist.mjs` with `?peak=0` and with it on by default:
+
+| | PPP | Wildflower | Disclosure | MGMT |
+|---|---|---|---|---|
+| Changes visible on their moment, % | 12 → 65 | 33 → 33 | 33 → 67 | 22 → 63 |
+| Non-Fall kinds, how much they show | .9 → 2.6 | .5 → 1.3 | .4 → 1.5 | .8 → 2.0 |
+| Strongest moments visible, % | 15 → 31 | 30 → 50 | 40 → 50 | 55 → 64 |
+| Any bar line visible (control), % | 27 → 26 | 28 → 28 | 25 → 26 | 29 → 39 |
+| Peak within a beat of hit, % | 7 → 64 | 33 → 33 | 29 → 29 | 13 → 29 |
+| Median fastest frame against its hit, s | -4.5 → -.2 | -.7 → 0 | -2.4 → -.1 | -4.4 → -.1 |
+| Time transforming, % | 36 → 33 | 34 → 31 | 34 → 31 | 40 → 33 |
+
+So it's on by default. A change now keeps the length it was given, up to 5 bars, with 40% of it after the hit, so a short one stays short and it transforms for less of the film, not more. MGMT's control rose too, which nobody has explained. Wildflower's percentages didn't move because only 3 of its 9 changes are plain ones (the rest are a Fall, a coin, a Countdown, a lock, a Shock and an Iris); those three did show more, 1.0 → 1.4, .2 → 1.0 and 1.7 → 4.7. Nobody has watched this with the song on.
+
+The table above that one, from the first run: the picture answers roughly twice as often and the control doesn't move. What it costs:
 - Faster peaks flash more. On the first run the guard couldn't clear one flash on MGMT and one on Disclosure.
 - With a step added to the guard that softens a hit before anything else, MGMT clears; Disclosure keeps one at 216.2 (today's film keeps one on Wildflower at 200.5). Six hits softened, two Shocks lost, across four songs. That softening is why peak-within-a-beat stays low.
 - Strongest-moments visible stays under 70% because about 40% of those moments have no change on them. Only the sheet fixes that.
@@ -198,7 +212,7 @@ export function peaked(G, x) {
 ```
 
 `land()`, by kind:
-- **Plain, slide, bend, flight:** `t1 = hit + tail`, `morph = hit - from + tail`, `G.peak = { hit, q: 2 }`. Tail is 2 bars by default, limited by `N.t1 - N.morph - N.t0 - 4`. `N.t0` moves with it.
+- **Plain, slide, bend, flight:** `t1 = hit + tail`, `G.peak = { hit, q: 2 }`. The change keeps its length up to 5 bars, and the tail is 40% of that, at most 2 bars and at least .6 bar or 1.2 s, limited by `N.t1 - N.morph - N.t0 - 4`. `N.t0` moves with it. So a one-bar change stays one bar.
 - **Rim Shock:** a ring sweeps most area near the rim, so its centre arriving on the hit is the least visible moment. `t1 = hit + .35 * morph`, with `beats` recomputed.
 - **Fall, Iris:** already cross at speed. Untouched.
 - **Countdown, Coin:** both need a *release*. Flow lets go on the hit, in half a bar, not a bar later (`coinFlow`, Countdown's `hold.release`).
@@ -211,7 +225,7 @@ export function peaked(G, x) {
 // flags.js. Off means the film is exactly the film. setAllFlags can't reach these, the same reason as MODES' `hearing`.
 export const directing = { peak: false, sheet: false };
 ```
-`?direct=1` turns both on, `?peak=1` the timing alone. Off: `S` is null, `land()` doesn't run, no `rand` draw changes. A new test fingerprints each film's gestures (`t0 t1 id morph xform`) against a saved baseline, alongside `tests/hash.mjs`. A hand cut is asked for through `opts.cut` and needs no flag; without it, `compose` is untouched.
+`?direct=1` turns the sheet on as well, and the timing is on unless `?peak=0`. Off: `S` is null, `land()` doesn't run, no `rand` draw changes. A new test fingerprints each film's gestures (`t0 t1 id morph xform`) against a saved baseline, alongside `tests/hash.mjs`. A hand cut is asked for through `opts.cut` and needs no flag; without it, `compose` is untouched.
 
 ### With the colour worlds
 
