@@ -263,7 +263,8 @@ const ouchi = {
   write() {},
   sheet(want, m, c) {
     if (c.st.kind) return;
-    const s = beatsAt(c, m), turn = ouchiTurn(s, m.on ?? 8, m.off ?? 4, m.width ?? 1.6), q = turn / (Math.PI / 2), near = Math.abs(q - 2 * Math.round(q / 2));
+    // Picked by hand, it turns in from nothing once the picture's landed: wherever its clock happened to be, the disc was there whole in the landing frame (time.ouchi, 22 /255 after a still picture)
+    const s = beatsAt(c, m), turn = ouchiTurn(s, m.on ?? 8, m.off ?? 4, m.width ?? 1.6) * (c.hand ? ampAt(c, m, 2) : 1), q = turn / (Math.PI / 2), near = Math.abs(q - 2 * Math.round(q / 2));
     if (near < 1e-3) return;      // a whole half turn: it isn't there
     // The disc goes with the tune. What's in it doesn't go anywhere: it turned about the sheet's own middle, so only its edge moves, and that's a disc sliding over something it isn't sliding over
     const { mel } = heard(c.score, c.tReal), cy = 0.22 * mel;
