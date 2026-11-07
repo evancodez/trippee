@@ -152,7 +152,8 @@ export default {
   },
   // src/score/woah.js casts these, by the music: the screen, crumple, the fan, ghost hands on the strong beats, a roll on the biggest hit. Loud songs more often.
   // The ones that go small (the screen's corridor, limit's tiles, forever's rings) only on a bold sheet: on fine dots and checks they were a busy middle (MGMT 151-156 and 217-221 s).
-  woah: { tricks: ['screen', 'crumple', 'fan', 'ghost', 'roll', 'forever', 'limit'], fond: { crumple: 1, ghost: 0.8, roll: 0.8, fan: 0.8, screen: 0.4 }, gap: [24, 40], least: 5.5,
+  // Not the fan: its shards in toner and day-glo swung the whole frame's red twice at MGMT 66 s (judged on fd1fd53). Crumple, the ghost hands and the roll are as big.
+  woah: { tricks: ['screen', 'crumple', 'ghost', 'roll', 'forever', 'limit'], fond: { crumple: 1.1, ghost: 0.9, roll: 0.9, screen: 0.4 }, gap: [24, 40], least: 5.5,
     fits: (id, G, S) => S[OFF['surf.kind']] < 0.5 && !G.pattern.stencil && (G.pattern.group !== 'film' || id === 'ghost' || id === 'screen' || id === 'roll') && !((id === 'screen' || id === 'limit' || id === 'forever') && fineness(S) > 2.45) },
   pace: { bars: [8, 6, 4, 3, 2], morph: [3.2, 6.5], most: 15 },
   motion: { len: [10, 16], morph: [4.5, 7], xforms: { crank, bleed, feed, fill }, xform: 'crank', keep: ['crank', 'bleed', 'feed', 'fill'], front: true },
