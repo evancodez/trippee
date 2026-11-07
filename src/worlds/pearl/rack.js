@@ -33,13 +33,18 @@ function write(st, A, B, F) {
 }
 // What a rehearsal can try on one that flashes. It's a band that's too narrow, then: a wider one gives each pixel longer about it.
 const levers = { 'a wider band': G => { if (!G.xform || G.xform.W >= 0.8) return null; const w = G.xform.W; G.xform.W = 0.82; return () => { if (w == null) delete G.xform.W; else G.xform.W = w; }; } };
+// A breath where no line has a partner on the other side has nothing to carry across: every line of the one closes and every line of the next opens, and with the band nearly the
+// whole frame that's the whole frame gone to the film's pale side at once, a fade through white (MGMT 148.3 s in Pearl, Nautilus into Medusae: 95% of it white, sd 8.5 of 255). So that
+// one breathes in a band a rack's width, out from the middle, and what's going stays bold round what's coming.
+const ALONE_W = 0.5;
 function make(id, { dir, W, push = 0.05, ang = null }) {
   return {
     id, enter, write, levers,
     plan(a, b, ctx) {
       if (!flat(a) || !flat(b) || ctx.D < 3 || ctx.noGlide) return null;      // noGlide: a change of world, which has to be a flight, or a rehearsal that's watched this one flash
       const o = ctx.xform ?? {}, d = o.dir ?? dir, centre = d === 3 ? [0, 0] : o.centre ?? [0, 0], reach = Math.hypot(ctx.aspect + Math.abs(centre[0]), 1 + Math.abs(centre[1])) * 1.05;
-      return { kind: id, onClock: true, ...partners(a, b), dir: d, centre, reach, W: o.W ?? W, ang: ang ?? o.ang ?? 0, push };
+      const P = partners(a, b), alone = id === 'breath' && P.pair.every(p => p < 0);
+      return { kind: id, onClock: true, ...P, dir: d, centre, reach, W: alone ? ALONE_W : o.W ?? W, ang: ang ?? o.ang ?? 0, push };
     },
   };
 }
