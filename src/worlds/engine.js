@@ -414,8 +414,9 @@ function changePrograms(R, from, to, warm) {
     const wp = R.worldPrograms?.get(W);
     if (!wp || wp.failed) continue;
     const list = [...new Set([...all, ...(W.fuller ? all.map(v => v | FULL) : [])])], need = list.filter(v => !wp.progs[v]), cold = list.filter(v => !wp.warmed.has(v));
-    if (need.length) waits.push(wp.whenBuilt(need).then(() => (warm ? wp.warm(list) : null)));
-    else if (warm && cold.length) waits.push(wp.warm(list));
+    if (!need.length && !(warm && cold.length)) continue;
+    // One program's first draw a frame: all of them in one frame held the picture still for 0.6 s (Dusk into Flyer).
+    waits.push((async () => { if (need.length) await wp.whenBuilt(need); if (warm) for (const v of list) if (wp.progs[v] && !wp.warmed.has(v)) await wp.warm([v]); })());
   }
   return waits.length ? Promise.all(waits) : null;
 }
