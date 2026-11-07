@@ -33,7 +33,7 @@ directing.pace = new URLSearchParams(globalThis.location?.search ?? '').get('pac
 }
 
 // How a film hears. Two things.
-// How hard the picture follows the song (src/score/hear.js): on by default. ?hear=0 starts without it, the h key flips it while a song plays. Off, the film is exactly the film. setAllFlags can't reach it, so a test that turns everything on is still about today's film.
+// How hard the picture follows the song (src/score/hear.js): on by default. ?hear=0 starts without it, the e key flips it while a song plays. Off, the film is exactly the film. setAllFlags can't reach it, so a test that turns everything on is still about today's film.
 // And the numbered changes in docs/MODES.md section 6 that aren't part of that, each on its own, which do change how a film's composed. A world can say its own: score.world.hear.on[id].
 //   ?hear=0         without it   ?hear=1  with it, which is also what you get from nothing   ?hear=6,5  with it, and those   ?hear=all  with it and all of those
 export const HEAR_READY = [];

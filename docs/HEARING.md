@@ -1,17 +1,17 @@
 # Following the song
 
-**The picture now follows the song hard, and it's on by default.** Press `h` while a song plays to compare: the song goes on, and over a second the film goes back to how it was. Press it again and it all comes back.
+**The picture now follows the song hard, and it's on by default.** Press `e` while a song plays to compare: the song goes on, and over a second the film goes back to how it was. Press it again and it all comes back.
 
 Best places to see it:
 
-- **Disclosure, 1:20 to 1:30.** The wind-up, then the drop at 1:26: the sheet draws in, lets go on the hit, and every strong beat after it pumps. Press `h` during it.
+- **Disclosure, 1:20 to 1:30.** The wind-up, then the drop at 1:26: the sheet draws in, lets go on the hit, and every strong beat after it pumps. Press `e` during it.
 - **MGMT, from the start, then 1:17.** Watch the strong beats (1 and 3), then the big hit.
 - **PPP, 0:25 and 2:17.** The biggest entrances. Quiet stretches lean on the tune instead of the beat.
 - **Wildflower, 0:12 onward.** The chill end: a gentler stride, with the tune lifting and sinking the sheet.
 
 **Tell me what you want with the song panel's sliders (`s`).** Pulse, melody and tone each go from 0 (that part's gone) to 2 (plainly a lot). They're remembered. If you find a setting you like, just tell me the three numbers.
 
-`?hear=0` in the address starts without it. `H` (shift) hides the interface now, and so does `h` with no song on.
+`?hear=0` in the address starts without it. `h` hides the interface, song or no song.
 
 Nobody working on this can hear the songs, so all of this has been seen in numbers and frames and never with the music. Whether it feels musical is yours to say. Tell me if anything's ever a jolt.
 
@@ -28,7 +28,7 @@ All of it is `src/score/hear.js`: a layer over the film, on the song's own secon
 | Tone | A brighter sound leans the sheet, tightens the bloom and fines the lines. A dark one spreads them |
 | Moments (`momentsOf`): jumps, section edges, arrivals, stops, landings, big chords, fills | Each gets an answer whether or not the pattern changes. A build winds up (the camera draws back, the middle pinches, the flow slows) and the arrival lets go. A fall recedes. A rest holds completely still and lands as you hear it |
 | The song's shape | Sections go by their rank and how many times they've come, so a chorus coming back is bigger |
-| Loudness | Bigger answers, a sway that picks up speed, and a faster flow. `G.hearRate` is set when a film's composed, so `h` leaves it alone: flipping it would sweep a gesture's whole phase |
+| Loudness | Bigger answers, a sway that picks up speed, and a faster flow. `G.hearRate` is set when a film's composed, so `e` leaves it alone: flipping it would sweep a gesture's whole phase |
 | Heroes | They can step the song down only to `HEAR_FLOOR` (.9) while this is up |
 
 To measure it: `tests/answer.mjs` (how much answers, in real pixels, on any build) and `tests/hearkey.mjs` (the key, real time, recording, sliders, cuts, colour, a world).

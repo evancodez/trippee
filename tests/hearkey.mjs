@@ -1,4 +1,4 @@
-// The h key, with real keys, in real time, muted: it flips the layer that follows the song with the song going on and no pop, across a recording too. ?hear=0 starts without it, and with no song h still hides the interface. The song panel's sliders reach it.
+// The e key, with real keys, in real time, muted: it flips the layer that follows the song with the song going on and no pop, across a recording too. ?hear=0 starts without it, and h hides the interface, song or no song. The song panel's sliders reach it.
 //
 //   SONG=mgmt node tools/lab.mjs tests/hearkey.mjs --size 1280,720 --out lab-out/hearkey
 const press = async (page, key, shift = false) => {
@@ -58,7 +58,7 @@ export default async ({ page, sleep, log }) => {
     const was = await page.eval('app.song.time()');
     const going = sample(page, 2600);
     await sleep(500);
-    await press(page, 'h');
+    await press(page, 'e');
     const rows = await going;
     const pressed = rows.find(r => Math.abs(r.hear - rows[0].hear) > 1e-3) ?? rows[rows.length >> 1], k = rows.indexOf(pressed);
     const back = rows.filter((r, i) => i && r.t < rows[i - 1].t).length;
@@ -92,8 +92,8 @@ export default async ({ page, sleep, log }) => {
   // ---- across a recording: no file's saved, it's kept in the page and thrown away
   await page.eval(`app.ui.recorder.autosave=false;0`);
   await press(page, 'r'); await sleep(2500);
-  await press(page, 'h'); await sleep(2500);
-  await press(page, 'h'); await sleep(2000);
+  await press(page, 'e'); await sleep(2500);
+  await press(page, 'e'); await sleep(2000);
   await press(page, 'r'); await sleep(1500);
   const rec = await page.eval(`(()=>{const l=app.ui.recorder.last;return {size:l?.size??l?.blob?.size??0,on:app.ui.recorder.on}})()`);
   say(log, 'across a recording: h twice, it finishes and has a file', !rec.on && rec.size > 1000, JSON.stringify(rec));
@@ -135,14 +135,14 @@ export default async ({ page, sleep, log }) => {
   await load(page, sleep, song);
   await page.eval(`app.song.seek(${ats[0]});app.song.play();0`); await sleep(1000);
 
-  // ---- shift h hides the interface whatever's on
+  // ---- h hides the interface whatever's on, song and all
   const h0 = await page.eval('app.edits.hear');
-  await press(page, 'h', true);
-  say(log, 'shift h hides the interface and leaves this alone', (await page.eval(`document.body.classList.contains('bare')`)) && (await page.eval('app.edits.hear')) === h0);
-  await press(page, 'h', true);
+  await press(page, 'h');
+  say(log, 'with a song on, h hides the interface and leaves this alone', (await page.eval(`document.body.classList.contains('bare')`)) && (await page.eval('app.edits.hear')) === h0);
+  await press(page, 'h');
   say(log, 'no errors', errors().length === 0, errors().slice(0, 3).join(' | ').slice(0, 400));
 
-  // ---- ?hear=0 starts without it, and h brings it in
+  // ---- ?hear=0 starts without it, and e brings it in
   await page.goto(`${base}?hear=0`); await waitReady(page, sleep);
   await load(page, sleep, song);
   say(log, '?hear=0 starts without it', (await page.eval('app.edits.hear')) === 0);
@@ -152,7 +152,7 @@ export default async ({ page, sleep, log }) => {
   say(log, '?hear=0: the camera never moves', zero.every(r => r.zoom === 0));
   await flip(1);
   const up = await sample(page, 2500);
-  say(log, '?hear=0, then h: it comes in', Math.max(...up.map(r => r.zoom)) > 0.03);
+  say(log, '?hear=0, then e: it comes in', Math.max(...up.map(r => r.zoom)) > 0.03);
   await page.eval('app.song.pause();0');
   log('done');
 };
