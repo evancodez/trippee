@@ -1,8 +1,8 @@
 // What a frame's time program is told. frame() calls this once a frame: a gesture wearing nothing from moves/time.js costs one look at G.moves and R.timeOn stays false.
 // The table is the sheet at 64 other moments, as a difference from now: fillSlot and the song's camera at each, so it's as pure as the rest of the frame, and no frame is kept anywhere.
 //   A move or a hand-picked pattern says what it wants through sheet(want, m, c), c being { t, tReal, st, score, edits, G, aspect }:
-//     want.map 'sweep' | 'target' | 'wave' | 'interlace', want.bands, want.D (seconds of delay end to end, negative for the future), want.now (where along the map no delay is, 0..1), want.cx, cy, ang, reach, wave (frequency), wavePh
-//     want.ghost { slide, shares, capsules: [[ax, ay, bx, by, r]] }, want.fringe { amp, shares, turn, size, bumps: [[x, y, rx, ry, a]] }, want.fence { k, slide, n, ang }, want.frames [D per frame] for an interlace
+//     want.map 'sweep' | 'target' | 'wave', want.bands, want.D (seconds of delay end to end, negative for the future), want.now (where along the map no delay is, 0..1), want.cx, cy, ang, reach, wave (frequency), wavePh
+//     want.ghost { slide, shares, capsules: [[ax, ay, bx, by, r]] }, want.fringe { amp, shares, turn, size, bumps: [[x, y, rx, ry, a]] }, want.snakes { amt, dark, light, way, along, across }
 import { OFF, SLOT_FLOATS, FRAME, FAMILIES } from '../pattern/layout.js';
 import { fillSlot } from './slot.js';
 import { writeHear } from './hear.js';
@@ -12,8 +12,8 @@ import { T_N, T_B, T_C, T_R, T_G, T_ALL, CAPS, BUMPS } from '../gl/chunks/time.j
 const now = new Float32Array(SLOT_FLOATS), tmp = new Float32Array(SLOT_FLOATS), T = new Float32Array(T_ALL * 4);
 const Fh = new Float32Array(FRAME.hear * 4 + 40), Hm = FRAME.hear * 4;
 const PH = Array.from({ length: FAMILIES }, (_, i) => OFF[`f${i}.ph`]);
-const MAPS = { sweep: 1, target: 2, wave: 3, interlace: 4 };
-const MOSTLY = { sweep: 0.5, target: 0, wave: 0.5, interlace: 0 };
+const MAPS = { sweep: 1, target: 2, wave: 3 };
+const MOSTLY = { sweep: 0.5, target: 0, wave: 0.5 };
 
 // The song's camera as a similarity: what takes where it is now to where it was at that moment.
 function hearRel(out, st, score, edits, tk, tRealK, c0) {
@@ -22,12 +22,6 @@ function hearRel(out, st, score, edits, tk, tRealK, c0) {
   writeHear({ t: tk, F: Fh, G: st.G }, score, edits, tRealK, st.songHx ?? 1);
   const z = Math.log((1 + c0[0]) / (1 + Fh[Hm])), a = Fh[Hm + 1] - c0[1], co = Math.cos(a) * Math.exp(z), si = Math.sin(a) * Math.exp(z);
   out[0] = z; out[1] = a; out[2] = Fh[Hm + 2] - (co * c0[2] - si * c0[3]); out[3] = Fh[Hm + 3] - (si * c0[2] + co * c0[3]);
-}
-
-// An interlace's frames aren't moments: each is said outright, as [ln zoom, turn, x, y, ph0, ph1, ph2, ph3], and they don't change with t. It reads its table at (j + .5) / n.
-function writeFrames(frames) {
-  const n = frames.length;
-  for (let k = 0; k < T_N; k++) T.set(frames[Math.min(n - 1, Math.floor(k / (T_N - 1) * n))], (T_B + 2 * k) * 4);
 }
 
 const h = [0, 0, 0, 0], hc = [0, 0, 0, 0];
@@ -68,21 +62,21 @@ export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
   const out = st.kind ? 1 - Math.min(1, st.x / 0.3) : 1;
   const want = {};
   mv.sheet(want, m, { t, tReal, st, score, edits, G, aspect, fade: out * out * (3 - 2 * out), hand: m === G.pattern.time, begin: handBegin(G, score), phi: phiOf(G, t) });
-  if (!want.map && !want.ghost && !want.fringe && !want.fence) return;
+  if (!want.map && !want.ghost && !want.fringe && !want.snakes) return;
   T.fill(0, 0, T_B * 4);
   if (want.map) {
     T[0] = MAPS[want.map]; T[1] = want.bands ?? 0; T[2] = want.wavePh ?? 0;
     const a = want.ang ?? 0, ca = Math.cos(a), sa = Math.sin(a);
     T[4] = want.cx ?? 0; T[5] = want.cy ?? 0; T[6] = ca; T[7] = sa;
     T[8] = want.reach ?? (want.map === 'target' ? Math.hypot(aspect, 1) : Math.abs(aspect * ca) + Math.abs(sa)); T[9] = want.wave ?? 2;
-    if (want.frames) writeFrames(want.frames);
-    else table(want, st, score, edits, tReal, phiOf, walkT, G, t);
+    table(want, st, score, edits, tReal, phiOf, walkT, G, t);
   }
   const g = want.ghost;
   if (g) {
     const caps = g.capsules, n = Math.min(caps.length, CAPS);
-    T[12] = g.slide; T[13] = n;
-    for (let i = 0; i < FAMILIES; i++) T[16 + i] = g.shares[i] ?? 0;
+    T[12] = g.slide ?? 0; T[13] = n; T[14] = g.turn ?? 0; T[15] = g.zoom ?? 0;
+    if (g.about) { T[36] = g.about[0]; T[37] = g.about[1]; }
+    for (let i = 0; i < FAMILIES; i++) T[16 + i] = g.shares?.[i] ?? 0;
     for (let i = 0; i < n; i++) { const c = caps[i], o = (T_C + i) * 4; T[o] = c[0]; T[o + 1] = c[1]; T[o + 2] = c[2]; T[o + 3] = c[3]; T[T_R * 4 + i] = c[4]; }
   }
   const f = want.fringe;
@@ -92,11 +86,8 @@ export function timeSheet(st, score, R, edits, tReal, phiOf, walkT) {
     for (let i = 0; i < FAMILIES; i++) T[24 + i] = f.shares[i] ?? 0;
     for (let i = 0; i < n; i++) { const c = b[i], o = (T_G + 2 * i) * 4; T[o] = c[0]; T[o + 1] = c[1]; T[o + 2] = c[2]; T[o + 3] = c[3]; T[o + 4] = c[4]; }
   }
-  const z = want.fence;
-  if (z) {
-    T[28] = z.k; T[29] = z.slide; T[30] = z.n;
-    T[32] = Math.cos(z.ang ?? 0); T[33] = Math.sin(z.ang ?? 0);
-  }
+  const k = want.snakes;
+  if (k) { T[28] = k.amt; T[29] = k.dark ?? 0.1; T[30] = k.light ?? 0.5; T[31] = k.way ?? 0; T[32] = k.along; T[33] = k.across; }
   R.timeT = T; R.timeOn = true;
 }
 

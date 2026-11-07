@@ -250,8 +250,8 @@ void main(){
     c=mix(c,c+cs-2.*c*cs,so.w); c2=c;
     cP=mix(cP,cP+cs-2.*cP*cs,so.w);
   }
-#ifdef TIME
-  { float tf=timeFence(p0); if(tf>=0.){ c=fenced(c,tf,p0); c2=fenced(c2,tf,p0); cP=fenced(cP,tf,p0); } }
+#if defined(TIME)&&!defined(FLIGHT)
+  if(uT[7].x!=0.){ c=timeTone(c); c2=timeTone(c2); cP=timeTone(cP); }
 #endif
   vec3 col;
   // gamma-correct coverage, so an edge pixel carries half the light rather than looking dark

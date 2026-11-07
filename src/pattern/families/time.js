@@ -1,16 +1,15 @@
 // Tricks with when and how the eye sees, to click. None is in the pool: a film only wears these when a cut asks for them. See src/score/moves/time.js.
 import { logring, spokes, plane } from '../kit.js';
-import { surged, handClock } from '../../score/moves/surge.js';
-import { writeSlit, writeFringe, writeWater } from '../../score/moves/time.js';
+import { surged } from '../../score/moves/surge.js';
+import { writeSlit, writeFringe, writeWater, timeClock } from '../../score/moves/time.js';
 
-const clockOf = c => handClock({ t: c.t, phi: c.phi, G: c.G }, 6);
 const AXES = [{ id: 'zoom', name: 'zoom', path: 'scale', min: 0.4, max: 3, log: true }, { id: 'turn', name: 'turn', path: 'rot', min: -1.6, max: 1.6 }];
 const item = (id, name, g, more = {}) => ({ id: `time.${id}`, name, family: 'time', pool: false, g, arcs: [], flow: {}, axes: AXES, lambda: 0.2, ...more });
 
 // Slit, by hand: it comes up over a few seconds once the picture's arrived.
 const slit = (id, name, g, opts, more) => item(id, name, g, {
   time: { id: 'slit', ...opts },
-  drive(out, c) { if (c.G.moves?.some(m => m.id === 'slit')) return; writeSlit(out, opts, surged(clockOf(c)), c.t); },
+  drive(out, c) { if (c.G.moves?.some(m => m.id === 'slit')) return; writeSlit(out, opts, surged(timeClock(c)), c.t); },
   ...more,
 });
 
@@ -29,8 +28,8 @@ export default [
   slit('wave', 'Delay Wave', { fams: [plane(2.4, 30), plane(2.4, 120)] }, { map: 'wave', D: 1.6, wave: 3, waveV: 1.4, turn: 0.4, spin: 0.15, ang: 0.4 }),
 
   // A hand that exists only while it moves. At rest there's only the sheet.
-  item('ghost', 'Ghost Hand', { fams: [plane(3.2, 0)] }, { time: { id: 'ghost' } }),
-  item('ghostcheck', 'Ghost on a Board', { fams: [plane(2.6, 20), plane(2.6, 110)] }, { time: { id: 'ghost' } }),
+  item('ghost', 'Ghost Hand', { fams: [plane(5.5, 0)] }, { time: { id: 'ghost' } }),
+  item('ghostcheck', 'Ghost on a Board', { fams: [plane(4.4, 20), plane(4.4, 110)] }, { time: { id: 'ghost' } }),
 
   // A face in a moire. Two line sets, a little out of step, and nothing else: it's in the bands they make.
   item('fringe', 'The Face in the Moire', { fams: [{ y: 17 }, { y: 17 }] }, {
@@ -38,12 +37,12 @@ export default [
     time: { id: 'fringe' },
     drive(out, c) {
       if (c.G.moves?.some(m => m.id === 'fringe')) return;
-      out[c.OFF['f1.y']] = 17 + 1.1; writeFringe(out, {}, surged(clockOf(c)));
+      out[c.OFF['f1.y']] = 17 + 1.1; writeFringe(out, {}, surged(timeClock(c)));
     },
   }),
 
-  // A zoetrope. Nothing under the fence moves.
-  item('fence', 'Zoetrope', { fams: [logring(10 / (2 * Math.PI)), spokes(12)] }, { time: { id: 'fence', n: 3, k: 3.2, spin: Math.PI / 6, flow: [1, 0, 0, 0], perBeat: 1 } }),
+  // A still picture that turns.
+  item('snakes', 'Rotating Snakes', { fams: [logring(13 / (2 * Math.PI)), spokes(26)] }, { time: { id: 'snakes' } }),
 
   // Dead steady for 24 seconds, and then it stops for six. What you see then isn't on the screen.
   item('waterfall', 'Waterfall', { fams: [{ l1: 3, t1: 8 }] }, {

@@ -4,12 +4,13 @@
 export default async ({ page, save, log }) => {
   const env = process.env, ids = (env.IDS || 'time.shutter').split(','), from = +(env.FROM ?? 6), secs = +(env.SECS ?? 8), every = +(env.EVERY ?? 0.2), cols = +(env.COLS ?? 5);
   for (const id of ids) {
-    const r = await page.eval(async ({ id, from, secs, every, cols, tile }) => {
+    const r = await page.eval(async ({ id, from, secs, every, cols, tile, patch }) => {
       const t = window.trippee, app = t.app; app.governor.enabled = false; app.R.drawScale = 1;
+      if (patch) (0, eval)(`(p, app) => { ${patch} }`)(app.byId[id], app);
       t.load(id, { arcs: true });
       app.manual = true; app.t = from; t.step(0.016);
       // let the time program build if it's wanted
-      for (let i = 0; i < 400 && app.R.timeOn && !(app.R.variant & 64); i++) { await new Promise(r => setTimeout(r, 25)); t.step(0); }
+      app.R._wantTime(0); for (let i = 0; i < 400 && !app.R.progs[64]; i++) await new Promise(r => setTimeout(r, 25));
       const n = Math.round(secs / every), W = tile, H = Math.round(W * t.canvas.height / t.canvas.width), rows = Math.ceil(n / cols);
       const sheet = document.createElement('canvas'); sheet.width = cols * W; sheet.height = rows * H;
       const g = sheet.getContext('2d'); g.font = '12px monospace';
@@ -22,7 +23,7 @@ export default async ({ page, save, log }) => {
         t.step(every - 0);
       }
       return { sheet: sheet.toDataURL('image/jpeg', 0.85), vars: [...new Set(rec)] };
-    }, { id, from, secs, every, cols, tile: +(env.TILE ?? 320) });
+    }, { id, from, secs, every, cols, tile: +(env.TILE ?? 320), patch: env.PATCH });
     save(`${id}.jpg`, r.sheet);
     log(id, 'programs', JSON.stringify(r.vars));
   }
