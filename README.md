@@ -79,6 +79,7 @@ Songs stay on your machine. The analysis is cached in the browser so a song is o
 | `m` | calm |
 | `f` | fullscreen |
 | `h` | hide the interface |
+| `e` | with a song on: how hard the picture follows it, on or off |
 | `?` | all of this, on screen |
 
 ## Frame rate
