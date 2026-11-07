@@ -14,6 +14,7 @@ const ICONS = {
   comb: svg('<path stroke-width="2.4" d="M3 5.500h16"/><path d="M4.5 6v12M7.8 6v12M11 6v12M14.2 6v12M17.5 6v12"/>'),
   static: svg('<rect x="4.5" y="10" width="13" height="9" rx="1"/><path d="M7.5 10V7a3.5 3.5 0 0 1 7 0v3"/>'),
   sound: svg('<path d="M2.5 11h2.200l1.8-5.5 3 11 3-14 2.8 13 1.7-4.500h2.5"/>'),
+  camo: svg('<circle cx="11" cy="6.4" r="3.2"/><path d="M4 19.6c.6-4.7 3.4-7.5 7-7.5s6.4 2.8 7 7.5"/><path d="M2 12.6h2.4M17.6 12.6H20M2 16.2h1.6M18.4 16.2H20"/>'),
   beyond: svg('<path d="M11 11c-1.8-2.8-3.4-4-5.2-4a4 4 0 0 0 0 8c1.8 0 3.4-1.2 5.2-4Zm0 0c1.8 2.8 3.4 4 5.2 4a4 4 0 0 0 0-8c-1.8 0-3.4 1.2-5.2 4Z"/>'),
 };
 
@@ -25,12 +26,14 @@ export class EffectsBar {
       + '<i class="rule"></i>'
       + button('static', 'static', 'l', 'what is showing stays, and only flows. no automatic changes')
       + button('sound', 'make music', 'g', 'the picture plays itself: synths and arpeggios read off whatever is showing. a song waits while it does')
+      + button('camo', 'you', 'y', 'camouflage: the webcam puts you in the picture, only while you move, and on the strong beats of a song. nothing leaves this machine')
       + button('beyond', 'world', 'v', 'black and white, colour, and the worlds. b is colour');
     el.hidden = false;
     this.buttons = Object.fromEntries([...el.querySelectorAll('[data-fx]')].map(b => [b.dataset.fx, b]));
     for (const e of EFFECTS) this.buttons[e.id].onclick = () => this.choose(e.id);
     this.buttons.static.onclick = () => this.toggleStatic();
     this.buttons.sound.onclick = () => this.toggleMode(app.sound, 'sound');
+    this.buttons.camo.onclick = () => this.toggleCamo();
     this.buttons.beyond.dataset.world = '1';
     this.buttons.beyond.onclick = () => this.toggleStrip();
 
@@ -53,6 +56,7 @@ export class EffectsBar {
     hand.on('wander', () => this.refresh());
     addEventListener('trippee:sound', () => this.refresh());
     addEventListener('trippee:worlds', () => this.refresh());
+    addEventListener('trippee:camo', () => this.refresh());
     addEventListener('keyup', () => this.refresh());     // sound and beyond have their own keys
     this.refresh();
   }
@@ -86,6 +90,9 @@ export class EffectsBar {
     this.refresh();
   }
 
+  // Camouflage: nothing of it is loaded, and no camera asked for, until it's first turned on.
+  async toggleCamo() { const m = await import('../tools/webcam.js'); await m.toggle(this.app); this.refresh(); }
+
   toggleMode(m, name) {
     if (!m) return;
     m.toggle?.();
@@ -105,6 +112,7 @@ export class EffectsBar {
       B[name].classList.toggle('now', !!m && modeOn(m));
     }
     if (app.stage.world) B.beyond.classList.add('now');
+    B.camo.classList.toggle('now', !!app.camo?.on());
   }
 }
 

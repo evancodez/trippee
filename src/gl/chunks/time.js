@@ -3,7 +3,7 @@
 //
 // A slit-scan with no frames kept: a frame is a pure function of t, so "the picture a moment ago" is only some numbers. The table holds how the camera and each family's phase differ at 48 moments, from what they are
 // now. Each pixel picks its own moment and reads the table, so it's looking at the sheet as it was then, or as it's going to be. The lines stay exact: it all goes in before the gradient.
-//   uT[0]  x: the map (0 off, 1 sweep, 2 target, 3 wave, 4 spiral, 5 cells), y: how many bands it's cut into (0 none), z: the wave's phase, w: unused
+//   uT[0]  x: the map (0 off, 1 sweep, 2 target, 3 wave, 4 spiral, 5 cells), y: how many bands it's cut into (0 none), z: the wave's phase, w: 1 when the figure is you, from the webcam (uCamo), in place of the capsules
 //   uT[1]  x, y: its centre; z, w: its direction
 //   uT[2]  x: its reach, in picture units; y: the wave's or the cells' frequency; z: the cells' turn
 //   uT[3]  x: Ghost: how far what's inside the figure has slid, in cycles; y: how many capsules; z: how far the sheet inside it has turned; w: how far it's zoomed. uT[9] x, y: about where
@@ -18,6 +18,16 @@ export const T_N = 48, T_B = 10, T_C = T_B + 2 * T_N, CAPS = 36, T_R = T_C + CAP
 export default `#ifdef TIME
 vec4 gTimePh=vec4(0.);
 float gGhost=0.,gFringe=0.;
+// Camouflage (src/tools/webcam.js): you, as the distance to your outline in frame units and how much of you shows, the camera's picture covering the frame and seen as in a mirror.
+// A cubic B-spline through four bilinear reads, so the outline is a curve between the camera's cells. Only a time program has any of this, so nothing else changes.
+uniform sampler2D uCamo;
+vec2 camoAt(vec2 p){
+  vec2 n=vec2(textureSize(uCamo,0)); float ca=n.x/n.y,hc=max(1.,uF[8].x/uF[8].y/ca);
+  vec2 x=vec2(.5-p.x/(2.*hc*ca),.5-p.y/(2.*hc))*n-.5,i=floor(x),f=x-i,f2=f*f,f3=f2*f;
+  vec2 w0=(1.-3.*f+3.*f2-f3)/6.,w1=(4.-6.*f2+3.*f3)/6.,w2=(1.+3.*f+3.*f2-3.*f3)/6.,w3=f3/6.,g0=w0+w1,g1=w2+w3;
+  vec2 h0=(i-1.+w1/g0+.5)/n,h1=(i+1.+w3/g1+.5)/n;
+  return g0.y*(g0.x*texture(uCamo,h0).rg+g1.x*texture(uCamo,vec2(h1.x,h0.y)).rg)+g1.y*(g0.x*texture(uCamo,vec2(h0.x,h1.y)).rg+g1.x*texture(uCamo,h1).rg);
+}
 float tSmin(float a,float b,float k){ float h=max(k-abs(a-b),0.)/k; return min(a,b)-h*h*k*.25; }
 // A figure as a shape: capsules, run together. It says nothing about how it looks: the pattern does that.
 float figSD(vec2 p){
@@ -32,6 +42,7 @@ float figH(vec2 p){
   return h;
 }
 vec2 timeWarp(vec2 p0,vec2 p){
+  if(uT[0].w>.5){ vec2 c=camoAt(p0); gGhost=uT[3].x*aaOf(-c.x)*clamp(c.y,0.,1.); }      // where you are on the screen, whatever the sheet is doing: inside you it's slid by uT[3].x, as much of it as shows
   if(uT[3].y>0.){
     float m=aaOf(-figSD(p));
     gGhost=uT[3].x*m;
@@ -64,6 +75,8 @@ float timeTone(float c){
 }
 #endif
 float timeSmooth(int K,int i){ return (K==0?gTimePh[i]:0.)+gFringe*uT[6][i]; }
-float timeSlide(int i){ return gGhost*uT[4][i]; }
+// gl: how fine the family's lines are here, in cycles a pixel. Camouflage only slides where they're closer than about a third of a frame unit, and none where they are more than 0.8 apart: there a slide
+// moves whole broad blocks of black and white, and that's a flash, not a tear. It never goes past half a step, so how much of it there is can change from place to place with no seam.
+float timeSlide(int i,float gl){ return uT[0].w>.5?gGhost*uT[4][i]*smoothstep(1.2,3.,gl*uF[8].y*.5):gGhost*uT[4][i]; }
 #endif
 `;

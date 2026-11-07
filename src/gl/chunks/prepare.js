@@ -8,7 +8,7 @@ const vec4 LIFT=vec4(1.,.5,.75,.25);
 const vec4 DS=vec4(1.,-.5,.75,-.25);   // each family's share of the tune's change in line weight
 
 #ifdef TIME
-float timeSmooth(int K,int i); float timeSlide(int i);     // chunks/time.js
+float timeSmooth(int K,int i); float timeSlide(int i,float gl);     // chunks/time.js
 #endif
 #ifdef WORLD_PHASE
 //@world:phase
@@ -181,7 +181,7 @@ float prepare(int K,int b,vec2 p){
     gPh[k]=sm+fb.z*b1.z+fc.z*b2.z+fa.w+fa.y*tn.x*slipY+sl*uG[b+I_slipM][i];
     if(parity<0.){ gPh[k]+=.5; parity=1.; }                 // half a cycle on one family inverts the whole XOR
 #ifdef TIME
-    gPh[k]+=timeSlide(i);
+    gPh[k]+=timeSlide(i,length(g));
 #endif
     gGr[k]=g; gGn[k]=max(length(g),1e-5);
 #ifdef SPACE
