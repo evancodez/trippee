@@ -36,8 +36,8 @@ const SET = {      // id: which set
 const MOVE_OF = { hallway: 'hall' };      // the stretch of a hall, whose name a change has
 const CHANGES = ['flood', 'drop', 'tube', 'pleat', 'hall', 'span'];
 // Out of the casting, still clickable and still called by name in a cut or by directing.woahOnly: span (PPP 74-110: frames to 100 ms, the governor at .6, then fine diagonals for 35 s) and hallway, the stretch (the hall change stays: its lines ran too fast to follow and it handed back with a pop, PPP 274.06 s, jerk 7.09x).
-// They're still read and scored, so the take's dice fall as they did, and only where one of them would have won does anything change. Limit and snakes were tried out too: what took limit's place on MGMT at 162 s was grey noise, then a flat shape and fine tiles.
-const OFF_CAST = new Set(['span', 'hallway']);
+// They're still read and scored, so the take's dice fall as they did, and only where one of them would have won does anything change. Limit was tried out too, and what took its place on MGMT at 162 s was worse.
+const OFF_CAST = new Set(['span', 'hallway', 'snakes']);      // snakes: its grey tones were 10 to 24 s of grey noise each time it was cast (MGMT 162-172, and 88-112 with a flat grey frame at 100 s)
 const STRETCHES = ['forever', 'limit', 'screen', 'pearls', 'fan', 'crumple', 'roll', 'slit', 'ghost', 'fringe', 'snakes', 'ouchi', 'echo', 'slice', 'swell', 'terraces', 'pleats', 'ride', 'hallway', 'rewind'];
 const LINES_ONLY = new Set(['crumple', 'limit']), MARCH = new Set(['ratchet', 'wring', 'scissor', 'bellows']);
 const OVER_RELAY = new Set(['forever', 'limit', 'screen', 'pearls', 'fan', 'roll', 'swell', 'terraces', 'pleats']);      // it doesn't care what's on the sheet, and a Relay's steps can go on under it
