@@ -1,14 +1,13 @@
-// Pearl: what docs/MODES.md section 8 asks of it that no other test does. Muted, like every browser here.
-//   STAGE=stills                       every pattern in the pool, calm and buzzing, as a sheet. No song.
-//   STAGE=buds                         every Bud in the pool, as sheets, and a line's ink carried through it, by numbers. No song.
+// Pearl: what no other test does. Muted, like every browser here.
 //   STAGE=sheet                        every pattern on one sheet, to judge them against each other. TIMES=20,21,22 for several moments, NAME=file
-//   STAGE=lands                        landings as sheets: LANDS=newton>hearts:bud,hearts>check:melt,check>dart:tide3 (tide3 is a straight tide), D=seconds. No song.
-//   STAGE=clicks                       every pattern in the library by a real click on its tile. On its own: the others stop the clock
+//   STAGE=lands                        landings as sheets: LANDS=newton>silk:rack,bubbles>scales:drain,silk>nacre:breath, D=seconds. No song.
+//   STAGE=clicks                       every pattern in the library by a real click on its tile, and what it arrived by. On its own: the others stop the clock
+//   STAGE=walk SONG=... N= FROM= TO= COLS= TW=     frames from the film as a contact sheet, with what each is doing, and the film's gestures.
 //   STAGE=steps SONG=... AT=t,t        frames either side of moments in the film, and what changed
-//   STAGE=film SONG=media/mgmt.mp3     the world's whole film as a person gets it: what it hears, what it lands on, a 20 s sheet and slices across a Bud.
+//   STAGE=film SONG=media/mgmt.mp3     the world's whole film: what it hears, what it lands on, a 20 s sheet and slices across a landing.
 //   STAGE=change                       from the film into the world and back, as a sheet, with the byte check at the middle.
 //   STAGE=cost                         GPU ms per program at 3024x1964, governor off. Say what else was running.
-//   SESSION=1 ...                      holds one browser and reloads the page for each file dropped in <out>/cmd: { stages, env, script }. It lets go after two idle minutes, and after twenty-five in all, so a look needn't queue again.
+//   SESSION=1 ...                      holds one browser and reloads the page for each file dropped in <out>/cmd: { stages, env, script }.
 import { resolve, basename, join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';

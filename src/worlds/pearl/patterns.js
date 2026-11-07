@@ -132,6 +132,10 @@ export const pool = [
   own('checks.twist', 'twist', 'Turning Check', { H: 1400, terrace: 340, lets: 0.5, R: 60 }, { group: 'op' }),
   own('riley.shift', 'shift', 'Shift', { H: 1200, lets: 0.5 }, { group: 'op', pool: false }),      // 25 ms at 3024x1964, on the film's fuller program: clicks only
   own('lines.fall', 'fall', 'Falls', { H: 1200, wedge: 500, lets: 0.8 }, { group: 'water' }),
+  own('dots.inflate', 'spray', 'Spray', { H: 1500, wedge: 340, lets: 0.7, R: 90 }, { group: 'water' }),
+  own('pole.garden', 'garden', 'Pole Garden', { H: 1300, R: 180, lets: 0.7 }, { group: 'contact' }),
+  own('lattice.kagome', 'kagome', 'Kagome', { H: 1700, terrace: 260, R: 60, lets: 0.5 }, { group: 'shell' }),
+  own('dials.diamonds', 'diamonds', 'Diamonds', { H: 1400, terrace: 300, R: 70, lets: 0.55 }, { group: 'op' }),
 ];
 // A click arrives by the world's own way, each pattern by a different one, in turn: out from the middle, down, or the whole frame.
 const ARRIVE = [{ id: 'rack', dir: 2, chosen: true }, { id: 'drain', chosen: true }, { id: 'breath', chosen: true }, { id: 'rack', dir: 1, W: 0.6, chosen: true }];
