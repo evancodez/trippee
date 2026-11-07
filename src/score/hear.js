@@ -12,17 +12,17 @@ import { clamp, lerp, smoother } from './curves.js';
 import { FRAME } from '../pattern/layout.js';
 import { hearing } from './flags.js';
 
-const HZ = 60;
+const HZ = 60, ATTACK = 0.14, HIT_ATTACK = 0.42;      // how far ahead of a note its bulge starts to come up; how long a moment takes to arrive
 
 // All first guesses against what the eye sees. Sizes: zoom in natural logs, shifts and lens radii in picture units (the frame's half height is 1).
 export const SIZE = {
-  push: 0.13, bloom: 0.34, bloomR: 1.1,      // a full strong beat
-  hitPush: 0.2, hitBloom: 0.42, hitTurn: 0.07,     // a full moment
+  push: 0.13, bloom: 0.3, bloomR: 1.1,      // a full strong beat
+  hitPush: 0.2, hitBloom: 0.3, hitTurn: 0.07,     // a full moment
   windPull: 0.14, windPinch: 0.26,          // the top of a build
   fallPull: 0.1,                            // a falling moment
-  lift: 0.15, note: 0.46, noteR: 0.52,      // the tune: per 6 semitones, and each note
+  lift: 0.15, note: 0.3, noteR: 0.6,      // the tune: per 6 semitones, and each note
   lean: 0.05,                               // the tone
-  ringBeat: 0.016, ringHit: 0.05, ringSpeed: 1.15, ringLife: 1.5,
+  ringBeat: 0.008, ringHit: 0.022, ringSpeed: 1.15, ringLife: 1.5,
   swayShift: 0.055, swayTurn: 0.035,        // loud
 };
 
@@ -72,11 +72,11 @@ export function momentsOf(A, M, { hits = [] } = {}) {
   for (const a of arrivals) out.push({ t: a.t, s: clamp(0.25 + 0.75 * a.a), sign: 1, kind: 'arrival' });
   for (const r of M.rests ?? []) { out.push({ t: r.a, s: 0.5, sign: -1, kind: 'stop' }); out.push({ t: r.b, s: 0.9, sign: 1, kind: 'lands', rest: r }); }
   for (const h of hits) out.push({ t: h.t, s: clamp(h.s ?? 0.7), sign: 1, kind: 'cut' });
-  // A big chord: where the harmony goes far, with the bar around it otherwise doing little. Only ones that last.
-  let last = null;
+  // A big chord: where the harmony goes far, and has stayed a while. Only one every eight bars or so: most chords aren't an event.
+  let last = null, lastBig = -1e9;
   for (const r of M.runs ?? []) {
-    if (r.t1 - r.t0 < 1.2 * (M.beat || 0.5)) continue;
-    if (last) { const [ax, ay] = M.place(last.c), [bx, by] = M.place(r.c), far = Math.hypot(ax - bx, ay - by); if (far > 0.9) out.push({ t: r.t0, s: clamp(0.15 + 0.2 * far), sign: 1, kind: 'chord' }); }
+    if (r.t1 - r.t0 < 1.5 * (M.beat || 0.5)) continue;
+    if (last) { const [ax, ay] = M.place(last.c), [bx, by] = M.place(r.c), far = Math.hypot(ax - bx, ay - by); if (far > 1.1 && r.t0 - lastBig > 7.5 * bar) { out.push({ t: r.t0, s: clamp(0.08 + 0.13 * far, 0, 0.3), sign: 1, kind: 'chord' }); lastBig = r.t0; } }
     last = r;
   }
   // A fill: the drums bunching up in the last beat before a four-bar line.
@@ -123,7 +123,7 @@ export function buildHear(A, R, { hits = [] } = {}) {
     if (rest && t < rest.b - 0.1) return;
     const present = clamp((at(A.E || A.loud, t) - 0.03) / 0.15), when = rest ? rest.b : t;
     const a = (0.3 + 0.7 * clamp(R.depths?.[k] ?? 0.6)) * (R.mains?.[k] === false ? 0.72 : 1) * present * big(Math.round(when * HZ));
-    if (a > 0.01 && (!P.length || when - P.at(-1).t > 0.3)) P.push({ t: when, a });
+    if (a > 0.01 && (!P.length || when - P.at(-1).t > 0.3)) P.push({ t: when, a: Math.min(a, 1.3) });
   });
   const pump = new Float32Array(n);
   const K = [];       // knots of a smooth curve: [t, value, skewed]
@@ -151,11 +151,11 @@ export function buildHear(A, R, { hits = [] } = {}) {
   const visitAt = t => { let v = 0; for (const r of rungs) { if (r.t0 <= t + bar * 0.5) v = r.visit; else break; } return v; };
   let side = 1;
   for (const m of moments) {
-    const i = Math.round(m.t * HZ), sized = m.s * lerp(0.75, 1.15, clamp(e[clamp(i, 0, n - 1)])) * (1 + 0.22 * visitAt(m.t));
+    const i = Math.round(m.t * HZ), sized = Math.min(1.5, m.s * lerp(0.75, 1.15, clamp(e[clamp(i, 0, n - 1)])) * (1 + 0.22 * visitAt(m.t)));
     m.size = sized;
     if (m.sign > 0) {
-      add(hit, m, Math.min(0.3, 0.75 * beat), Math.max(1.5 * bar, 1.2), sized);
-      add(turn, m, Math.min(0.32, 0.8 * beat), Math.max(1.5 * bar, 1.2), sized * (side = -side));
+      add(hit, m, HIT_ATTACK, Math.max(1.5 * bar, 1.2), sized);
+      add(turn, m, HIT_ATTACK, Math.max(1.5 * bar, 1.2), sized * (side = -side));
       if (sized > 0.25) rings.push({ t: m.t, a: SIZE.ringHit * clamp(sized, 0.2, 1.4) });
     } else add(fall, m, Math.min(0.5, beat), Math.max(1.5 * bar, 1.2), sized);
   }
@@ -206,8 +206,8 @@ export function buildHear(A, R, { hits = [] } = {}) {
       const t = i / HZ, v = at(A.voiced, t);
       if (v < 0.4) { held = null; continue; }
       const m = at(A.m, t), later = at(A.m, t + 0.07);
-      if (held != null && Math.abs(m - held) < 0.8) continue;
-      if (Math.abs(later - m) > 0.6 || t - lastT < 0.13) continue;
+      if (held != null && Math.abs(m - held) < 1.5) continue;
+      if (Math.abs(later - m) > 0.7 || t - lastT < 0.24) continue;
       held = m; lastT = t;
       const s = 0.55 + 0.45 * clamp(Math.max(at(A.onset, t), at(A.onset, t + 0.03), at(A.onset, t - 0.03)));
       notes.push({ t, y: clamp(m / 6 * 0.72, -0.8, 0.8), s });
@@ -228,7 +228,7 @@ export function buildHear(A, R, { hits = [] } = {}) {
 }
 
 // How far a hero can turn the song down, while this is up.
-export const HEAR_FLOOR = 0.85;
+export const HEAR_FLOOR = 0.9;
 const rt = (H, arr, t) => { const x = clamp(t * HZ, 0, H.n - 1.001), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
 
 export const flowLagAt = (H, t) => rt(H, H.flowLag, t);
@@ -243,7 +243,8 @@ export function hearRates(film, H) {
   }
 }
 
-// What a film's going to read, in a slot of the frame block.
+// However much a beat and a moment pile up, a lens can't turn the sheet inside out, and a push can't leave the pattern. Nearly straight until it's close to the top.
+const soft = (x, top) => top * (1 - Math.exp(-Math.max(x, 0) / top));
 const Hm = FRAME.hear * 4;
 export function hearSheet(st, score, edits, tReal, hx = 1) {
   const H = score.hear, h = score.hearNow;
@@ -260,7 +261,7 @@ export function hearSheet(st, score, edits, tReal, hx = 1) {
   const pump = rt(H, H.pump, t) * still, hit = rt(H, H.hit, t), fall = rt(H, H.fall, t), wind = rt(H, H.wind, t), turn = rt(H, H.turn, t), lead = rt(H, H.lead, t);
   const mel = R?.melNow ? rdR(R, R.melNow, c) : 0, sw = rt(H, H.sway, t), swA = rt(H, H.swayAmt, t) * amt * still;
   // The camera. Positive zoom: the picture larger. It's a real push, so the middle of the frame stays still and the corners run furthest.
-  const z = SIZE.push * pump * mP + SIZE.hitPush * Math.min(hit, 1.6) * mH - SIZE.windPull * wind * mH - SIZE.fallPull * Math.min(fall, 1.4) * mH;
+  const z = soft(SIZE.push * pump * mP + SIZE.hitPush * hit * mH, 0.38) - SIZE.windPull * wind * mH - SIZE.fallPull * Math.min(fall, 1.4) * mH;
   const rot = SIZE.hitTurn * clamp(turn, -1.4, 1.4) * mH + SIZE.lean * tone * mT + SIZE.swayTurn * swA * Math.sin(0.61 * sw + 1.1);
   const lift = SIZE.lift * mel * lead * mM;
   const sx = SIZE.swayShift * swA * Math.sin(sw), sy = SIZE.swayShift * 0.6 * swA * Math.cos(0.83 * sw);
@@ -268,20 +269,20 @@ export function hearSheet(st, score, edits, tReal, hx = 1) {
   // The bloom: from where the rings close, as tight as the sound's bright. A build pinches in; the hit bursts.
   const fx = F[FRAME.focus * 4], fy = F[FRAME.focus * 4 + 1];
   F[Hm + 4] = fx; F[Hm + 5] = fy;
-  F[Hm + 6] = -(SIZE.bloom * pump * mP + SIZE.hitBloom * Math.min(hit, 1.6) * mH) + SIZE.windPinch * wind * mH;
+  F[Hm + 6] = -soft(SIZE.bloom * pump * mP + SIZE.hitBloom * hit * mH, 0.55) + SIZE.windPinch * wind * mH;
   F[Hm + 7] = SIZE.bloomR * (1 - 0.22 * clamp(tone * Math.max(mT, 0.001) / Math.max(amt, 0.001), -1.5, 1.5));
   // The notes
   const N = H.notes;
   if (N.length && mM > 0) {
     let lo = 0, hi = N.length - 1;
-    const ahead = t + 0.06;
+    const ahead = t + ATTACK;
     while (lo < hi) { const q = (lo + hi + 1) >> 1; if (N[q].t <= ahead) lo = q; else hi = q - 1; }
     for (let k = Math.max(0, lo - 2); k <= lo; k++) {
       const q = N[k], x = t - q.t;
-      if (x < -0.06) continue;
+      if (x < -ATTACK) continue;
       // Three lenses: a note gives its lens up to the third note after it, gone by then
       const next = N[k + 3]?.t ?? Infinity;
-      const env = (x < 0 ? smoother((x + 0.06) / 0.06) : Math.exp(-x / 0.34)) * smoother((next - t) / 0.08);
+      const env = (x < 0 ? smoother((x + ATTACK) / ATTACK) : Math.exp(-x / 0.42)) * smoother((next - t) / 0.12);
       const off = Hm + 8 + (k % 3) * 4;
       F[off] = q.x + 0.08 * Math.sin(k); F[off + 1] = q.y; F[off + 2] = -SIZE.note * q.s * env * lead * mM * still; F[off + 3] = SIZE.noteR;
     }
@@ -301,5 +302,5 @@ export function hearSheet(st, score, edits, tReal, hx = 1) {
 }
 const rdR = (R, arr, c) => { const x = clamp(c * R.hz, 0, R.n - 1.001), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
 
-// What's on at boot. edits.hear, eased by the h key, wins once there is one.
+// What's on when nobody's said (a test's shot). The picture has edits.hear, eased by the h key.
 export const hearStart = () => (hearing.on ? 1 : 0);

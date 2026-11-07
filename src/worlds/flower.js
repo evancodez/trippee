@@ -139,5 +139,5 @@ export default {
     if (s) { const k = 1 + 0.3 * Math.min(s.lung, 1.2); ctx.A[OFF['field.ph']] *= k; ctx.B[OFF['field.ph']] *= k; }
   },
   motion: { len: [18, 30], morph: [9, 12], xforms: { bud }, xform: 'bud', keep: ['bud'] },
-  hear: { pulse: 0.75, melody: 1, tone: 0.4, harmony: 0.7, lung: 1 },      // pulse: each strong beat's ring shoves a band's edge out and back across a tile
+  hear: { pulse: 1, melody: 1, tone: 0.4, harmony: 0.7, lung: 1 },
 };

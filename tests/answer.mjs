@@ -46,7 +46,7 @@ export const walk = async ({ F, W, H }) => {
       const u = (-xt * (b * c - yz * yz) + yt * (xy * c - yz * xz) - zt * (xy * yz - b * xz)) / det;
       const v = (-a * (yt * c - yz * zt) + xy * (xt * c - xz * zt) - xz * (xt * yz - yt * xz)) / det;
       const z = (-a * (b * zt - yt * yz) + xy * (xy * zt - yt * xz) - xt * (xy * yz - b * xz)) / det;
-      out.gx[i] = u / (H / 2); out.gy[i] = -v / (H / 2); out.gz[i] = z;       // gy: up is positive
+      out.gx[i] = u / (H / 2); out.gy[i] = v / (H / 2); out.gz[i] = z;       // gy: up is positive, since the rows come bottom up
       const old = back[(i + 5) % 6];
       let d6 = 0, cov = 0;
       if (i >= 6) { for (let k = 0; k < W * H; k++) { const q = Math.abs(Y[k] - old[k]); d6 += q; if (q > 64) cov++; } out.d200[i] = d6 / (W * H); out.cov[i] = cov / (W * H); }
@@ -101,9 +101,17 @@ export function reckon(raw) {
   const lags = [-60, -45, -30, -21, -15, -9, -6, -3, 0, 3, 6, 9, 15, 21, 30, 45, 60];
   const best = sig => { let top = 0, at = 0; for (const L of lags) { const r = lagged(sig, L); if (Math.abs(r) > Math.abs(top)) { top = r; at = L; } } return { r: r3(top), lag: r2(at / F), now: r3(lagged(sig, 0)) }; };
   const tuneAmp = mean(voicedIdx.map(i => Math.abs(iy[i])));
+  // The same on rates, which a wandering integral can't swamp: the sheet's speed upward against how fast the tune's climbing, both over a tenth of a second or so
+  const box = (a, r) => { const o = new Float32Array(N); let s = 0; for (let i = 0; i < N; i++) { s += a[i]; if (i > 2 * r) s -= a[i - 2 * r - 1]; o[i] = s / Math.min(i + 1, 2 * r + 1); } return Float32Array.from(o, (_, i) => o[Math.min(N - 1, i + r)]); };
+  const dm = new Float32Array(N); for (let i = 1; i < N; i++) dm[i] = voicedT[i] > 0.4 && voicedT[i - 1] > 0.4 ? melTable[i] - melTable[i - 1] : 0;
+  const dmS = box(dm, 3), gyS = box(gy, 3), rate = L => corr(voicedIdx.map(i => gyS[Math.max(0, Math.min(N - 1, i + L))]), voicedIdx.map(i => dmS[i]));
+  const rates = [-30, -15, -9, -6, -3, 0, 3, 6, 9, 15, 30].map(L => [L, rate(L)]), topRate = rates.reduce((a, b) => (Math.abs(b[1]) > Math.abs(a[1]) ? b : a));
   // Notes
   const noteT = []; { let last = -1, lastM = 1e9; for (let i = 3; i < N - 12; i++) { if (voicedT[i] < 0.4) { lastM = 1e9; continue; } const m = melTable[i]; if (Math.abs(m - lastM) >= 0.8 && Math.abs(melTable[i + 3] - m) < 0.5 && i - last > 3) { noteT.push(i / F); last = i; lastM = m; } } }
   const noteMove = mean(noteT.map(t => d200[iAt(t + 0.2)])), voicedMove = mean(voicedIdx.map(i => d200[i]));
+  // Motion, lined up on the notes that jump: what a note does, whatever the beat's doing, since they don't fall on the beat in any regular way
+  const jumps = []; { let last = -1e9, held = null; for (let i = 3; i < N - 12; i++) { if (voicedT[i] < 0.4) { held = null; continue; } const m = melTable[i]; if ((held == null || Math.abs(m - held) >= 1.5) && Math.abs(melTable[i + 2] - m) < 0.7 && i - last > 7) { jumps.push(i); last = i; held = m; } } }
+  const eta = Array.from({ length: 31 }, (_, k) => mean(jumps.map(i => d[Math.max(0, Math.min(N - 1, i + k - 10))]))), etaBase = mean(eta), etaTop = Math.max(...eta), etaAt = (eta.indexOf(etaTop) - 10) / F;
   // Moments: shotlist's biggest jumps, and shotlist's rule for showing
   const J = jumpsOf({ per, bars, bar, dur, segments, arrivals });
   const shows = t => { const near = rng(t - 0.25, t + 0.25).map(d3), base = [...rng(t - 8, t - 1), ...rng(t + 1, t + 8)].map(i => d[i]); return (near.length ? Math.max(...near) : 0) / Math.max(med(base), 0.08); };
@@ -117,12 +125,12 @@ export function reckon(raw) {
   return {
     beat: { strong: r2(bm), others: r2(om), ratio: r2(bm / Math.max(om, 1e-3)), bars: r2(bbm), n: stT.length, secs: r2(mean(stT.slice(1).map((t, i) => t - stT[i]))) },
     answers: { strong: r3(bc), others: r3(oc), bars: r3(bbc) },
-    tap: r3(tap), fold: { top: r2(foldTop), min: r2(foldMin), at: r2(foldAt) }, meanMotion: r2(mean(Array.from(d))),
-    tune: { up: best(iy), across: best(ix), zoom: best(iz), amp: r3(tuneAmp), voiced: r2(voicedShare) },
-    notes: { n: noteT.length, after: r2(noteMove), voiced: r2(voicedMove), ratio: r2(noteMove / Math.max(voicedMove, 1e-3)) },
+    tap: r3(tap), fold: { top: r2(foldTop), min: r2(foldMin), at: r2(foldAt), swing: r2((foldTop - foldMin) * mean(f2)) }, meanMotion: r2(mean(Array.from(d))),
+    tune: { up: best(iy), rate: { now: r3(rate(0)), r: r3(topRate[1]), lag: r2(topRate[0] / F) }, across: best(ix), amp: r3(tuneAmp), voiced: r2(voicedShare) },
+    notes: { n: jumps.length, peak: r2(etaTop / Math.max(etaBase, 1e-3)), at: r2(etaAt), swing: r2(etaTop - Math.min(...eta)) },
     moments: { shown: r2(momentsShown), barsShown: r2(barsShown), top: top.map(p => `${r2(p.t)}${p.sign > 0 ? '+' : '-'}${r2(p.s)}:${r2(shows(p.t))}`).join(' ') },
     loud: { quiet: r2(mQuiet), loud: r2(mLoud), ratio: r2(mLoud / Math.max(mQuiet, 1e-3)) },
-    ambientLow: r2(q.ambientLow), gestures: q.gestures, zoomPerBeat: r3(mean(stT.map(t => { const c = rng(t - 0.2, t + 0.05).map(i => gz[i]); return Math.abs(c.reduce((x, y) => x + y, 0)); }))), hasHear: q.hasHear, version: q.version,
+    ambientLow: r2(q.ambientLow), gestures: q.gestures, hasHear: q.hasHear, version: q.version,
   };
 }
 
@@ -145,6 +153,30 @@ export const stripInPage = async ({ at, frames, per, cols, W, H, title }) => {
   return c.toDataURL('image/jpeg', 0.8);
 };
 
+// In the page: time-slices. The centre row and centre column against time, top to bottom, 60 a second, with the strong beats ticked in red at the left, moments in yellow, and the tune as a green line at the right. A beat you can see is a row of bumps at the ticks.
+export const slicesInPage = async ({ t0, secs, W, H }) => {
+  const here = u => new URL(u, location.href).href;
+  const { getRig, shot } = await import(here('src/music/rehearse.js'));
+  const R = await getRig(), S = app.song.score, A = app.song.analysis, F = 60, N = Math.floor(secs * F), px = new Uint8Array(W * H * 4), gap = 60;
+  const c = document.createElement('canvas'); c.width = W + H + gap + 90; c.height = N; const g = c.getContext('2d'); g.fillStyle = '#222'; g.fillRect(0, 0, c.width, c.height);
+  const im = g.createImageData(W + H, 1), P = (S.heard ?? S.react).pulses, M = S.hear?.moments ?? [];
+  const at = (a, t) => (a ? a[Math.max(0, Math.min(a.length - 1, Math.round(t * A.fps)))] || 0 : 0);
+  for (let i = 0; i < N; i++) {
+    const t = t0 + i / F;
+    shot(R, S, t, W, H, px);
+    for (let x = 0; x < W; x++) { const v = px[((H >> 1) * W + x) * 4 + 1]; im.data.set([v, v, v, 255], x * 4); }
+    for (let y = 0; y < H; y++) { const v = px[(y * W + (W >> 1)) * 4 + 1]; im.data.set([v, v, v, 255], (W + y) * 4); }
+    g.putImageData(im, gap, i);
+    const m = at(A.m, t), v = at(A.voiced, t);
+    if (v > 0.4) { g.fillStyle = '#0f0'; g.fillRect(gap + W + H + 45 + m * 3, i, 2, 1); }
+    if (i % 6 === 0) await new Promise(r => setTimeout(r));
+  }
+  g.font = '11px sans-serif';
+  for (const p of P) if (p >= t0 && p < t0 + secs) { g.fillStyle = '#f33'; g.fillRect(0, (p - t0) * F, gap, 2); g.fillText(p.toFixed(2), 2, (p - t0) * F - 2); }
+  for (const q of M) if (q.t >= t0 && q.t < t0 + secs) { g.fillStyle = '#ff0'; g.fillRect(gap + W + H, (q.t - t0) * F, 40, 2); g.fillText(q.kind, gap + W + H + 2, (q.t - t0) * F - 2); }
+  return c.toDataURL('image/jpeg', 0.85);
+};
+
 export default async ({ page, save, sleep, log }) => {
   const songs = (process.env.SONGS || 'mgmt,ppp,wildflower,disclosure').split(','), seed = +(process.env.SEED || 7), base = await page.eval('location.href'), strips = (process.env.STRIPS || '').split(',').filter(Boolean).map(x => x.split(':')), all = {};
   const url = process.env.HEAR != null ? `${base.split('?')[0]}?hear=${process.env.HEAR}` : base;
@@ -156,11 +188,16 @@ export default async ({ page, save, sleep, log }) => {
     const err = await page.eval('window.__err');
     if (err) throw new Error(`${song}: ${err}`);
     log(song, 'ready in', ((Date.now() - t0) / 1000).toFixed(0), 's');
+    if (process.env.SIZE) await page.eval(`import(new URL('src/score/hear.js',location.href).href).then(m=>{${process.env.SIZE.split(',').map(x => { const [k, v] = x.split(':'); return `m.SIZE.${k}=${v};`; }).join('')}})`);
     if (!process.env.NOWALK) {
       const raw = await page.eval(walk, { F, W, H });
       save(`${song}.answer.json`, raw);
       all[song] = reckon(raw);
       log(song, JSON.stringify(all[song]));
+    }
+    for (const [s, t] of (process.env.SLICES || '').split(',').filter(Boolean).map(x => x.split(':'))) {
+      if (s !== song) continue;
+      save(`${song}.slices-${t}.jpg`, await page.eval(slicesInPage, { t0: +t, secs: +(process.env.SECS || 12), W: 480, H: 270 }));
     }
     for (const [s, t] of strips) {
       if (s !== song) continue;

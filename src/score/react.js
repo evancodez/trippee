@@ -157,13 +157,13 @@ export function buildReact(A, seed = 1, ears = {}) {
       const beatLen = (seg.t1 - seg.t0) / Math.max(b1 - b0, 1);
       let e = 0, c = 0; for (let t = seg.t0; t < seg.t1; t += 0.5) { e += energyAt(t); c++; }
       const big = clamp((c ? e / c : 0.5) / 0.6);
-      const want = ears[1] ? lerp(1.3, 0.9, big) : lerp(3, 1.6, big);        // seconds between pulses
+      const want = ears[1] ? lerp(1.2, 0.9, big) : lerp(3, 1.6, big);        // seconds between pulses
       const opts = meter === 3 ? [3, 6, 12] : [2, 4, 8];
       let best = opts[1], bestCost = 1e9;
       for (const every of opts) {
         let cost = Math.abs(Math.log(every * beatLen / want));
         // The 3 has to be earning its place: if there's little on it, the 1 alone is the rhythm.
-        if (meter === 4 && every === 2 && acc[(start + 2) % 4] < (ears[1] ? 0.55 : 0.6) * acc[start]) cost += 0.8;
+        if (meter === 4 && every === 2 && acc[(start + 2) % 4] < (ears[1] ? 0.3 : 0.6) * acc[start]) cost += 0.8;
         // A gait you can walk to: no gap over two seconds unless the song itself is that slow. A quiet section walks shallower, not slower.
         if (ears[1] && every * beatLen > 2 && beatLen < 0.75) cost += 4;
         // ...and not every drum hit either, which is what makes a picture jerky. On a song counted double time, the 1 and 3 are every 4.
