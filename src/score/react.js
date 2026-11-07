@@ -222,7 +222,7 @@ export function buildReact(A, seed = 1, ears = {}) {
   const voicedNow = ears[2] ? smooth(vRaw.map(v => (v > 0.35 ? 1 : 0)), HZ * 0.35) : null;
   // Hearing 2: the tune moves the whole sheet now, not a wave of it, so how fast it can get there is how hard it can jolt. A note arrives as fast as this and no faster, half of the way before you hear it. A voice coming in from nothing is the worst case.
   // A voice coming in from nothing fades in: it's the note it comes in on that would be the jolt, not the notes after it.
-  const melNow = ears[2] ? smooth(limitRate(smooth(melody, HZ * 0.08).map((v, i) => v * voicedNow[i]), TUNE_RATE / HZ), HZ * 0.05) : null;
+  const melNow = ears[2] ? smooth(limitRate(smooth(melody, HZ * 0.13).map((v, i) => v * voicedNow[i]), TUNE_RATE / HZ), HZ * 0.06) : null;      // the pitch tracker's own wobble is small but quick, and on the whole sheet it would be a shiver
   // How much the tune is there at all, and a slower version of it, for what moves the whole sheet
   const voiced = smooth(vRaw.map(v => (v > 0.35 ? 1 : 0)), HZ * 0.5);
   const melSlow = smooth(melody, HZ * 0.45);

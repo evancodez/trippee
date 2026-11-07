@@ -12,7 +12,7 @@ import { clamp, lerp, smoother } from './curves.js';
 import { FRAME } from '../pattern/layout.js';
 import { hearing } from './flags.js';
 
-const HZ = 60, ATTACK = 0.14, HIT_ATTACK = 0.45, LAND_LATE = 0.32;      // how far ahead of a note its bulge starts to come up; how long a moment takes to arrive
+const HZ = 60, ATTACK = 0.14, HIT_ATTACK = 0.45, LAND_LATE = 0.5;      // how far ahead of a note its bulge starts to come up; how long a moment takes to arrive
 
 // All first guesses against what the eye sees. Sizes: zoom in natural logs, shifts and lens radii in picture units (the frame's half height is 1).
 export const SIZE = {
