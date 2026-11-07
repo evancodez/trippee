@@ -909,7 +909,9 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
     const landed = async ms => { const t0 = Date.now(); for (;;) { const q = await state(); if (!q.change && Date.now() - t0 > 1200) return q; if (Date.now() - t0 > ms) return q; await sleep(250); } };
     // Round to the last world there is. There were only the test worlds when this was written.
     const after = await page.eval(`(ids=>ids.slice(ids.indexOf('numbers')+1))([...document.querySelectorAll('#worlds [data-w]')].map(b=>b.dataset.w))`);
-    for (const id of after) { await key('v'); await sleep(1500); s = await landed(22000); check(log, `v goes on to ${id}`, s.world === id, JSON.stringify(s)); }
+    // A world's first visit builds its programs before its change starts, which can take a few seconds (Flower, Matter): wait for it to have started before waiting for it to land.
+    const begun = async (id, ms) => { const t0 = Date.now(); for (;;) { const q = await state(); if (q.world === id || Date.now() - t0 > ms) return q; await sleep(250); } };
+    for (const id of after) { await key('v'); await sleep(1500); await begun(id, 15000); s = await landed(22000); check(log, `v goes on to ${id}`, s.world === id, JSON.stringify(s)); }
     await key('v'); await sleep(1500);
     s = await state(); log('v, from the last world', JSON.stringify(s));
     check(log, 'v from the last world goes round to the film', s.world === null && s.change);
