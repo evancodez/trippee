@@ -47,7 +47,7 @@ const FLASH_SWING = 22, FLASH_SWING_WHOLE = 19, FLASH_WHOLE = 0, FLASH_TILE = 2,
 const JUDGE_SWING = 25.5, JUDGE_WITHIN = 1.15;
 // A film's looks. The whole film small and quick, at 30 a second, for anywhere that might be flashing; then whatever that finds is looked at again at twice the size again, the way the judge counts, and only a flash that's still there gets anything done about it.
 // Reads are batched (Eyes), which is why this can look so much more often than a read a look could and take less time: GPU_BATCH looks to one wait for the GPU.
-const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, GUARD_LOOKS = 8000, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 8;
+const FILM_SUB = 6, CLOSE_H = 180, CLOSE_FPS = 30, CLOSE_FPS_MORPH = 60, REAL_SWING = 24, REAL_WITHIN = 1.05, FILM_SWING_WHOLE = 21, GUARD_LOOKS = 25, SCAN_LOOK = 0.4, GPU_BATCH = 64, GPU_BATCH_CLOSE = 32, GPU_BATCH_GENTLE = 8;     // GUARD_LOOKS: close looks, per second of film, for it to spend, so a film with twice the changes takes no longer. A coarse look costs SCAN_LOOK of one.
 // What it may do. A loud stretch never drops below half its flow, however stubborn the flash; a quiet one, a quarter. Both only for the seconds it flashes, easing there and back.
 const SLOW_LOUD = 2, SLOW_QUIET = 4, SLOW_RAMP = 1.2, SLOW_AROUND = 0.6, LONGER_MOST = 1.35;
 // How long a song's film takes to fly in, as song.js has it unless the flight needs longer: a first gesture's morph can't start before that, or stage._clearRunway cuts it short after it's been looked at.
@@ -209,6 +209,14 @@ class Eyes {
     gl.bufferData(gl.PIXEL_PACK_BUFFER, this.buf.length, gl.STREAM_READ);
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
   }
+  // A guard asks for these many times over, at the same two sizes, and the buffers are megabytes each. So they're kept, for the rig, which is kept too.
+  static of(R, W, H, K, task) {
+    const kept = (R.eyes ??= new Map()), key = `${W}x${H}x${K}`;
+    let e = kept.get(key);
+    if (!e) kept.set(key, e = new Eyes(R, W, H, K, task));
+    e.task = task; e.q.length = 0;
+    return e;
+  }
   // After a draw at this size. Says whether the batch is full.
   read(take) {
     const { gl, W, H } = this;
@@ -231,7 +239,7 @@ class Eyes {
     q.forEach((take, j) => take(buf.subarray(j * size, (j + 1) * size)));
     q.length = 0;
   }
-  free() { this.gl.deleteBuffer(this.pbo); this.buf = null; }
+  free() { this.gl.deleteBuffer(this.pbo); this.buf = null; }     // only one made with new
 }
 const horizon = G => Math.max((G.arcEnd ?? G.t1) - G.t0, 1e-3);
 // A look at part of a film is in that film's world, or its own fields wouldn't draw. Nothing at all for the film.
@@ -463,7 +471,7 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
   const seen = guard ? new FlashSeen(n + 1, W, H, sub / STEP, colour, onFilm) : null;
   const batch = live() || gentle ? GPU_BATCH_GENTLE : GPU_BATCH;
   if (batched) {
-    const eyes = new Eyes(R, W, H, batch, task);
+    const eyes = Eyes.of(R, W, H, batch, task);
     for (let i = 0; i <= n; i++) {
       const f = drawn(R, score, i * STEP / sub, W, H), o = { from: f.from, G: f.G, kind: f.kind };     // what the frame was, now: the pixels come later
       if (eyes.read(p => seen.take(i, p, o, gestures))) await eyes.flush();
@@ -471,7 +479,6 @@ export async function rehearse(score, until, onProgress = () => {}, { lastTry = 
       await breathe();
     }
     await eyes.flush();
-    eyes.free();
     for (let i = sub; i <= n; i += sub) { const by = (seen.mean[i] - seen.mean[i - sub]) / 255; if (Math.abs(by) >= JUMP) jumps.push({ t: +(i * STEP / sub).toFixed(2), by: +by.toFixed(3), id: gestures[Math.max(seen.who[i], 0)].pattern.id }); }
   } else {
     let prev = null;
@@ -575,7 +582,7 @@ export class FlashSeen {
       }
       return out;
     }
-    this.overIn(i => this.mean[i], FLASH_WHOLE, FLASH_SWING_WHOLE, out, a, b);
+    this.overIn(i => this.mean[i], FLASH_WHOLE, this.judged ? FILM_SWING_WHOLE : FLASH_SWING_WHOLE, out, a, b);
     for (let k = 0; k < 16; k++) this.overIn(i => this.tiles[i * 16 + k], FLASH_TILE, FLASH_SWING, out, a, b);
     if (this.judged) {
       this.overIn(i => this.mean[i], FLASH_WHOLE, JUDGE_SWING, out, a, b, JUDGE_WITHIN);
@@ -598,15 +605,15 @@ const forget = G => { if (G) G.plan = G.planFor = G.planning = null; };
 // A stretch of a film at the size the judge reads and at its rate, with a transformation twice that. Returns the seconds of what it counts, and whether any of that's the whole frame.
 async function lookClose(R, score, a, b, { aspect, task, breathe, batch }, count = () => {}) {
   const g = score.gestures, H = CLOSE_H, W = Math.round(H * aspect);
-  const morphing = g.some(G => G.morph && G.t1 > a && G.t1 - G.morph < b), fps = morphing ? CLOSE_FPS_MORPH : CLOSE_FPS, n = Math.max(2, Math.ceil((b - a) * fps));
-  const s = new FlashSeen(n, W, H, fps), eyes = new Eyes(R, W, H, Math.min(batch, GPU_BATCH_CLOSE), task);
+  // At a hit a change goes by too quickly for 30 a second to be sure of it
+  const crossing = g.some(G => G.morph && G.peak?.q && G.peak.hit > a - 1 && G.peak.hit < b + 1), fps = crossing ? CLOSE_FPS_MORPH : CLOSE_FPS, n = Math.max(2, Math.ceil((b - a) * fps));
+  const s = new FlashSeen(n, W, H, fps), eyes = Eyes.of(R, W, H, Math.min(batch, GPU_BATCH_CLOSE), task);
   for (let i = 0; i < n; i++) {
     const f = drawn(R, score, a + i / fps, W, H), o = { from: f.from, G: f.G, kind: f.kind };
     if (eyes.read(p => s.take(i, p, o, g))) await eyes.flush();
     await breathe();
   }
   await eyes.flush();
-  eyes.free();
   count(n);
   const r = s.real();
   return { at: r.frames.map(i => a + i / fps), whole: r.whole, kinds: r.frames.map(i => ({ k: s.who[i], kind: s.kind[i] })) };
@@ -670,25 +677,28 @@ const smootherArea = u => u * u * u * u * (u * (u - 3) + 2.5);
 
 async function guardFilm(R, score, seen, ctx) {
   const { breathe, mayChangeFor, opening = 0 } = ctx, g = score.gestures, t0 = performance.now(), fixes = [], refused = score.refused ??= [], tau = score.tau ?? (t => t), isLoud = loudness(score), fps = seen.fps;
-  let looks = GUARD_LOOKS, falseAlarms = 0, unlooked = false;
+  const allowed = Math.round(GUARD_LOOKS * seen.n / fps);
+  let looks = allowed, falseAlarms = 0, unlooked = false;
   const spent = n => { looks -= n; }, tried = [];
   const lands = opening || FLASH_ARRIVAL;
+  const clock = { scan: 0, close: 0, scans: 0 };
   const scan = async ([a, b]) => {
-    const eyes = new Eyes(R, seen.W, seen.H, ctx.batch, ctx.task);
+    const was = performance.now(), eyes = Eyes.of(R, seen.W, seen.H, ctx.batch, ctx.task);
     for (let i = a; i < b; i++) {
       const f = drawn(R, score, i / fps, seen.W, seen.H), o = { from: f.from, G: f.G, kind: f.kind };
       if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
       await breathe();
     }
     await eyes.flush();
-    eyes.free();
+    clock.scan += performance.now() - was; clock.scans += b - a; spent((b - a) * SCAN_LOOK);
   };
   // What's really flashing in a range of frames, as they stand now: coarse first, and only what that flags close up. What's been looked at closely stays known until a change is kept.
   let known = new Map();
   const closely = async (a, b, remember) => {
     const key = `${a.toFixed(2)}:${b.toFixed(2)}`, had = remember ? known.get(key) : null;
     if (had) return had;
-    const r = await lookClose(R, score, a, b, ctx, spent);
+    const was = performance.now(), r = await lookClose(R, score, a, b, ctx, spent);
+    clock.close += performance.now() - was;
     if (remember) known.set(key, r);
     return r;
   };
@@ -803,7 +813,7 @@ async function guardFilm(R, score, seen, ctx) {
     for (const t of r.at) left.push(+t.toFixed(1));
     if (r.at.length) say(r.at[0], g.find(G => G.t0 <= r.at[0] && r.at[0] < G.t1)?.pattern.id ?? '?', `flash left in${r.whole ? ', whole frame' : ''}: ${unlooked ? 'out of looks before getting to it, perhaps' : 'nothing cleared it without dulling the stretch'}`);
   }
-  return { fixes, left: [...new Set(left)].sort((a, b) => a - b), seconds: +((performance.now() - t0) / 1000).toFixed(2), falseAlarms, looked: GUARD_LOOKS - looks, tried };
+  return { fixes, left: [...new Set(left)].sort((a, b) => a - b), seconds: +((performance.now() - t0) / 1000).toFixed(2), falseAlarms, looked: allowed - looks, allowed, tried, clock };
 }
 
 async function guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor, opening = 0, task, aspect, batch }) {
