@@ -90,6 +90,8 @@ function bearingOf(G) {
   at('squeeze.a', n('squeeze.x0'), 0); at('bowtie.a', n('bowtie.x0'), 0);
   if (Math.abs(n('conf.amt')) > 1e-4) { B.free = false; B.marks.push([n('conf.x1'), n('conf.y1')], [n('conf.x2'), n('conf.y2')]); }
   if (n('ribbon.on') > 0.5 || n('blobs.on') > 0.5) { B.free = false; B.marks.push([0, 0]); }
+  // A field draws something of its own about the middle (a blaze, a world's motif): you want to see it, so the camera stays where it can, and doesn't go in so far that it's gone.
+  if (n('field.kind') > 0.5) { B.free = false; B.layers = false; if (!B.marks.length) B.marks.push([0, 0]); B.pan = Math.min(B.pan, 0.6); B.zoom = Math.min(B.zoom, 0.6); }
   const droste = Math.abs(n('droste.lnS')) > 1e-4;
   if (droste) { B.free = false; B.pan = 0; B.marks = [[0, 0]]; }
   // The same at every size: only log rings and spokes, about one point, and nothing that minds.
@@ -113,6 +115,8 @@ function bearingOf(G) {
     if (m.id === 'coin') { B.tip = 0.35; B.pan = Math.min(B.pan, 0.4); B.spin = 0.4; B.zoom = Math.min(B.zoom, 0.5); }
     if (m.id === 'slip') { B.tip = Math.min(B.tip, 0.7); B.pan = Math.min(B.pan, 0.5); }
   }
+  // A shot in a cut that draws its own size: nothing can draw back to keep the lines in hand, so it doesn't go far from what it was framed on.
+  if (!B.free && locksOf(G).scale) B.pan = Math.min(B.pan, 0.3);
   return B;
 }
 // The lines at a place on the sheet, in cycles per pattern unit: the families' own gradients there, with no warps.
@@ -437,7 +441,7 @@ function makeWrite(cam) {
     const r = cam.routeFor(G);
     if (!r) return;
     const B = G.camBear, t1 = clockOf(G, tIn), t = cam.lag ? t1 - rd(cam.lag, n, t1 * HZ) : t1, locks = G.camLocks ??= locksOf(G);
-    const p = t * HZ, z = r.at(r.z, t), spin = r.at(r.spin, t), tip = rd(T.tip, n, p) * B.tip * (G.camCalm ?? 1), dir = rd(T.dir, n, p), lens = rd(T.lens, n, p), mx = r.at(r.x, t), my = r.at(r.y, t);
+    const p = t * HZ, z = r.at(r.z, t), spin = r.at(r.spin, t), tip = rd(T.tip, n, p) * B.tip, dir = rd(T.dir, n, p), lens = rd(T.lens, n, p), mx = r.at(r.x, t), my = r.at(r.y, t);
     if (!locks.scale) out[OFF.scale] *= Math.exp(z);
     if (!locks.tx) { out[OFF.tx] += mx; out[OFF.ty] += my; }
     if (B.room) { if (!locks.roll) out[OFF['cam.roll']] += spin; }
