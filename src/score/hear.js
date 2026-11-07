@@ -304,7 +304,7 @@ function carry(F, score, edits) {
   }
   for (let i = 0; i < 20; i++) c.last[i] = F[Hm + i];
 }
-function writeHear(st, score, edits, tReal, hx) {
+export function writeHear(st, score, edits, tReal, hx) {
   const H = score.hear, h = score.hearNow;
   if (!H || !(h > 0)) return;
   const F = st.F, t = tReal, G = st.G;

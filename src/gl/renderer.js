@@ -9,10 +9,11 @@ const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
 // The first four are what a film needs to run; the rest build behind it.
 export const HAND = 1, PLATES = 2, FLIGHT = 4, EXTRA = 8, SPACE = 16;     // SPACE: the sheet in space, src/gl/chunks/space.js
 export const FOLD = 64;      // mirrors in front of the sheet (chunks/fold.js). 16 and 32 are a world's own. Nothing's built for these until something asks: wantFold, by a film with one in it at compose, or by the first frame that draws one.
+export const TIME = 1024;      // src/gl/chunks/time.js: only ever built when something first asks for it. 16 and 32 are a world's own, and a world's variants go up in 64s (src/worlds/engine.js).
 const ORDER = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, PLATES, PLATES | FLIGHT, PLATES | EXTRA, PLATES | EXTRA | FLIGHT, HAND, HAND | FLIGHT, HAND | EXTRA, HAND | EXTRA | FLIGHT, HAND | PLATES, HAND | PLATES | FLIGHT, HAND | PLATES | EXTRA, HAND | PLATES | EXTRA | FLIGHT];
 // Nothing waits for these: they build once everything else has. The hand on a bent sheet is built the first time it's asked for.
 const SPACE_LATER = [SPACE, SPACE | FLIGHT, SPACE | PLATES, SPACE | PLATES | FLIGHT];
-export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & FOLD ? '#define FOLD\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
+export const sourceOf = v => FRAG.replace('\n', `\n${v & HAND ? '#define HAND\n' : ''}${v & PLATES ? '#define PLATES\n' : ''}${v & FLIGHT ? '#define FLIGHT\n' : ''}${v & SPACE ? '#define SPACE\n' : ''}${v & FOLD ? '#define FOLD\n' : ''}${v & TIME ? '#define TIME\n' : ''}${v & EXTRA ? '' : '#define NOSLIP\n#define NOSTAR\n#define NORILEY\n#define NOCARRY\n'}`);
 
 function compile(gl, type, src) {
   const s = gl.createShader(type);
@@ -61,6 +62,7 @@ export class Renderer {
 
     this.vs = compile(gl, gl.VERTEX_SHADER, VERT);
     this.progs = new Array(128).fill(null);
+    this.timeOn = false; this.timeT = null; this._tLocs = new Map();      // set by src/score/time-sheet.js for a frame that wants time local to each pixel
     this.variant = 0;
     this._start(0);
     this._whenReady = new Promise(res => { this._resolveReady = res; });
@@ -170,7 +172,11 @@ export class Renderer {
 
   _programFor(F) {
     if (this.wp) return this.wp.program(F);
-    const v = this._variantOf(F);
+    let v = this._variantOf(F);
+    if (this.timeOn) {
+      if (!this.progs[v | TIME] && this.bare) this._buildNow(v | TIME);      // the rehearsal's eyes have to see what will be shown
+      if (this.progs[v | TIME]) v |= TIME; else this._wantTime(v);
+    }      // one still building, the frame goes without it. What asks comes up from nothing
     if (v & FOLD && !this.progs[v]) this.wantFold(v);
     // Something the sheet in space isn't built with up front (it's on a pattern that also slips, say) is built when it's first asked for, and meanwhile it goes without.
     if (!this.progs[v] && (!this.parallel || v & SPACE) && !this._pending) { this._start(v); this._poll(); }
@@ -178,6 +184,22 @@ export class Renderer {
     const got = this.progs[v] ? v : v & SPACE ? [v & ~EXTRA, v & (FLIGHT | SPACE), v & (FLIGHT | EXTRA), v & FLIGHT].find(n => this.progs[n]) ?? (v & FLIGHT) : this.progs[fold] ? fold : this.progs[v & (FLIGHT | EXTRA)] ? v & (FLIGHT | EXTRA) : v & FLIGHT;
     this.variant = got;
     return this.progs[got];
+  }
+
+  // A time program is never built until a frame asks for it, so nobody else waits for it or pays for it. The plain and flight ones of its kind come up together.
+  _wantTime(v) {
+    const list = [v | TIME, (v & ~FLIGHT) | TIME, v | FLIGHT | TIME].filter(n => !this.progs[n] && !this.order.includes(n));
+    if (!list.length) return;
+    this.order = [...this.order, ...list];
+    if (!this._pending) { const next = this.order.find(n => !this.progs[n]); if (next !== undefined) { this._start(next); this._poll(); } }
+  }
+
+  _buildNow(v) {
+    const gl = this.gl, fs = compile(gl, gl.FRAGMENT_SHADER, sourceOf(v)), prog = link(gl, this.vs, fs);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { console.error('Shader failed:', gl.getShaderInfoLog(fs)); return; }
+    gl.uniformBlockBinding(prog, gl.getUniformBlockIndex(prog, 'Block'), 0);
+    gl.useProgram(prog); gl.uniform1i(gl.getUniformLocation(prog, 'uPush'), 0);
+    this.progs[v] = prog;
   }
 
   _initBrush() {
@@ -322,7 +344,13 @@ export class Renderer {
     F[res] = w; F[res + 1] = h; F[res + 2] = w / h; F[res + 3] = this.pushOn ? 1 : 0;
     gl.bindFramebuffer(gl.FRAMEBUFFER, low ? low.fbo : null);
     gl.viewport(0, 0, w, h);
-    gl.useProgram(this._programFor(F));
+    const prog = this._programFor(F);
+    gl.useProgram(prog);
+    if (this.timeOn) {
+      let loc = this._tLocs.get(prog);
+      if (loc === undefined) this._tLocs.set(prog, loc = gl.getUniformLocation(prog, 'uT'));
+      if (loc) gl.uniform4fv(loc, this.timeT);
+    }
     this.costKey = this.variant + (F[FRAME.xf * 4] > 0.5 ? 0.5 : 0);     // a shock draws two patterns in a plain program: it costs what it costs, and what's plain stays sharp
     gl.activeTexture(gl.TEXTURE0);
     if (this.brushOk) gl.bindTexture(gl.TEXTURE_2D, this.brushA.tex);

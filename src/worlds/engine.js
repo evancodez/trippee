@@ -1,6 +1,6 @@
 // What a world is to the renderer and the stage: its programs, its second block of numbers and ink table, and how the picture gets from one world to another. See docs/MODES.md, section 4.
 // None of this is loaded until someone asks for a world. With none chosen, the film runs exactly as if this file weren't here.
-import { sourceOf, PLATES, FLIGHT, EXTRA, FOLD } from '../gl/renderer.js';
+import { sourceOf, PLATES, FLIGHT, EXTRA, FOLD, TIME } from '../gl/renderer.js';
 import helpers, { MACROS } from '../gl/chunks/world.js';
 import { Trace } from '../gl/trace.js';
 import { OFF, FRAME, FAMILIES } from '../pattern/layout.js';
@@ -188,7 +188,8 @@ class WorldPrograms {
 
   // The smallest program with what this frame needs. Never colour's plates: a world has its own colour.
   program(F) {
-    const R = this.R, v = this.variantOf(F);
+    const R = this.R; let v = this.variantOf(F);
+    if (R.timeOn) { if (this.progs[v | TIME]) v |= TIME; else if (!this.building[v | TIME]) { this.building[v | TIME] = true; this._build(v | TIME, () => {}); } }      // src/gl/chunks/time.js: built the first time a frame here asks. Until it's up the frame goes without
     if (!this.progs[v] && !R.parallel) { this.order = [v, ...this.order.filter(n => n !== v)]; this._next(); }
     if (v & FOLD && !this.progs[v] && !this.building[v]) { this.building[v] = true; this._build(v, () => {}); }
     const got = this.progs[v] ? v : this.progs[v & (FLIGHT | EXTRA | FULL)] ? v & (FLIGHT | EXTRA | FULL) : this.progs[v & (FLIGHT | FULL)] ? v & (FLIGHT | FULL) : v & FLIGHT;

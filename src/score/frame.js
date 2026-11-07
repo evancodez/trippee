@@ -16,6 +16,7 @@ import { songSheet, openFamilies, melOf } from './song-sheet.js';
 import { handSheet } from './hand-sheet.js';
 import { hearSheet, hearStart } from './hear.js';
 import { wearOne } from './camera.js';
+import { timeSheet } from './time-sheet.js';
 
 export { base, fillSlot, arcU, boldRange, fineness, thetaOf, noHorizon } from './slot.js';
 
@@ -50,7 +51,7 @@ function planFor(m, dtf, stop, phiOf, R, aspect, now, world) {
     // A handover can only ever fly in. Rising needs the next pattern at rest with its element where the plan found it, and a film's clock doesn't
     // stop for that: its element would have moved on, and the frame would sit inside whatever had moved there, one flat colour.
     const hurry = { now };
-    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? to.pattern.via ?? null : from.xform ?? world?._xform, noGlide: handover ? holder.noGlide : from.noGlide, quick: !handover && from.quick, ink: world?.ink }, hurry) };
+    w = holder.planning = { to, t0, D, hurry, steps: planSteps(lim, lim3, { R, aspect, D, rise: handover ? false : from.rise, xform: handover ? to.pattern.via ?? to.pattern.arrive ?? null : from.xform ?? world?._xform, noGlide: handover ? holder.noGlide : from.noGlide, quick: !handover && from.quick, ink: world?.ink }, hurry) };
   }
   w.hurry.now = now;
   let step = w.steps.next();
@@ -99,6 +100,7 @@ export function frame(score, t, R, edits) {
   // The song's tables don't lag behind a rest: they stand still for it on their own axis and are in step the moment the sound's back. Colour's lag they share, since it's the picture's own.
   // No rests in this song: the axis is the picture's clock itself.
   const c = score.time?.c ? score.time.c(tReal) - (tFilm - t) : t;
+  if (score.rewind) t = score.rewind(t);       // the picture's clock runs backward for a while, and the song's own tables don't: src/score/moves/time.js
   const g = score.gestures, A = R.slotA, B = R.slotB, F = R.frame;
   const i = indexAt(g, t);
   const held = edits?.staticG;
@@ -174,6 +176,7 @@ export function frame(score, t, R, edits) {
   }
   handSheet(st, edits);
   hearSheet(st, score, edits, tReal, st.songHx ?? 1);
+  timeSheet(st, score, R, edits, tReal, phiOf, walkT);
 
   // Never empty, however much the song and the hand push it, except while a flight is closing one up inside an element
   if (st.kind !== 'rise') st.theta = clamp(st.theta, -0.9 * st.solid, 0.9 * st.solid);
