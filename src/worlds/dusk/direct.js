@@ -2,8 +2,10 @@
 import { OFF } from '../../pattern/layout.js';
 import { reactAt } from '../../score/react.js';
 import { hitsFor } from '../../score/moves/surge.js';
+import { MOVES } from '../../score/moves/index.js';
 import { base } from '../../score/slot.js';
 
+export const PICK = (score, A) => { const left = score.patterns.filter(p => p.pool !== false && p.group); let n = 0; return G => { const seen = new Set(score.gestures.map(x => x.pattern)), fresh = left.filter(p => !seen.has(p)), from = fresh.length ? fresh : left; return from[(n++ * 7 + (A.hash ? parseInt(String(A.hash).slice(0, 4), 16) : 3)) % from.length]; }; };
 const SHARE = { land: 0.38, road: 0.2, strings: 0.14, room: 0.18, film: 0.1 };
 const rng = seed => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216; };
 export const groupOf = p => p.group ?? 'film';
@@ -55,14 +57,20 @@ export function landings(score) {
   return used;
 }
 
-// What it does while it's there. Long stays have to earn it.
+// What it does while it's there. Long stays have to earn it: a thing of its own for each part, and every so often one of the film's big ideas, which come out differently in this light.
+const BIG = ['pearls', 'slit', 'screen', 'limit', 'fan', 'forever'];
 export function moves(score, A, M) {
-  const g = score.gestures, bar = M?.bar ?? 2;
+  const g = score.gestures, bar = M?.bar ?? 2, ctxOf = G => ({ score, A, M, G, shot: null, at: score.time ?? (x => x), bar, beat: M?.beat ?? 0.5, meter: A.meter || 4, tau: score.tau });
   const rotation = ['gust', 'sway', 'water', 'breath', 'gust', 'sway'];
-  let at = 0;
+  let at = 0, big = 0, since = 0;
   for (let i = 1; i + 1 < g.length; i++) {
     const G = g[i], start = G.t0 + 0.5, end = G.t1 - (G.morph || 0), body = end - start;
     if (body < 2.5 * bar) continue;
+    if (++since >= 3 && body >= 6 && !G.pattern.lake && (G.pattern.g?.fams?.length ?? 1) <= 2 && !G.pattern.g?.rot) {
+      const id = BIG[big % BIG.length], made = id === 'slit' ? MOVES.slit.cue({ id, beats: 'strong', map: 'sweep', D: Math.min(body, 2 * bar), from: start, to: end }, ctxOf(G)) : MOVES[id].cue({ id, from: G.t0, to: end, open: Math.min(3, (0.3 * body) / bar), close: Math.min(2.5, (0.22 * body) / bar) }, ctxOf(G));
+      big++;
+      if (made) { G.moves = [made]; since = 0; continue; }
+    }
     const parts = Math.max(1, Math.min(3, Math.round(body / 12)));
     for (let part = 0; part < parts; part++) {
       const from = start + (body * part) / parts, to = start + (body * (part + 1)) / parts, id = rotation[at++ % rotation.length];
@@ -71,5 +79,17 @@ export function moves(score, A, M) {
       if (hits.length < 2) continue;
       (G.moves ??= []).push({ id: `dusk.${id}`, beats: hits, hits, lead: Math.min(bar, Math.max(hits[0] - from, 0.5)), coast: Math.min(bar, Math.max(to + 0.5 * bar - hits.at(-1), 0.5)), from, to });
     }
+  }
+}
+
+// The last gesture has the rest of time. What it has of the song is cut up, so the end of a song doesn't sit on one thing.
+const LONGEST_END = 13;
+export function endings(score, A, by) {
+  const g = score.gestures, end = A.duration;
+  for (let last = g.at(-1); last && end - last.t0 > LONGEST_END + 5; last = g.at(-1)) {
+    const at = last.t0 + LONGEST_END, p = by(last), far = last.t1;
+    const N = { t0: at, t1: far, arcEnd: at + 26, pattern: p, arcs: p.arcs, morph: 0 };
+    last.t1 = at; last.arcEnd = at; last.morph = 7;
+    g.push(N);
   }
 }

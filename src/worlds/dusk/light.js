@@ -84,6 +84,7 @@ vec3 worldColor(int k0,int k1,float c){
   // An eclipse: a moon goes over it, and the frame's light goes with it. Only a ring of the sun's left, and then the first of it again.
   float ec=uW[34].y;
   if(ec>0.){
+    sky=mix(sky,1.,smoothstep(0.,.4,ec)); disc=S.w*sky*uW[9].y*smoothstep(R*1.02,R*.97,dd);
     float mo=length(ds-vec2(uW[34].z,0.)),gone=smoothstep(R*1.02,R*.98,mo);
     disc*=1.-gone;
     glow*=1.-.85*ec;
@@ -91,7 +92,7 @@ vec3 worldColor(int k0,int k1,float c){
     X+=sky*ec*ec*(.8*exp(-(dd-R)*(dd-R)/(R*R*.03))+.34*exp(-max(dd-R,0.)/(R*.8)))*(1.-gone);
   }
   X+=(1.-X)*glow*(.3+.7*sky);
-  X=mix(X,.76+.24*X,disc);
+  X=mix(X,.8+.2*X,disc);
   // The strong beat: a ring of light goes out from the sun.
   vec4 Rg=uW[7];
   X+=(Rg.y*exp(-(dd-Rg.x)*(dd-Rg.x)/.09)+Rg.w*exp(-(dd-Rg.z)*(dd-Rg.z)/.09))*(.3+.7*X);
@@ -103,7 +104,7 @@ vec3 worldColor(int k0,int k1,float c){
   float hi=clamp(.5+.5*q.y,0.,1.);
   vec3 col=mix(wBez(X,uW[10].rgb,uW[11].rgb,uW[12].rgb,uW[13].rgb),wBez(X,uW[14].rgb,uW[15].rgb,uW[16].rgb,uW[17].rgb),hi);
   // Halation: light that went through the film and came back red, just ahead of a bright edge.
-  col+=Tl.y*exp(-(1.-f0)/clamp(7.*g0,.03,.2))*(1.-X)*vec3(.42,.08,.04);
+  col+=Tl.y*exp(-(1.-f0)/clamp(7.*g0,.03,.12))*(1.-X)*smoothstep(.2,.05,g0)*vec3(.42,.08,.04);
   // The lamps. Each has its place on its line, somewhere in the dark part of the hill, and comes on when the evening reaches it. Going by with what they're on, and as big as what they're on is near.
   if(uW[9].w>0.&&n>0){
     int kl=(uF[0].y>.5&&uF[0].x>.5)?1:0;

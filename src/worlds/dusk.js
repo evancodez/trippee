@@ -1,13 +1,13 @@
 // Dusk: wistful. Slow, sad, beautiful: the end of an afternoon seen from a train, and the room you got home to. docs/MODES.md, section 3.
 // A whole way of seeing: colour is time since an edge passed, through film stock, in the light of one low sun. A song is one evening, its voice is the sun, its reverb is how long the light lingers, and the last few seconds of it are written along every line.
-import { OFF } from '../pattern/layout.js';
+import { OFF, FRAME, RIPPLES } from '../pattern/layout.js';
 import { pool } from './dusk/patterns.js';
 import { FIELD } from './dusk/field.js';
 import { DEFS, WARP, COLOR } from './dusk/light.js';
 import { writeStock, lampsAt, gammaAt, chips } from './dusk/stocks.js';
 import { hearDusk, whoaOf, read, holdAt, eclipseAt } from './dusk/song.js';
 import { KINDS } from './dusk/across.js';
-import { cast, landings, moves } from './dusk/direct.js';
+import { cast, landings, moves, endings, PICK } from './dusk/direct.js';
 import { wearDuskCamera } from './dusk/camera.js';
 import './dusk/moves.js';
 
@@ -46,6 +46,7 @@ export default {
   direct(score, A, M) {
     if (!score.tau || !score.react) return score;
     cast(score, A, M);
+    endings(score, A, PICK(score, A));
     landings(score);
     moves(score, A, M);
     wearDuskCamera(score, A, M, ((score.seed | 0) * 7919) >>> 0);
@@ -53,6 +54,10 @@ export default {
   },
   uniforms(U, ctx) {
     const { A, B, t, c, T: Tm, from, to, kind, score, plan } = ctx, E = U.a, song = ctx.tables, s = ctx.at(c), G = from ?? ctx.G, N = to ?? null, Tx = N ? (Tm ?? ctx.x ?? 0) : 0;
+    // The tune doesn't travel through this sheet in a line: where a broad band meets a walk of notes it comes out ragged. It's the sun, the lenses and the lift.
+    ctx.F[FRAME.mel * 4] = 0;
+    // Nor the song's rings, which tear the edge of a band this broad: its strong beats are the rings of light out of the sun. The hand's own ripples fill from the front, and stay.
+    for (let i = 4; i < RIPPLES; i++) ctx.F[(FRAME.ripple + i) * 4 + 3] = 0;
     const melSlow = s ? Math.max(-0.5, Math.min(0.5, s.melSlow * 0.045)) : 0.1 * Math.sin(t * 0.17);
     // The sun.
     const a = sunIn(G?.pattern, A, t, melSlow), b = N ? sunIn(N.pattern, B, t, melSlow) : a;
