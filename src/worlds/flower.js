@@ -35,7 +35,7 @@ export default {
   id: 'flower', name: 'Flower Power', chips, pool, borrow: [], needs: ['voices'],
   glsl: { field: FIELD, phase: PHASE, color: COLOR },
   ink: { R: ROWS, fams: [0], roll: false, weights: [1, 0, 0, 0] },
-  fuller: S => S[OFF['spare.a']] !== 0 || S[OFF['spare.c']] !== 0 || S[OFF['star._2']] !== 0 || S[OFF['field.b']] !== 0 || S[OFF['blobs.beta']] !== 0 || S[OFF['blobs.k']] !== 0 || S[OFF['ribbon.a']] !== 0,      // Whiplash's lines, Flames', the curl, the motifs, tiles, and what goes inside a band
+  fuller: S => S[OFF['spare.a']] !== 0 || S[OFF['spare.c']] !== 0 || S[OFF['star._2']] !== 0 || (S[OFF['field.kind']] === 4 && S[OFF['field.b']] !== 0) || S[OFF['blobs.beta']] !== 0 || S[OFF['blobs.k']] !== 0 || S[OFF['ribbon.a']] !== 0,      // Whiplash's lines, Flames', the curl, the motifs, tiles, and what goes inside a band
   table: {
     h: 2,
     fill(tex, ctx) {
@@ -74,12 +74,12 @@ export default {
     const { A, B, kind, from, to, t, score } = ctx;
     // In a world's landing the rings don't ease to rest and catch up, as other transformations' clocks do: they run on the one clock, right through it.
     if (from && to && (kind === 'bud' || kind === 'melt')) {
-      const a = from.pattern.g.fams[0].ph, b = to.pattern.g.fams[0].ph;
+      const a = from.pattern.g.fams[0].ph ?? 0, b = to.pattern.g.fams[0].ph ?? 0;
       // A rehearsal that's watched one flash can ask the rings to give way (bud.js, its levers): behind at the middle, where everything else is moving fastest, and paying it back at the ends, where nothing is. They land exactly on the clock.
       A[OFF['f0.ph']] = a + (b - a) * ctx.T - FLOW * score.phi(t, to) - (from.budRest ?? 0) * giveWay(ctx.x);
     } else if (from && to && kind === 'tide') {
       const now = FLOW * score.phi(t, to) + (from.budRest ?? 0) * giveWay(ctx.x);
-      A[OFF['f0.ph']] = from.pattern.g.fams[0].ph - now; B[OFF['f0.ph']] = to.pattern.g.fams[0].ph - now;
+      A[OFF['f0.ph']] = (from.pattern.g.fams[0].ph ?? 0) - now; B[OFF['f0.ph']] = (to.pattern.g.fams[0].ph ?? 0) - now;
       U.e[15] = ctx.plan.ang ?? 0;      // the way a straight tide goes
     }
     const s = ctx.at(ctx.c);

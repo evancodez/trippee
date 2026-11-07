@@ -47,11 +47,13 @@ export function landings(score) {
   const g = score.gestures, used = {};
   let prev = null;
   for (let i = 0; i + 1 < g.length; i++) {
-    const G = g[i], N = g[i + 1], a = G.pattern.g, b = N.pattern.g, sameFold = (a.fold?.n ?? 0) === (b.fold?.n ?? 0), D = G.morph || 0, field = p => p.g['field.k0'] !== 0;
+    const G = g[i], N = g[i + 1], a = base(G.pattern), b = base(N.pattern), D = G.morph || 0, num = (S, n) => S[OFF[n]];
+    const sameFold = num(a, 'fold.n') === num(b, 'fold.n'), flat = S => num(S, 'surf.kind') < 0.5, ours = S => flat(S) && num(S, 'field.kind') === 4, field = S => ours(S) && num(S, 'field.k0') !== 0, wound = S => num(S, 'f0.t1') !== 0 || num(S, 'f0.t2') !== 0;
     const open = [];
-    if (sameFold && field(G.pattern) && field(N.pattern)) open.push('bud');
-    if (sameFold) open.push('melt');
-    open.push('tide');
+    if (sameFold && field(a) && field(b)) open.push('bud');
+    if (sameFold && ours(a) && ours(b)) open.push('melt');
+    if (flat(a) && flat(b) && !wound(a) && !wound(b)) open.push('tide');
+    if (!open.length) open.push('dive');
     if (D >= 5) open.push('dive');
     if (D >= 5 && i % 5 === 3) open.push('iris');
     const score1 = k => WEIGHT[k] / (1 + (used[k] ?? 0)) * (k === prev ? 0.001 : 1);
@@ -70,12 +72,12 @@ export function moves(score, A, M) {
   const g = score.gestures, bar = M?.bar ?? 2, rotation = ['pump', 'scissor', 'turnover', 'wind', 'lead', 'wring', 'bellows', 'beads', 'waltz', 'ratchet', 'ramp'];
   let at = 0, sinceStar = 99, runs = 0;
   const fits = (id, G) => {
-    const p = G.pattern, S = base(p), num = n => S[OFF[n]], field = num('field.k0') !== 0, whip = num('spare.a') !== 0 || num('spare.c') !== 0;
+    const p = G.pattern, S = base(p), num = n => S[OFF[n]], ours = num('field.kind') === 4, field = ours && num('field.k0') !== 0, whip = num('spare.a') !== 0 || num('spare.c') !== 0;
     if (id === 'ratchet') return (p.g.fams ?? []).some(f => f.t1);
     if (id === 'scissor') return p.id === 'flower.check';
     if (id === 'turnover') return num('blobs.beta') > 0;
     if (id === 'bellows') return (p.g.fams?.length ?? 1) >= 2 && !num('shape.round') && !num('round');
-    if (id === 'wring') return true;
+    if (id === 'wring') return num('surf.kind') < 0.5;
     if (id === 'ramp') return true;
     if (id === 'beads') return field && !whip && p.group !== 'op' && !num('ribbon.a') && (p.g.fams?.length ?? 1) < 2;
     if (id === 'wind') return field && !whip && !num('field.b');
@@ -90,7 +92,9 @@ export function moves(score, A, M) {
     for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (fits(c, G)) { id = c; at = (at + n + 1) % rotation.length; break; } }
     if (!id) continue;
     const beats = (id === 'pump' || id === 'wring' || id === 'ratchet' || id === 'bellows' || id === 'scissor' || id === 'turnover') ? 'half' : 'bar';
-    const hits = hitsFor(beats, { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
+    // A tile takes one edge a second, near enough, and the rings are already using most of that. So never faster than a hit every so often, whatever the tempo.
+    let hits = hitsFor(beats, { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
+    if (hits.length > 1 && (hits.at(-1) - hits[0]) / (hits.length - 1) < 1.15) hits = hitsFor('bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
     if (hits.length < 3 && id !== 'ramp') continue;
     if (id === 'ramp') {
       const a = (M?.arrivals?.(0.2) ?? []).find(x => x.t > from + 2 && x.t < to - 2)?.t ?? (from + to) / 2, k = rampTrack(G, { hit: a });
@@ -111,8 +115,8 @@ export function moves(score, A, M) {
   }
   // The ball, once or twice in a song, in a quiet stretch on something with flowers.
   for (let i = 2; i + 1 < g.length; i++) {
-    const G = g[i], to = G.t1 - (G.morph || 0);
-    if (++sinceStar < 7 || G.moves?.length || to - G.t0 < 10 || G.pattern.group !== 'flower' || G.pattern.g['blobs.beta']) continue;
+    const G = g[i], to = G.t1 - (G.morph || 0), S = base(G.pattern);
+    if (++sinceStar < 7 || G.moves?.length || to - G.t0 < 10 || G.pattern.group !== 'flower' || S[OFF['blobs.beta']] || S[OFF['surf.kind']] > 0.5) continue;
     G.moves = [{ ...starMove({ t0: G.t0 + 0.5, open: (to - G.t0) * 0.45, close: { t: to - (to - G.t0) * 0.45, D: (to - G.t0) * 0.45 } }), id: 'ball' }];
     sinceStar = 0;
   }

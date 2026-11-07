@@ -17,7 +17,7 @@ const own = {
   // Wind: the petals wind up into a pinwheel one way and straighten through a daisy on the beat, and wind up the other way.
   wind: { write(out, { t, m }) { out[OFF['field.scale']] += (m.amp ?? 1.7) * ampAt(m, t) * swing(evalTrack(clockOf(m), t)); } },
   // Pump: every flower shuts to a circle and opens again, whatever it is: a heart goes round and comes back a heart. Round on the hit.
-  pump: { write(out, { t, m }) { const s = evalTrack(clockOf(m), t), v = Math.abs(swing(s)); out[OFF['field.ph']] *= 1 - ampAt(m, t) * (m.amp ?? 0.8) * (1 - v) * (1 - v); } },
+  pump: { write(out, { t, m }) { const s = evalTrack(clockOf(m), t), v = Math.abs(swing(s)); out[OFF['field.ph']] *= 1 - ampAt(m, t) * (m.amp ?? 0.6) * (1 - v) * (1 - v); } },
   // Lead: one flower takes the frame and passes it on. The rest make room.
   lead: { write(out, { t, m }) {
     const s = surged(evalTrack(clockOf(m), t)), a = ampAt(m, t) * (m.amp ?? 0.42), on = POLES.filter(p => out[p[2]] > 0);

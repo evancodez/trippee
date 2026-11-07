@@ -3,6 +3,8 @@
 // field.k0 lines per unit of log distance. spare.a the whiplash share, spare.b epsilon (a flower's cap), spare.c the flame share, spare.d lines per unit height, in flames. Poles: blobs 1-3 and p1, p2: x, y, size, turn.
 // Under the field every pattern is plain stripes, LINES to the picture unit, and the field takes them away again: phase = share*k*S + (1-share)*LINES*y. With the field all there that's only k*S. With it gone (the middle of a change of world, where no program but this one can draw it, or a check) it's lines, and never a solid.
 // group: flower, motif or op. The film goes round them by group (src/worlds/flower/direct.js).
+import { byId } from '../../pattern/library.js';
+
 const LINES = 2.2;
 export const FLOW = 6;         // lines per cycle of the film's clock: with no song that's about one a second
 const eps = 0.26;
@@ -44,6 +46,16 @@ function flower({ id, name, group = 'flower', k = 2.6, n = 6, a = 0.5, kappa = 0
         else if (spin) out[OFF[na]] += w * (i % 2 ? spin : -spin);
       }
     },
+  };
+}
+
+// A film pattern in these inks, as it is, with its first family on the world's clock so that its lines wear the song. Its other families keep their own flow.
+function own(from, id, name, more = {}) {
+  const o = byId[from], flow = { ...o.flow };
+  delete flow['f0.ph'];
+  return {
+    ...o, id: `flower.${id}`, name, family: 'flower', group: 'op', pool: true, fine: o.fine, flow, ...more,
+    drive(out, ctx) { o.drive?.(out, ctx); out[ctx.OFF['f0.ph']] -= FLOW * ctx.phi; },
   };
 }
 
@@ -104,52 +116,47 @@ export const pool = [
   }),
   // ---------------------------------------------------------------- motifs: things anyone would know, and every echo of them is them again
   flower({
-    id: 'flower.hearts', name: 'Hearts', group: 'motif', motif: HEART, a: 1, k: 2, beta: 3.4, e: 0.16, fade: 0.012, sway: 0.2, orbit: 0.2,
+    id: 'flower.hearts', name: 'Hearts', group: 'motif', motif: HEART, a: 1, k: 2, beta: 3.4, e: 0.16, fade: 0.012, sway: 0.2, orbit: 0.2, swell: 0.25,
     poles: [[-1.0, 0.3, 0.62, 0], [0.86, 0.42, 0.74, 0], [-0.05, -0.56, 0.5, 0], [1.72, -0.6, 0.36, 0], [-1.78, -0.68, 0.34, 0]],
     arcs: heartArcs,
   }),
   flower({
-    id: 'flower.stars', name: 'Stars', group: 'motif', motif: STAR, a: 1, k: 2.1, beta: 3.2, e: 0.16, fade: 0.012, spin: 0.25, orbit: 0.22,
+    id: 'flower.stars', name: 'Stars', group: 'motif', motif: STAR, a: 1, k: 2.1, beta: 3.2, e: 0.16, fade: 0.012, spin: 0.25, orbit: 0.22, swell: 0.25,
     poles: [[-0.95, 0.36, 0.72, 0.3], [0.95, 0.2, 0.86, 1.0], [-0.1, -0.65, 0.42, 2.2], [1.8, 0.8, 0.34, 0.7], [-1.82, -0.5, 0.34, 1.7]],
     arcs: [{ path: 'rot', from: 0.12, to: -0.12 }, { path: 'scale', from: 1.25, to: 1.0, log: true }, { path: 'ty', from: -0.08, to: 0.08 }],
   }),
   flower({
-    id: 'flower.butterflies', name: 'Butterflies', group: 'motif', motif: BUTTERFLY, a: 1, k: 2, beta: 3.6, e: 0.1, fade: 0.012, sway: 0.28, orbit: 0.2,
+    id: 'flower.butterflies', name: 'Butterflies', group: 'motif', motif: BUTTERFLY, a: 1, k: 2, beta: 3.6, e: 0.1, fade: 0.012, sway: 0.28, orbit: 0.2, swell: 0.25,
     poles: [[-0.85, 0.05, 0.62, 0.12], [0.95, 0.3, 0.46, -0.2], [0.35, -0.72, 0.28, 0.3], [-1.85, 0.78, 0.24, -0.25]],
     arcs: heartArcs,
   }),
   flower({
-    id: 'flower.sun', name: 'Sunshine', group: 'motif', motif: SUN, a: 1, k: 2.2, beta: 2.4, e: 0.18, fade: 0.012, spin: 0.15, orbit: 0.05,
+    id: 'flower.sun', name: 'Sunshine', group: 'motif', motif: SUN, a: 1, k: 2.2, beta: 2.4, e: 0.18, fade: 0.012, spin: 0.15, orbit: 0.05, swell: 0.25,
     poles: [[0.1, 0.05, 0.62, 0]],
     arcs: [{ path: 'scale', from: 1.0, to: 1.35, log: true }, { path: 'tx', from: -0.2, to: 0.2 }, { path: 'ty', from: 0.08, to: -0.08 }],
   }),
   flower({
-    id: 'flower.mushrooms', name: 'Mushrooms', group: 'motif', motif: MUSHROOM, a: 1, k: 1.9, beta: 3.6, e: 0.12, fade: 0.06, sway: 0.1, orbit: 0.14,
-    poles: [[-0.5, 0.0, 0.92, 0], [1.2, -0.15, 0.5, 0], [-1.9, 0.5, 0.24, 0]],
-    arcs: heartArcs,
-  }),
-  flower({
-    id: 'flower.clouds', name: 'Clouds', group: 'motif', motif: CLOUD, a: 1, k: 1.9, beta: 3.2, e: 0.14, fade: 0.012, sway: 0.06, orbit: 0.2,
-    poles: [[-0.8, 0.42, 0.56, 0], [0.95, 0.5, 0.42, 0], [0.2, -0.45, 0.6, 0], [-1.85, -0.5, 0.3, 0]],
+    id: 'flower.clouds', name: 'Clouds', group: 'motif', motif: CLOUD, a: 1, k: 1.9, beta: 3.2, e: 0.14, fade: 0.012, sway: 0.06, orbit: 0.2, swell: 0.25,
+    poles: [[-0.8, 0.42, 0.4, 0], [0.95, 0.5, 0.3, 0], [0.2, -0.45, 0.44, 0], [-1.85, -0.5, 0.22, 0]],
     arcs: [{ path: 'tx', from: 0.3, to: -0.3 }, { path: 'scale', from: 1.0, to: 1.2, log: true }],
   }),
   flower({
-    id: 'flower.eyes', name: 'Eyes', group: 'motif', motif: EYE, a: 1, k: 2.2, beta: 3.4, e: 0.14, sway: 0.07, orbit: 0.12,
+    id: 'flower.eyes', name: 'Eyes', group: 'motif', motif: EYE, a: 1, k: 2.2, beta: 3.4, e: 0.14, sway: 0.07, orbit: 0.12, swell: 0.25,
     poles: [[-0.92, 0.3, 0.62, 0], [0.92, 0.3, 0.62, 0]],
     arcs: [{ path: 'scale', from: 1.0, to: 1.3, log: true }, { path: 'ty', from: 0.07, to: -0.07 }],
   }),
   flower({
-    id: 'flower.peace', name: 'Peace', group: 'motif', motif: PEACE, a: 1, k: 2.4, beta: 2.2, e: 0.1, sway: 0.1, orbit: 0.07,
+    id: 'flower.peace', name: 'Peace', group: 'motif', motif: PEACE, a: 1, k: 2.4, beta: 2.2, e: 0.1, sway: 0.1, orbit: 0.07, swell: 0.25,
     poles: [[0.05, 0, 0.82, 0]],
     arcs: [{ path: 'scale', from: 0.95, to: 1.2, log: true }, { path: 'tx', from: 0.18, to: -0.18 }],
   }),
   flower({
-    id: 'flower.smile', name: 'Smile', group: 'motif', motif: SMILE, a: 1, k: 2.4, beta: 2.2, e: 0.1, sway: 0.1, orbit: 0.1,
+    id: 'flower.smile', name: 'Smile', group: 'motif', motif: SMILE, a: 1, k: 2.4, beta: 2.2, e: 0.1, sway: 0.1, orbit: 0.1, swell: 0.25,
     poles: [[-0.05, 0, 0.84, 0]],
     arcs: [{ path: 'scale', from: 1.2, to: 0.95, log: true }, { path: 'tx', from: -0.18, to: 0.18 }],
   }),
   flower({
-    id: 'flower.garden', name: 'The Garden', group: 'motif', motif: [0, BUTTERFLY, MUSHROOM, HEART, STAR], n: 7, a: 0.9, fat: 0.5, k: 2, beta: 3.2, e: 0.14, fade: 0.012, sway: 0.1, orbit: 0.16,
+    id: 'flower.garden', name: 'The Garden', group: 'motif', motif: [0, BUTTERFLY, MUSHROOM, HEART, STAR], n: 7, a: 0.9, fat: 0.5, k: 2, beta: 3.2, e: 0.14, fade: 0.012, sway: 0.1, orbit: 0.16, swell: 0.25,
     poles: [[-1.0, 0.08, 0.66, 0], [0.62, 0.52, 0.5, 0.1], [0.6, -0.56, 0.44, 0], [-1.85, 0.74, 0.26, 0], [1.72, 0.0, 0.3, 0.3]],
     arcs: heartArcs,
   }),
@@ -193,6 +200,17 @@ export const pool = [
     over: { round: 1, sum: 0.42 / (40 * 0.577), bulge: { a: 0.5, r: 0.9, cx: 0.4, cy: 0 } },
     arcs: [{ path: 'rot', from: 0.45, to: 0.75 }, { path: 'scale', from: 1.0, to: 1.25, log: true }, { path: 'bulge.cx', from: 0.7, to: -0.7 }],
   }),
+  flower({
+    id: 'flower.floor', name: 'Daisy Floor', n: 7, a: 0.7, fat: 0.5, k: 2.2, beta: 2.4, e: 0.2, swell: 0.1, orbit: 0.3,
+    poles: [[-1.2, 2.2, 1.1, 0.3], [1.3, 3.2, 1.3, 1.0], [0.1, 0.9, 0.7, 2.2], [-2.6, 4.5, 1.2, 0.7], [3.1, 1.2, 0.9, 1.7]],
+    over: { surf: { kind: 1 }, q: { zz: 1, ww: -0.81, zw: 0 }, cam: { dist: 0.9, pitch: 0.75, yaw: 0 } },
+    arcs: [{ path: 'cam.yaw', from: -0.25, to: 0.25 }, { path: 'cam.pitch', from: 0.68, to: 0.85 }],
+  }),
+  own('rooms.tunnel', 'tunnel', 'Square Tunnel'),
+  own('rooms.nested', 'nested', 'Nested'),
+  own('riley.blaze', 'blaze', 'Blaze'),
+  own('riley.zinnia', 'zinnia', 'Zinnia', { group: 'flower' }),
+  own('riley.rose', 'rose', 'Rose Window', { group: 'flower' }),
   // ---------------------------------------------------------------- pattern inside pattern
   flower({
     id: 'flower.beads', name: 'Bead Bloom', group: 'flower', n: 6, a: 0.72, fat: 0.5, k: 3, beta: 2, every: 2, beads: 14, fams: [{ y: 0.001 }], flow: { 'f1.ph': 1.6 },

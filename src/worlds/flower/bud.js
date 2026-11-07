@@ -99,7 +99,8 @@ export const tide = {
   // As for a Bud, and it can go wider, so that each pixel takes longer about turning into the next.
   levers: { 'a wider tide': G => { if (!G.xform || G.xform.W) return null; G.xform.W = 0.8; return () => { delete G.xform.W; }; }, ...LEVERS },
   plan(a, b, ctx) {
-    if (a[OFF['surf.kind']] > 0.5 || b[OFF['surf.kind']] > 0.5 || a[OFF['field.kind']] !== 4 || b[OFF['field.kind']] !== 4 || ctx.D < 3) return null;
+    // Anything flat, whichever field it's on, as long as its numbered family has no angle in it: half way between two whole counts of turns there'd be a cut.
+    if (a[OFF['surf.kind']] > 0.5 || b[OFF['surf.kind']] > 0.5 || winds(a, 0) || winds(b, 0) || ctx.D < 3) return null;
     const o = ctx.xform?.id === 'tide' || ctx.xform?.dir ? ctx.xform : {}, dir = o.dir ?? 2, centre = dir === 3 ? [0, 0] : o.centre ?? [b[OFF['blobs.x1']] || 0, b[OFF['blobs.y1']] || 0], reach = Math.hypot(ctx.aspect + Math.abs(centre[0]), 1 + Math.abs(centre[1])) * 1.05;
     return { kind: 'tide', onClock: true, ...partners(a, b), dir, centre, reach, W: o.W ?? WIDE, ang: o.ang ?? 0 };
   },
