@@ -12,7 +12,9 @@
 import { clamp, smoother } from '../curves.js';
 import { cueFold, inBy, songNow, boldUp, writeChain, lineM } from './foldkit.js';
 
-const FAR = 3.6;
+const ON_MOVE = 4, ASPECT = 16 / 9;
+// From nothing to all of it at an even pace, with gentle ends: the creases still come in evenly, and the last one out comes to rest where it's going instead of stopping dead, and so does the camera's push (Disclosure 133.8 s, 6.89x).
+const steady = (u, e = 0.3) => { u = clamp(u); const v = 1 / (1 - e); return u < e ? v * u * u / (2 * e) : u > 1 - e ? 1 - v * (1 - u) * (1 - u) / (2 * e) : v * (u - e / 2); };
 
 // Each crease in the frame the last one left: its normal's turned by `turn` and its foot is along the last crease by `c`, shrinking. All one coordinate system, since a fold's an isometry and the sheet's coordinates are where the point has got to.
 const list = [];
@@ -21,8 +23,11 @@ function creases({ folds, c, shrink, turn, k }) {
   let ox = 0, oy = 0, ang = 0.2, cc = c;
   for (let i = 0; i < folds; i++) {
     const nx = Math.cos(ang), ny = Math.sin(ang), d = nx * ox + ny * oy;
-    const come = 1 - smoother(clamp((k * (folds + 2) - i) / 3));       // one after another, three of them on the move at once: it's the crease going by that's quick, so each gets its share of the way in
-    list.push(lineM(nx, ny, d + FAR * come));
+    const come = 1 - smoother(clamp((k * (folds + ON_MOVE) - i) / ON_MOVE));       // one after another, four of them on the move at once: it's the crease going by that's quick, so each gets as long as it can of the way in
+    // Out of the way is just past the frame's edge from where this one's foot is. Sent a set 3.6 out, most of each crease's way was off the frame, so what you saw of it went by in a rush (Disclosure 133 s);
+    // and down a long chain that wasn't far enough: with six or more, the last could still cut the frame with all of them gone, and letting go would jump.
+    const clear = Math.max(0.3, Math.abs(nx) * ASPECT + Math.abs(ny) - d + 0.3);
+    list.push(lineM(nx, ny, d + clear * come));
     ox += -ny * cc; oy += nx * cc; ang += turn; cc *= shrink;
   }
   return list;
@@ -47,7 +52,7 @@ export default {
   needs: () => true,
   cue(m, ctx) { m.open ??= 6; m.close ??= 4; return cueFold(m, ctx); },
   write(out, c) {
-    const { m, t } = c, S = songNow(c), k = clamp((t - m.from) / m.open) * (m.stay ? 1 : clamp((m.to - t) / m.close));      // steady, so the creases come in evenly
+    const { m, t } = c, S = songNow(c), k = steady((t - m.from) / m.open) * (m.stay ? 1 : steady((m.to - t) / m.close));
     if (k <= 0) return;
     write(out, { k, S, folds: m.folds, c: m.c, shrink: m.shrink, turn: m.turn, speed: m.speed });
   },
