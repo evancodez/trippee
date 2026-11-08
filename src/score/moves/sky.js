@@ -61,12 +61,12 @@ export function domeNumbers(G, t, c, m = {}) {
   const K = (m.K ?? 0.42) * curl * (1 + (m.lift ?? 0.1) * kick * k);
   const R = K > 1e-6 ? 1 / K : Infinity;
   // Looking up, it rises towards the middle of the ball, so all of it's about as far off
-  const h = LENS + ((m.H ?? 0.85) - LENS) * look + (Number.isFinite(R) ? Math.max(0.6 * R - (m.H ?? 0.85), 0) * up * look : 0);
+  const h = LENS + ((m.H ?? 0.85) - LENS) * look + (Number.isFinite(R) ? Math.max(0.45 * R - (m.H ?? 0.85), 0) * up * look : 0);
   const lens = LENS + ((m.lens ?? 1.3) - LENS) * look;
   const fly = (m.fly ?? 0.42) * d + (m.heave ?? 0.4) * surgeAt(t) * k;
   return {
     kind: 9, amp: K,
-    pitch: ((m.P ?? 1.45) + ((m.up ?? 2.0) - (m.P ?? 1.45)) * up) * look + 0.05 * tune * look, yaw: 0.22 * tune * look, roll: ((m.bank ?? 0.3) * bank + 0.06 * tune) * look, dist: lens,
+    pitch: ((m.P ?? 1.45) + ((m.up ?? 1.9) - (m.P ?? 1.45)) * up) * look + 0.05 * tune * look, yaw: 0.22 * tune * look, roll: ((m.bank ?? 0.22) * bank + 0.06 * tune) * look, dist: lens,
     x: 0, y: 0, z: h,
     bowl: 0, q: fly,
   };
