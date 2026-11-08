@@ -181,7 +181,7 @@ class WorldPrograms {
         for (const v of list) {
           gl.useProgram(this.progs[v]);
           gl.bindFramebuffer(gl.FRAMEBUFFER, small.fbo); gl.viewport(0, 0, COVER_W, COVER_H); gl.drawArrays(gl.TRIANGLES, 0, 3);
-          gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, R.canvas.width, R.canvas.height); gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);      // perf9: the picture is drawn into an RGBA8 target like this one, never on the canvas, so one first draw is the build (renderer.js draw)
           this.warmed.add(v);
         }
         gl.disable(gl.SCISSOR_TEST);
