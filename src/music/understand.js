@@ -20,7 +20,7 @@ export const chordName = c => NAMES[c >> 1] + (c & 1 ? 'm' : '');
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const smoother = x => { x = clamp(x); return x * x * x * (x * (x * 6 - 15) + 10); };
-const pct = (a, p) => { const s = Array.from(a).sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) * p)] : 0; };
+const pct = (a, p) => { const s = Float64Array.from(a).sort(); return s.length ? s[Math.floor((s.length - 1) * p)] : 0; };      // a typed sort is numeric, and many times quicker than one through a function: the rests' local level sorts a few hundred thousand numbers, and that was 40 ms of the one long frame a song's film is composed in
 const meanOf = (a, i0, i1) => { let s = 0, n = 0; for (let i = Math.max(0, i0); i < i1 && i < a.length; i++) { s += a[i]; n++; } return n ? s / n : 0; };
 const relMajor = c => (c & 1 ? ((c >> 1) + 3) % 12 : c >> 1);
 const fifths = (from, to) => { let q = (((to - from) * 7) % 12 + 12) % 12; if (q > 6) q -= 12; return q; };

@@ -219,7 +219,7 @@ export function init(app) {
       const n = Math.ceil(D * FLIGHT_FPS), seen = new FlashSeen(n, W, H, FLIGHT_FPS, false, !sc.cut), eyes = new Eyes(R, W, H, 32, () => new Promise(res => setTimeout(res)));
       for (let i = 0; i < n; i++) {
         const f = drawn(R, look, t + i / FLIGHT_FPS, W, H), o = { from: f.from, G: f.G, kind: f.kind };
-        if (eyes.read(p => seen.take(i, p, o, look.gestures))) await eyes.flush();
+        if (eyes.read(p => seen.take(i, p, o, look.gestures))) await eyes.next();
         if (performance.now() - breath > 4) { await new Promise(res => setTimeout(res)); breath = performance.now(); if (stale()) { eyes.free(); return best; } }
       }
       await eyes.flush();
@@ -434,7 +434,9 @@ export function init(app) {
       const stale = () => mine !== takeToken || token !== loadToken;
       await rehearseNow(() => {}, stale, true);
       if (stale()) return null;
-      return () => { if (films) { films.auto = score; toAuto(); } if (!resting && !song.aside) app.stage.setScore(score); return score; };
+      // The film this made and rehearsed, whatever's been asked for since. Shown by `score`, a take pressed again while this one's veil was closing put the next one up before it had been rehearsed, and its rehearsal then ran in front of everyone with every plan worked out at once (frames of 80 to 100 ms).
+      const made = score;
+      return () => { if (films) { films.auto = made; toAuto(); } if (!resting && !song.aside) app.stage.setScore(made); return made; };
     },
 
     // What the worlds hear that the film doesn't (src/music/extras.js), once per song. It's in analysis.x from then on. Nothing of it is here until a world asks: stage.setWorld waits on it for a world's `needs`.

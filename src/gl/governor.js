@@ -17,6 +17,12 @@ const WINDOW = 1, LOW_FPS = 55, HIGH_FPS = 58, SETTLE = 1;
 const FIRST_WAIT = 30, MAX_WAIT = 480, TRIAL = 5;
 const OVER = 15, FITS = 13, ROOM = 11.5;     // ms of GPU a frame: too much, what a new size aims for, and how little the next size up has to come to before it's tried
 const OVER_FRAMES = 3, ROOM_FRAMES = 480;
+// With the GPU's own times off for choosing sizes (flag gpuTiers), they still catch a program that can't fit at all: more than this much of the GPU a frame, at the size it's drawn, is a frame that
+// can't make 60 however quiet the machine is. The frame rate's own test took two seconds of such frames to see it, every time one came up: a shock at 3024 x 1964 was 50 to 83 ms a frame, Flower Power's
+// flights 50 to 66. It's down to the size that fits within a few frames, and that program keeps that size. Only while frames really are being missed, most of the last eight: on a GPU that's shared
+// (a rehearsal behind the picture, another page) the timer reads high on frames that still made 60. With three of eight, the e key's no-pop rows failed (81 and 133 against 23 and 31 around them),
+// most likely from a drop on a hiccup. Nothing that does make 60 is drawn any smaller for this.
+const WAY_OVER = 17, SLOW_FRAME = 0.025, SLOW_OF_8 = 6;
 // A program that's only there now and then (a ghost hand on each strong beat) used to snap the size down and back up on every one, and on fine lines each snap is a pop (PPP 92-109 s, twice a second). So a smaller size is held for a while after the program changes, and then goes back up a tier at a time.
 const HOLD = 2.5, RISE = 0.4;     // seconds
 const SHARE = { plates: 1.9, flight: 1.3, shock: 1.8, extra: 1.15, hand: 1.1 };    // how much more than a plain frame each costs, roughly. Only a first guess for a program not yet seen.
@@ -32,14 +38,16 @@ export class Governor {
     this.states = new Map();
     this.v = 0; this.s = this._state(0);
     this.timed = false;        // has the GPU said anything yet?
-    if (R.timer && flag('gpuTiers')) R.onCost = (key, scale, ms) => this.cost(key, scale, ms);
+    this.slow = 0; this.ri = 0;
+    this.byGpu = flag('gpuTiers');
+    if (R.timer) R.onCost = (key, scale, ms) => this.cost(key, scale, ms);
     this._reset();
   }
 
   // One frame's GPU time, in ms, a few frames after it was drawn
   cost(key, scale, ms) {
     if (!this.enabled || this.gaveUp || ms <= 0) return;
-    this.timed = true;
+    if (this.byGpu) this.timed = true;
     // The middle of the last three: one frame held up by something else says nothing about this program
     const s = this._state(key), a = s.seen, full = ms / (scale * scale);
     a[s.at++ % 3] = full;
@@ -48,6 +56,15 @@ export class Governor {
     s.typical = s.typical == null ? mid : s.typical + 0.02 * (mid - s.typical);
     if (key !== this.v || TIERS[s.tier] !== scale) return;
     const here = s.cost * scale * scale;
+    if (!this.byGpu) {
+      if (here <= WAY_OVER || s.tier >= TIERS.length - 1 || this.slow < SLOW_OF_8) { s.over = 0; return; }
+      if (++s.over < OVER_FRAMES) return;
+      s.over = 0;
+      if (s.trial) { s.trial = false; s.wait = Math.min(MAX_WAIT, s.wait * 2); }      // it had been tried bigger: wait longer before trying again, as the frame rate's own test does
+      const fits = TIERS.findIndex((x, i) => i > s.tier && s.cost * x * x <= FITS);
+      this._set(fits < 0 ? TIERS.length - 1 : fits, 'gpu: way over');
+      return;
+    }
     if (here > OVER) {
       s.under = 0;
       if (++s.over >= OVER_FRAMES) {
@@ -102,6 +119,9 @@ export class Governor {
   // dt: seconds since the last frame, from the real rAF.
   tick(dt) {
     if (!this.enabled) return;
+    // How many of the last 8 frames were missed
+    const r = (this.recent ??= new Float32Array(8));
+    this.slow += (dt > SLOW_FRAME) - (r[this.ri] > SLOW_FRAME); r[this.ri] = dt; this.ri = (this.ri + 1) % 8;
     const key = this.R.costKey ?? this.R.variant;
     if (key !== this.v) {
       const seen = this.states.has(key);

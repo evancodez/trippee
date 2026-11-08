@@ -218,7 +218,7 @@ export class Renderer {
     if (this.wp) return this.wp.program(F);
     let v = this._variantOf(F);
     if (this.timeOn) {
-      if (!this.progs[v | TIME] && this.bare) this._buildNow(v | TIME);      // the rehearsal's eyes have to see what will be shown
+      if (!this.progs[v | TIME] && this.bare && !this.later) this._buildNow(v | TIME);      // the rehearsal's eyes have to see what will be shown. A look that can wait for it (later) has it built behind the picture instead: built here, it held the page for 290 ms
       if (this.progs[v | TIME]) v |= TIME; else this._wantTime(v);
     }      // one still building, the frame goes without it. What asks comes up from nothing
     if (v & FOLD && !this.progs[v]) this.wantFold(v, true);
