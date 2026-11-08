@@ -81,9 +81,10 @@ const WANT = { forever: 18, limit: 18, echo: 14, screen: 18, pearls: 16, fan: 18
 // Strata (src/score/moves/space.js) is only cast with ?strata=1, and then it's put on the stays that build into a landing: the panes part as far as the build has come and lock back into register on its hit.
 const STRATA = { lead: 2, tail: 0.25, morph: 4.2, top: 0.36, build: 0.25, fond: 1.6 };      // bars of plain sheet before it comes loose, bars of it whole after it locks, the least seconds the change after that takes, how far apart the panes go (frame units), the least build it goes on, and how much a take with it on wants it
 const MOST = 26;
-// ---- space8: the sheet as a world (src/score/moves/sky.js): the dome, the planet and the canyon. On unless ?sky=0, and then the film is exactly the film. They throw their own dice (skyRand below), so the
+// ---- space8: the sheet as a world (src/score/moves/sky.js): the dome and the planet, and the canyon with ?sky=all. On unless ?sky=0, and then the film is exactly the film. They throw their own dice (skyRand below), so the
 // take's other choices fall as they did, and only where one of these wins, or the guard swaps one in, does anything change.
-const SKY_IDS = ['dome', 'planet', 'canyon'], SKY_SET = new Set([...SKY_IDS, 'skim']), SKY_FOND = 1.2;      // SKY_FOND: how much a take wants them, being new. Skim is in the library and a cut can call it, but it isn't cast: its ceiling is still too busy
+const SKY_IDS = ['dome', 'planet'], SKY_ALL = [...SKY_IDS, 'canyon'], SKY_SET = new Set([...SKY_ALL, 'skim']), SKY_FOND = 1.2;      // SKY_FOND: how much a take wants them, being new
+// The canyon only with ?sky=all: the guard couldn't clear the end of it on MGMT (a tile 5 times a second at 147.7 s, going into lattice.kagome on the song's push). Skim is in the library and a cut can call it, but it isn't cast: its ceiling is still too busy
 Object.assign(SET, { dome: 'space', planet: 'space', canyon: 'space', skim: 'space' });
 Object.assign(ANSWER, { dome: ['planet', 'ride'], planet: ['dome', 'hall'], canyon: ['skim', 'terraces'], skim: ['canyon', 'ride'] });
 Object.assign(SUIT, {
@@ -118,7 +119,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const note = (t, what, why) => refused.push({ t: +(+t).toFixed(2), what, why });
 
   // ---------------------------------------------------------------- the take
-  const STR = [...(directing.strata && !world ? [...STRETCHES, 'strata'] : STRETCHES), ...(directing.sky && !world ? SKY_IDS : [])];      // strata: with ?strata=1 only, so a film without it draws exactly as it did. space8: the sheet as a world unless ?sky=0
+  const STR = [...(directing.strata && !world ? [...STRETCHES, 'strata'] : STRETCHES), ...(directing.sky !== '0' && !world ? (directing.sky === 'all' ? SKY_ALL : SKY_IDS) : [])];      // strata: with ?strata=1 only, so a film without it draws exactly as it did. space8: the sheet as a world unless ?sky=0
   const skyRand = rng(((seed | 0) * 7919 + songHash + 31) >>> 0), dice = id => (SKY_SET.has(id) ? skyRand : rand)();      // space8: the sheet as a world throws its own dice, so nobody else's fall differently
   const TRICKS = (world ? STR.filter(id => SET[id] !== 'space' && (id !== 'rewind' || wish?.rewind)) : [...STR, ...CHANGES]).filter(id => !directing.woahOnly || directing.woahOnly.includes(id)).filter(id => !wish || ((!wish.tricks || wish.tricks.includes(id) || id === 'rewind') && !wish.never?.includes(id)));      // modes lane: a mode's tricks
   const lean = { space: 0.2 + 1.5 * rand(), folds: 0.2 + 1.5 * rand(), time: 0.2 + 1.5 * rand() };

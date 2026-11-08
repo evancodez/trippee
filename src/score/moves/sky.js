@@ -63,10 +63,12 @@ export function domeNumbers(G, t, c, m = {}) {
   // Looking up, it rises towards the middle of the ball, so all of it's about as far off
   const h = LENS + ((m.H ?? 0.85) - LENS) * look + (Number.isFinite(R) ? Math.max(0.45 * R - (m.H ?? 0.85), 0) * up * look : 0);
   const lens = LENS + ((m.lens ?? 1.3) - LENS) * look;
-  const fly = (m.fly ?? 0.42) * d + (m.heave ?? 0.4) * surgeAt(t) * k;
+  // Looking up into it, the sheet up there is crowded and it pours more slowly, or it shimmers (PPP 95 to 97 s: frames 100/255 apart). Its speed is k less most of up: a position, so it never stops or lurches
+  const T = m.loop ? Math.max(m.loop.b - m.loop.a, 0.5) : 0, slow = T * (lp / 2 - Math.sin(2 * Math.PI * lp) / (4 * Math.PI)) * (m.calm ?? 0.75);
+  const fly = (m.fly ?? 0.42) * (d - slow) + (m.heave ?? 0.4) * surgeAt(t) * k * (1 - 0.75 * up);
   return {
     kind: 9, amp: K,
-    pitch: ((m.P ?? 1.45) + ((m.up ?? 1.9) - (m.P ?? 1.45)) * up) * look + 0.05 * tune * look, yaw: 0.22 * tune * look, roll: ((m.bank ?? 0.22) * bank + 0.06 * tune) * look, dist: lens,
+    pitch: ((m.P ?? 1.45) + ((m.up ?? 1.78) - (m.P ?? 1.45)) * up) * look + 0.05 * tune * look, yaw: 0.22 * tune * look, roll: ((m.bank ?? 0.22) * bank + 0.06 * tune) * look, dist: lens,
     x: 0, y: 0, z: h,
     bowl: 0, q: fly,
   };
