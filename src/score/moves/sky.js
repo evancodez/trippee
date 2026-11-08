@@ -102,15 +102,15 @@ export function planetNumbers(G, t, c, m = {}) {
 // stretching to it so the lines on the treads stay where they are.
 export function canyonNumbers(G, t, c, m = {}) {
   const { k, d } = lifeOf(G, t, m, 7, 7), kick = kickAt(t), tune = tuneAt(c);
-  const fold = smoother(k / 0.85), look = smoother((k - 0.3) / 0.7);
-  const q0 = (m.Q ?? 0.28) * fold, q = q0 * (1 + (m.lift ?? 0.1) * kick * k);
-  const lens = LENS + ((m.lens ?? 1.3) - LENS) * look, h = LENS + ((m.H ?? 1.1) - LENS) * look;
-  const sway = Math.sin(0.11 * d), fly = (m.fly ?? 0.36) * d + (m.heave ?? 0.2) * surgeAt(t) * k;
+  const fold = smoother(k / 0.85), look = smoother((k - 0.12) / 0.88);      // the camera comes up out of the canyon over the whole of the way back: quicker, the floor swept across the frame (MGMT 142 s, the guard swapped it)
+  const q0 = (m.Q ?? 0.22) * fold, q = q0 * (1 + (m.lift ?? 0.1) * kick * k);
+  const lens = LENS + ((m.lens ?? 1.3) - LENS) * look, h = LENS + ((m.H ?? 0.87) - LENS) * look;
+  const sway = Math.sin(0.11 * d), fly = (m.fly ?? 0.27) * d + (m.heave ?? 0.15) * surgeAt(t) * k;
   return {
-    kind: 11, amp: q, f: m.W ?? 0.55, ph: q0,
+    kind: 11, amp: q, f: m.W ?? 0.43, ph: q0,
     pitch: (m.P ?? 1.15) * look + 0.03 * tune * look, yaw: (0.16 * sway + 0.07 * tune) * look, roll: -0.12 * sway * look, dist: lens,
     x: (m.weave ?? 0.12) * Math.sin(0.11 * d - 0.6) * look, y: 0, z: h, a: (m.bowl ?? 0.16) * look,
-    bowl: 0, q: fly, pix: m.floor ?? 0.65,
+    bowl: 0, q: fly, pix: m.floor ?? 0.5,
   };
 }
 

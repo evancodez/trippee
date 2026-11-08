@@ -31,7 +31,7 @@ export default [
   // Planet: the sheet gathers into a ball under you, in a sky of the same sheet turned, and you go round it
   item('planet', 'Planet', null, { fams: [plane(2.6, 0), plane(2.6, 90)] }, (out, { t, G }) => { if (!worn(G)) planetRound(out, t, G?.t0 ?? 0); }, { sky: true }),
   // Canyon: the sheet folds into steps either side of a floor, and you fly down it. The steps jump on the beat
-  item('canyon', 'Canyon', null, { fams: [plane(2.3, 0), plane(2.3, 90)] }, (out, { t, G }) => { if (!worn(G)) canyonRound(out, t, G?.t0 ?? 0); }, { sky: true }),
+  item('canyon', 'Canyon', null, { fams: [plane(3, 0), plane(3, 90)] }, (out, { t, G }) => { if (!worn(G)) canyonRound(out, t, G?.t0 ?? 0); }, { sky: true }),
   // Skim: low between a floor and a ceiling of the same sheet, turned against each other, curving towards each other ahead, and going opposite ways. On the beat they close like jaws
   item('skim', 'Skim', null, { fams: [plane(1.7, 0), plane(3.4, 90)] }, (out, { t, G }) => { if (!worn(G)) skimRound(out, t, G?.t0 ?? 0); }, { sky: true }),
 ];
