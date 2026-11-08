@@ -14,17 +14,21 @@ export function writeChain(out, mirrors, reps = 1) {
 export function writeFan(out, { x = 0, y = 0, al = 0, rot = 0 }) {
   out[OFF['sf.on']] = 1; out[OFF['fan.x']] = x; out[OFF['fan.y']] = y; out[OFF['fan.al']] = al; out[OFF['fan.rot']] = rot;
 }
-// The mirrors of a fan, from nothing. The first comes in from off the frame on the near side of everything and stops through the centre, at k = .5. Then it parts, and they come round from the back.
-const FAN_FAR = 3.4;
+// The mirrors of a fan, from nothing. The first comes in from just off the frame on the near side of everything and stops through the centre, at k = .8. Then it parts, and they come round from the back.
+// Everything it passes over turns to its own mirror image as it goes, so it's a front crossing the frame: from 3.4 out in the first half of the way in, it crossed in a quarter of a second (PPP 267 s, a tile nine times a second).
+const FAN_FAR = 2.1;
 export function fanIn(out, k, n, rot) {
-  const come = 1 - smoother(clamp(k / 0.5)), open = smoother(clamp((k - 0.35) / 0.65));
+  const come = 1 - smoother(clamp(k / 0.8)), open = smoother(clamp((k - 0.5) / 0.5));
   writeFan(out, { x: -FAN_FAR * come * Math.sin(rot), y: -FAN_FAR * come * Math.cos(rot), al: Math.PI / Math.max(1 + (n - 1) * open, 1), rot });
 }
 export function writeLog(out, { a, b, off = 0, tw = 0 }) {
   out[OFF['sf.on']] = 1; out[OFF['lf.a']] = a; out[OFF['lf.b']] = b; out[OFF['lf.off']] = off; out[OFF['lf.tw']] = tw;
 }
-export function writeFeedback(out, { S, turn = 0, rx = 16 / 9, ry = 1, x = 0, y = 0, tau = 0 }) {
+// open: how many of its levels are open, from the outside in; at FEEDBACK_ALL or more, every one is (src/gl/chunks/fold.js). A shut level lies on its parent's edge and is nothing.
+export const FEEDBACK_ALL = 14;
+export function writeFeedback(out, { S, turn = 0, rx = 16 / 9, ry = 1, x = 0, y = 0, tau = 0, open = FEEDBACK_ALL }) {
   out[OFF['sf.on']] = 1; out[OFF['sf.S']] = S; out[OFF['sf.turn']] = turn; out[OFF['sf.rx']] = rx; out[OFF['sf.ry']] = ry; out[OFF['sf.dx']] = x; out[OFF['sf.dy']] = y; out[OFF['sf.tau']] = tau;
+  out[OFF['sf.d_']] = open >= FEEDBACK_ALL ? 0 : 1 + Math.max(open, 0);
 }
 export function writeMobius(out, [ax, ay], [bx, by], [cx, cy], [dx, dy]) {
   out[OFF['sf.on']] = 1;

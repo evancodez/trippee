@@ -1,7 +1,8 @@
 // Space folding: mirrors in front of the sheet, one slot at a time, before its surface and its view. Only a program built with FOLD has any of this (src/gl/renderer.js), so nothing else pays for it, and all of it is a pure function of the slot's numbers.
 // A fold is continuous: what's past a mirror is the reflection of what's before it, so the two sides agree along the crease. So any chain of folds is continuous, wherever the mirrors are and however they move, and a mirror parked off the frame is exactly nothing. That is why
 // none of this can pop, and "the number of mirrors can't change" doesn't hold here. And a reflection in a line changes no size at all, so a sheet folded a hundred times has the same bold lines it started with. In order:
-//   feedback  the frame holds a smaller, turned picture of itself, which holds another. uG[sfD]: S (0 off), turn per level, the screen's half width and height. uG[sfD2]: centre, tau (how far along one level the camera has flown: whole numbers change nothing), unused. A level's edge is a real jump, and it's a seam.
+//   feedback  the frame holds a smaller, turned picture of itself, which holds another. uG[sfD]: S (0 off), turn per level, the screen's half width and height. uG[sfD2]: centre, tau (how far along one level the camera has flown: whole numbers change nothing), open. A level's edge is a real jump, and it's a seam.
+//             open 0: all 14 levels are open. 1 + x: x of them are, counting from the outside. A shut level is the same size as the one round it with no turn, so it's exactly nothing, and one opens by drawing in from its parent's edge: so the windows come in from the frame's own edge and go back out to it, one at a time, and nothing ever starts as a dot. Still counted, so its parity is the deepest level's, as it is with all of them open.
 //   mobius    the Riemann sphere rolling: z -> (az+b)/(cz+d). uG[sfM]: a, b. uG[sfM2]: c, d. All zero off.
 //   fan       mirrors through one centre, at every multiple of `al`, for any real al: an exact kaleidoscope only at pi/n, and always continuous, because the angle is folded after |th| and both sides of th = pi are the same. uG[sfF]: centre, al (0 off), its turn.
 //   log       the radius folds between two circles, again and again, in and out for ever. uG[sfL]: ln of the inner circle, ln of the outer (equal: off), how far the circles have flown, the twist. uG[sfL2]: their centre. A twist needs the fan on, and on the same centre, or it tears where th wraps.
@@ -23,7 +24,17 @@ vec2 spaceFold(int b,vec2 z,inout float par){
     float zm=pow(d.x,d2.z);
     z=c+zm*(rot(d.y*d2.z)*(z-c)); jac*=zm;
     mat2 R=rot(-d.y);
+    // d2.w 0: every level is open. Else 1 + how many are open: past those, one is part open and the rest are shut, each lying on its parent's edge at its size with no turn, where it's nothing at all
+    int nOpen=d2.w>0.?int(d2.w-1.):14;
+    float fr=d2.w>0.?d2.w-1.-float(nOpen):0.,Sp=pow(d.x,fr);
+    mat2 Rp=rot(-d.y*fr);
     for(int i=0;i<14;i++){
+      if(i>=nOpen){
+        vec2 q=Rp*(z-c)/Sp;
+        if(abs(q.x)>d.z||abs(q.y)>d.w) break;
+        z=c+q; jac/=Sp; lv+=float(14-i);
+        break;
+      }
       vec2 q=R*(z-c)/d.x;
       if(abs(q.x)>d.z||abs(q.y)>d.w) break;
       z=c+q; jac/=d.x; lv+=1.;

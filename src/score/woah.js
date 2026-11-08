@@ -78,6 +78,14 @@ const WANT = { forever: 18, limit: 18, echo: 14, screen: 18, pearls: 16, fan: 18
 const MOST = 26;
 
 const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
+// A sheet of the folds family draws its own fold by hand, and gives way only to the trick of its own name. Another trick that writes the same mirrors writes over it for its time, and when that ends the sheet's own
+// mirrors are back on the next frame: Disclosure's crumple, swapped for pearls on the crumple's own sheet at 125 s, ended with the creases all there at once (134.24 s, 13.57x).
+const FOLD_PARTS = { crumple: ['chain'], limit: ['chain', 'mob'], pearls: ['chain'], roll: ['chain', 'mob'], screen: ['feed'], fan: ['fan'], forever: ['fan', 'log'] };
+const foldsClash = (id, P) => {
+  if (P.family !== 'folds' || !FOLD_PARTS[id]) return false;
+  const own = Object.keys(FOLD_PARTS).find(k => P.id.startsWith(`folds.${k}`));
+  return !!own && own !== id && FOLD_PARTS[own].some(x => FOLD_PARTS[id].includes(x));
+};
 const forget = G => { if (G) { delete G.plan; delete G.planFor; delete G.planning; } };
 const crossed = G => { const s = base(G.pattern); let n = 0; for (let i = 0; i < FAMILIES; i++) if (s[OFF[`f${i}.on`]] >= 0.5 && Math.abs(s[OFF[`f${i}.d`]]) <= 1.01) n++; return n > 1; };
 const flatSheet = s => s[OFF['surf.kind']] < 0.5 && s[OFF['matte.kind']] < 0.5 && s[OFF['ribbon.on']] < 0.5 && s[OFF['blobs.on']] < 0.5;
@@ -248,7 +256,8 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   };
   const addMove = (G, m) => { G.moves = [...(G.moves ?? []), m]; };
   const foldOpts = (id, from, to, s) => {
-    const len = (to - from) / bar, open = Math.min(id === 'crumple' ? 6 : 3.5, 0.3 * len), close = Math.min(2.5, 0.2 * len);
+    // A crumple's creases go out the way they came, one after another: in a fifth of a short one they went in a rush and stopped dead (Disclosure 133 s), so going takes as long as coming
+    const len = (to - from) / bar, open = Math.min(id === 'crumple' ? 6 : 3.5, 0.3 * len), close = id === 'crumple' ? Math.min(4, 0.3 * len) : Math.min(2.5, 0.2 * len);
     return { id, from, to, open, close };
   };
   const MAPS = ['sweep', 'target', 'rings', 'spiral', 'wave', 'cells'];
@@ -306,6 +315,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const directFits = (id, G) => {
     const s = base(G.pattern), mv = MOVES[MOVE_OF[id] ?? id];
     if (!mv) return false;
+    if (foldsClash(id, G.pattern)) return false;
     if (OWN[id] && !world) return false;
     if (LINES_ONLY.has(id) && (crossed(G) || relayOf(G))) return false;      // on a check they're only a busier check, and a Relay is a check as often as not
     if ((relayOf(G) || marches(G) || (G.pattern.drive && !wish)) && !OVER_RELAY.has(id)) return false;      // modes lane: every pattern a mode has drives itself on its own clock, and the time tricks read that as they read a sheet (tests/world-cast.mjs, STAGE=sheet)
@@ -545,6 +555,9 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   // ---------------------------------------------------------------- the guard's swap
   const swap = (slot, id) => {
     if (!g.includes(slot.G)) return null;      // a trick cast after this one took its gesture into its own (absorb, carve), so there's nothing here to swap: another take's rehearsal threw on it and was skipped
+    // ...or one cast after it took the gestures after this one into it. Putting this one back would put back its old end, and the gestures it took in are gone: a hole in the film, and a cut where it ends
+    // (Disclosure, pearls at 177 s swapped after the fan at 206 s had taken in 208.8-221 s: nothing from 208.8 s, and the frame jumped 124 at 221 s)
+    if (slot.kind === 'stretch' && (slot.G.t0 !== slot.keptG.t0 || slot.G.t1 !== slot.keptG.t1)) return null;
     const { G, N } = slot, kept = { G: keepOf(G), N: N ? keepOf(N) : null, id: slot.id, undo: slot.undo };
     // Still never the same one twice running
     const k = slots.filter(x => x !== slot).sort((a, b) => a.from - b.from), before = k.filter(x => x.from < slot.from).at(-1), after = k.find(x => x.from > slot.from);

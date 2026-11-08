@@ -20,7 +20,7 @@ function write(out, { k, off, n, inner, outer, tw, S, rot0 = 0.2 }) {
   const c = smoother(clamp(k / 0.7)), rIn = Math.exp(inner) * c + 1e-3 * (1 - c);
   boldUp(out, k, 3);
   fanIn(out, smoother(clamp((k - 0.15) / 0.85)), n, rot0 + 0.3 * S.mel + 0.012 * S.sec);
-  writeLog(out, { a: Math.log(rIn), b: outer + (FAR_OUT - outer) * (1 - c), off, tw: tw * smoother(clamp((k - 0.75) / 0.25)) * (0.35 + 0.65 * S.en) });
+  writeLog(out, { a: Math.log(rIn), b: outer + (FAR_OUT - outer) * (1 - c), off, tw: tw * smoother(clamp((k - 0.85) / 0.15)) * (0.35 + 0.65 * S.en) });      // once the fan's first mirror is through the middle (fanIn): a twist about another centre tears
   out[OFF.rot] += 0.01 * S.sec * k;
 }
 

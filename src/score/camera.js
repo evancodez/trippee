@@ -548,11 +548,28 @@ export function slowCamera(cam, a, b, rate) {
   cam.lag = lag;
 }
 
+// A screen's windows stay where they are on the screen whatever the sheet does under them, as a star's mirrors do (bearingOf), so the view turning isn't seen as a camera: it turns the sheet in every window at
+// once, and they all swap black for white together (Disclosure's screen at 89-111 s: a tile five times a second at 104 and at 111 s turning, four and three held). So the turn's own speed goes to nothing while the windows are up,
+// easing off and on over a second and a half either side, and it goes on from where it was after. It's held in the song's own track, not in the one gesture's, so every gesture after is turned that much less
+// alike and the change to the next pattern has nothing to make up: held in the gesture alone, the slide after PPP's screen at 242 s had seven radians to turn in four seconds.
+const HOLD_EASE = 1.5;
+function holdUnderScreens(spin, gestures) {
+  for (const G of gestures) for (const m of G.moves ?? []) {
+    if (m.id !== 'screen' || m.from == null || m.to == null) continue;
+    let prev = spin[0], held = spin[0];
+    for (let i = 0; i < spin.length; i++) {
+      const t = i / HZ, h = smoother((t - m.from + HOLD_EASE) / HOLD_EASE) * smoother((m.to + HOLD_EASE - t) / HOLD_EASE);
+      held += (spin[i] - prev) * (1 - h); prev = spin[i]; spin[i] = held;
+    }
+  }
+}
+
 // compose() calls this once a film is made. A world can refuse with world.camera === false.
 export function wearCamera(film, A, M, seed = 7, { lang = null } = {}) {
   const H = film.hear;
   if (!H || !A?.duration) return null;
   const hands = buildHands(film, A, M, H, seed, lang);
+  holdUnderScreens(hands.T.spin, film.gestures);
   const cam = { ...hands, routes: new Map(), film };
   cam.write = makeWrite(cam);
   cam.routeFor = G => {
