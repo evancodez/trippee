@@ -1,4 +1,4 @@
-// Dusk: what docs/MODES.md section 8 asks of it that no other test does. Muted, like every browser here.
+// Dusk (out of the strip for now, so off v; its file and this test still work by id): what docs/MODES.md section 8 asks of it that no other test does. Muted, like every browser here.
 //   STAGE=stills                       every pattern in the pool, at two moments of the evening, as a sheet. No song.
 //   STAGE=buds                         the first few landings, as sheets. No song.
 //   STAGE=sheet                        every pattern on one sheet, to judge them against each other. TIMES=20,21,22 for several moments, NAME=file

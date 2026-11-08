@@ -1,5 +1,5 @@
 // What the modes cast: src/score/woah.js's tricks, in each mode's own film, read from W.woah in the mode's file. Muted, like every browser here.
-//   STAGE=list  SONGS=mgmt,wildflower WORLDS=flower,dusk,flyer,pearl     each mode's film composed on each song: the tricks it casts, where, and on what. Quick: no world is drawn.
+//   STAGE=list  SONGS=mgmt,wildflower WORLDS=flower,prism                each mode's film composed on each song: the tricks it casts, where, and on what. Quick: no world is drawn.
 //   STAGE=sheet SONG=media/mgmt.mp3 WORLDS=flower,...                    into each mode as a person gets there, and every trick it casts as a row of frames from its own film, to look at. sheet-<world>-<song>.jpg
 //   STAGE=look SONG=media/mgmt.mp3 WORLDS=... N=30                       how bold each mode is across its film, at 320x180: mean luma Y, its spread sd, chroma, edges (share of pixels on a strong edge),
 //                                                                         big (luma spread after averaging down to 16x9: big readable shapes keep it, fine busy texture and melt lose it), and the share of frames with big under 30. look-<world>-<song>.jpg
@@ -8,7 +8,7 @@ import { resolve, basename } from 'node:path';
 import { dropSong, enterWorld } from '../tools/look.mjs';
 
 const want = (process.env.STAGE || 'list').split(',');
-const WORLDS = (process.env.WORLDS || 'flower,dusk,flyer,pearl').split(',');
+const WORLDS = (process.env.WORLDS || 'flower,prism').split(',');
 
 export default async ({ page, log, save, sleep }) => {
   if (want.includes('list')) {
