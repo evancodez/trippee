@@ -219,7 +219,7 @@ export function init(app) {
       const n = Math.ceil(D * FLIGHT_FPS), seen = new FlashSeen(n, W, H, FLIGHT_FPS, false, !sc.cut), eyes = new Eyes(R, W, H, 32, () => new Promise(res => setTimeout(res)));
       for (let i = 0; i < n; i++) {
         const f = drawn(R, look, t + i / FLIGHT_FPS, W, H), o = { from: f.from, G: f.G, kind: f.kind };
-        if (eyes.read(p => seen.take(i, p, o, look.gestures))) await eyes.flush();
+        if (eyes.read(p => seen.take(i, p, o, look.gestures))) await eyes.next();
         if (performance.now() - breath > 4) { await new Promise(res => setTimeout(res)); breath = performance.now(); if (stale()) { eyes.free(); return best; } }
       }
       await eyes.flush();

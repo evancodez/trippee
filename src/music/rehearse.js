@@ -219,7 +219,9 @@ const built = async (R, v) => {
 async function drawnSoon(R, score, t, W, H, colour, edits, wait) {
   if (score.world) return drawn(R, score, t, W, H, colour, edits);
   const e = laterOf(edits);
-  let f = drawn(R, score, t, W, H, colour, e);
+  R.later = true;      // a time program it hasn't got is built behind the picture and waited for below, not built here and now (src/gl/renderer.js _programFor)
+  let f;
+  try { f = drawn(R, score, t, W, H, colour, e); } finally { R.later = false; }
   let want = R._variantOf(R.frame) | (R.timeOn ? TIME : 0);
   if (!f.waiting && R.variant === want) return f;
   for (let n = 0; n < PLAN_WAITS && f.waiting; n++) { await wait(); f = frame(score, t, R, e); }
@@ -227,17 +229,28 @@ async function drawnSoon(R, score, t, W, H, colour, edits, wait) {
   if (!R.progs[want]) await built(R, want);
   return drawn(R, score, t, W, H, colour, edits);
 }
-const shotSoon = async (R, score, t, W, H, px, wait) => { const f = await drawnSoon(R, score, t, W, H, false, FILM_ONLY, wait); R.gl.readPixels(0, 0, W, H, R.gl.RGBA, R.gl.UNSIGNED_BYTE, px); return f; };
+
 // Many looks and one wait. A plain readPixels makes the page wait for the GPU process every time, and that wait is most of what a small look costs: .59 ms against .12 ms at 160 x 90. So each frame is copied into a buffer
 // on the GPU's side as it's drawn, and the whole batch is read in one go once a fence says it's done. A fence only passes between tasks, so flush has to be awaited. The pixels handed over are good only inside the call.
+// It waits for the fence however long that takes, and reads only after it has passed: reading a batch the GPU hadn't finished made the page wait for it, and behind a film at 3024 x 1964 on a busy GPU that was a frame
+// of 80 to 200 ms, a quarter of a song's frames over 25 ms while a take rehearsed. And what each look then works out is done a few at a time, with the picture going on between them (the task's breathe).
+const QUICK_POLL = 3, SLICE = 3;     // ms: polling for the fence task to task, then a timer at a time; and how long the looks' own sums run before the picture gets a turn
+export async function passed(gl, sync, task) {
+  const t0 = performance.now();
+  while (gl.getSyncParameter(sync, gl.SYNC_STATUS) !== gl.SIGNALED) {
+    if (gl.isContextLost()) return false;
+    await (performance.now() - t0 < QUICK_POLL || globalThis.document?.hidden ? task() : new Promise(r => setTimeout(r, 1)));
+  }
+  return true;
+}
+// Two batches at a time: while one is on its way back from the GPU the looks carry on into the other, so a scan never stands waiting on a fence except at its end. Behind a film drawn at 3024 x 1964
+// a fence takes most of a frame to pass, and waiting on each in turn made a song's arrival take twice as long.
 class Eyes {
   constructor(R, W, H, K, task) {
-    const gl = R.gl;
-    Object.assign(this, { gl, W, H, K, task, size: W * H * 4, q: [], pbo: gl.createBuffer(), buf: new Uint8Array(W * H * 4 * K) });
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.pbo);
-    gl.bufferData(gl.PIXEL_PACK_BUFFER, this.buf.length, gl.STREAM_READ);
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    const gl = R.gl, slot = () => { const pbo = gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, W * H * 4 * K, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null); return { pbo, q: [], sync: null }; };
+    Object.assign(this, { gl, W, H, K, task, size: W * H * 4, slots: [slot(), slot()], cur: 0, buf: new Uint8Array(W * H * 4 * K) });
   }
+  get q() { return this.slots[this.cur].q; }      // the batch being filled
   // A guard asks for these many times over, at the same two sizes, and the buffers are megabytes each. So they're kept, for the rig, which is kept too.
   // But two rehearsals can be running at once on the one rig (another take, pressed while the hand cut rehearses behind the picture), and each must have its own: sharing one, each emptied
   // the other's half-read batch (false jumps in pairs a second apart, and a take of the same seed that came out another film), and once the hand cut finished, the take waited for the GPU
@@ -248,36 +261,58 @@ class Eyes {
     if (!list) kept.set(key, list = []);
     let e = list.find(e => e.owner === task) ?? list.find(e => !e.owner);
     if (!e) list.push(e = new Eyes(R, W, H, K, task));
-    e.owner = task; e.task = task; e.q.length = 0;
+    e.owner = task; e.task = task; e.reset();
     return e;
   }
   static release(R, task) {
-    for (const list of R.eyes?.values() ?? []) for (const e of list) if (e.owner === task) { e.owner = null; e.task = null; e.q.length = 0; }
+    for (const list of R.eyes?.values() ?? []) for (const e of list) if (e.owner === task) { e.owner = null; e.task = null; e.reset(); }
   }
+  reset() { for (const s of this.slots) { if (s.sync) this.gl.deleteSync(s.sync); s.sync = null; s.q.length = 0; } this.cur = 0; }
   // After a draw at this size. Says whether the batch is full.
   read(take) {
-    const { gl, W, H } = this;
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.pbo);
-    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, this.q.length * this.size);
+    const { gl, W, H } = this, s = this.slots[this.cur];
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, s.pbo);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, s.q.length * this.size);
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    this.q.push(take);
-    return this.q.length >= this.K;
+    s.q.push(take);
+    return s.q.length >= this.K;
   }
+  // The batch that's full goes back from the GPU, and the looks go on into the other one, once what was in that has been gone through
+  async next() {
+    const s = this.slots[this.cur];
+    if (!s.q.length) return;
+    this._send(s);
+    this.cur ^= 1;
+    await this._take(this.slots[this.cur]);
+  }
+  // Everything that's been looked at, gone through in the order it was drawn
   async flush() {
-    const { gl, q, size, buf } = this;
-    if (!q.length) return;
-    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-    gl.flush();
-    for (let i = 0; i < 2000 && gl.getSyncParameter(sync, gl.SYNC_STATUS) !== gl.SIGNALED; i++) await this.task();
-    gl.deleteSync(sync);
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.pbo);
-    gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, buf, 0, q.length * size);
-    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    q.forEach((take, j) => take(buf.subarray(j * size, (j + 1) * size)));
-    q.length = 0;
+    await this._take(this.slots[this.cur ^ 1]);
+    const s = this.slots[this.cur];
+    if (!s.q.length) return;
+    this._send(s);
+    await this._take(s);
   }
-  free() { this.gl.deleteBuffer(this.pbo); this.buf = null; }     // only one made with new
+  _send(s) { s.sync = this.gl.fenceSync(this.gl.SYNC_GPU_COMMANDS_COMPLETE, 0); this.gl.flush(); }
+  async _take(s) {
+    if (!s.sync) return;
+    const { gl, size, buf } = this, sync = s.sync;
+    await passed(gl, sync, this.task);
+    if (s.sync !== sync) return;      // let go of meanwhile
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, s.pbo);
+    gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, buf, 0, s.q.length * size);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    gl.deleteSync(sync); s.sync = null;
+    const breathe = this.task?.breathe, takes = s.q.splice(0);
+    let t = performance.now();
+    for (let j = 0; j < takes.length; j++) {
+      takes[j](buf.subarray(j * size, (j + 1) * size));
+      if (breathe && j + 1 < takes.length && performance.now() - t > SLICE) { await breathe(); t = performance.now(); }
+    }
+  }
+  free() { this.reset(); for (const s of this.slots) this.gl.deleteBuffer(s.pbo); this.buf = null; }     // only one made with new
 }
+const ONE = 1 << 22;      // bytes a batch of big looks reads at once (the range pass's, a third of 1080p: five to a batch)
 const horizon = G => Math.max((G.arcEnd ?? G.t1) - G.t0, 1e-3);
 // A look at part of a film is in that film's world, or its own fields wouldn't draw. Nothing at all for the film.
 const worldOf = score => (score.world ? { world: score.world, tables: score.tables } : null);
@@ -285,25 +320,31 @@ const when = (G, u) => G.t0 + horizon(G) * u;
 // The gesture alone, on the film's clock, with no song on it and nothing to morph into. A copy, so that nothing on screen can see it stopped.
 // ...and with none of src/score/woah.js's tricks, which aren't what's being asked about here: is this pattern any good to ride, as itself.
 const alone = (G, over) => ({ ...G, freezeEase: null, thaw: null, morph: 0, plan: null, planning: null, ...(G.moves?.some(m => m.woah) ? { moves: G.moves.filter(m => !m.woah) } : null), ...over });
+// Big looks, a few to a batch, each measured once they're all read. What they find is used in the order they were drawn, so it's the same as looking one at a time.
+const bigEyes = (R, W, H, task) => Eyes.of(R, W, H, Math.max(1, Math.floor(ONE / (W * H * 4))), task);
 // At one point of its long move, whatever the clock says
-const lookAt = async (R, score, G, u, { W, H, px, task, breathe }, ph = 0) => {
-  await shotSoon(R, { gestures: [alone(G, { freezeU: u })], phi: (t, g) => score.phi(t, g) + ph, ...worldOf(score) }, when(G, u), W, H, px, waiter(task, breathe));
-  return measure(px, W, H);
-};
+const drawAt = (R, score, G, u, { W, H, task, breathe }, ph = 0) => drawnSoon(R, { gestures: [alone(G, { freezeU: u })], phi: (t, g) => score.phi(t, g) + ph, ...worldOf(score) }, when(G, u), W, H, false, FILM_ONLY, waiter(task, breathe));
 // As it will really play, riding `ride` ({ range, arcs, phiTrack...}), x of the way through
-const lookAlong = async (R, score, G, x, ride, { W, H, px, task, breathe }) => {
-  await shotSoon(R, { gestures: [alone(G, { freezeU: null, ...ride })], phi: score.phi, react: score.react, ...worldOf(score) }, G.t0 + horizon(G) * x, W, H, px, waiter(task, breathe));
-  return measure(px, W, H);
-};
+const drawAlong = (R, score, G, x, ride, { W, H, task, breathe }) => drawnSoon(R, { gestures: [alone(G, { freezeU: null, ...ride })], phi: score.phi, react: score.react, ...worldOf(score) }, G.t0 + horizon(G) * x, W, H, false, FILM_ONLY, waiter(task, breathe));
 
 // The first thing that goes wrong playing it for real, or null. Going a bit too white or too black is only wrong if it lasts: the judge gives it 3 s, and these looks are about 2 s apart.
+// A batch at a time is drawn and read, and gone through in order; a batch past the first bad one is never drawn.
 async function firstBad(R, score, G, ride, ctx) {
+  const { W, H } = ctx, eyes = bigEyes(R, W, H, ctx.task);
   let lone = false;
-  for (const x of PATH) {
-    const m = await lookAlong(R, score, G, x, ride, ctx), tone = m.why === 'white' || m.why === 'tiles';
-    await ctx.breathe();
-    if (m.why && (!tone || lone)) return { x, why: m.why };
-    lone = tone;
+  for (let a = 0; a < PATH.length; a += eyes.K) {
+    const b = Math.min(PATH.length, a + eyes.K), ms = [];
+    for (let k = a; k < b; k++) {
+      await drawAlong(R, score, G, PATH[k], ride, ctx);
+      eyes.read(p => { ms.push(measure(p, W, H)); });
+      await ctx.breathe();
+    }
+    await eyes.flush();
+    for (let k = a; k < b; k++) {
+      const m = ms[k - a], tone = m.why === 'white' || m.why === 'tiles';
+      if (m.why && (!tone || lone)) return { x: PATH[k], why: m.why };
+      lone = tone;
+    }
   }
   return null;
 }
@@ -359,14 +400,18 @@ const rideOf = (G, lo, hi, arcs) => {
 // Returns what it learned about one gesture and writes it onto the gesture, if that gesture may still be changed.
 async function rehearseGesture(R, score, G, ctx) {
   const { aspect, breathe, mayChange } = ctx, n = SAMPLES;
-  const samples = [], phases = breathes(G, aspect) ? BREATHING : [0];
+  const samples = [], phases = breathes(G, aspect) ? BREATHING : [0], eyes = bigEyes(R, ctx.W, ctx.H, ctx.task), ms = [];
   for (let i = 0; i <= n; i++) {
-    let worst = null;
     for (const ph of phases) {
-      const m = await lookAt(R, score, G, i / n, ctx, ph);
-      if (!worst || excess(m) > excess(worst)) worst = m;
+      await drawAt(R, score, G, i / n, ctx, ph);
+      if (eyes.read(p => { ms.push(measure(p, ctx.W, ctx.H)); })) await eyes.next();
       await breathe();
     }
+  }
+  await eyes.flush();
+  for (let i = 0; i <= n; i++) {
+    let worst = null;
+    for (let j = 0; j < phases.length; j++) { const m = ms[i * phases.length + j]; if (!worst || excess(m) > excess(worst)) worst = m; }
     samples.push(worst);
   }
   const run = longestRun(samples.map(s => s.ok)), id = G.pattern.id, note = { id, t0: +G.t0.toFixed(2), t1: +G.t1.toFixed(2), why: samples.map(s => s.why || '.').join(' ') };
@@ -416,15 +461,18 @@ async function flightOf(R, score, A, B, rise, { W, H, px, breathe, task }) {
   const pair = { gestures: [{ ...A, ...fresh, rise }, { ...B, ...fresh }], phi: score.phi, react: score.react, ...worldOf(score) };
   const t0 = A.t1 - A.morph, step = A.morph / SAMPLES;
   let kind = null, noise = 0, colour = 0, runN = 0, runC = 0;
+  const eyes = bigEyes(R, W, H, task), ms = [];
   for (let i = 1; i < SAMPLES; i++) {     // the two ends are the gestures themselves, and those have been looked at
     const f = await drawnSoon(R, pair, t0 + i * step, W, H, false, FILM_ONLY, waiter(task, breathe));
-    R.gl.readPixels(0, 0, W, H, R.gl.RGBA, R.gl.UNSIGNED_BYTE, px);
-    const m = measure(px, W, H);
     kind = f.kind ?? kind;
     if (kind !== 'dive' && kind !== 'rise') break;     // a slide or a bend has no other way to go
+    if (eyes.read(p => { ms.push(measure(p, W, H)); })) await eyes.next();
+    await breathe();
+  }
+  await eyes.flush();
+  for (const m of ms) {
     runN = NOISY.has(m.why) ? runN + step : 0; runC = m.why && !NOISY.has(m.why) ? runC + step : 0;
     noise = Math.max(noise, runN); colour = Math.max(colour, runC);
-    await breathe();
   }
   return { kind, noise, colour, over: Math.max(noise - FLIGHT_NOISE, 0) + 2 * Math.max(colour - FLIGHT_COLOUR, 0) };
 }
@@ -445,6 +493,12 @@ async function chooseWay(R, score, A, B, ctx) {
 const shownShot = (R, score, t, W, H, px, colour = false) => shot(R, score, t, W, H, px, colour, null), shownDrawn = (R, score, t, W, H, colour = false) => drawn(R, score, t, W, H, colour, null);
 export { getRig, shownShot as shot, shownDrawn as drawn, Eyes, slowedTrack };    // for tests: the same eyes, at any moment of a film
 
+// How long a frame lasts on this screen, from the frames themselves (the middle of the last 31). Before there are any, 60 a second.
+const SHARE_LIVE = 0.24, SHARE_GENTLE = 0.36, SHARE_ALONE = 0.72;      // of a frame: behind the film it's rehearsing, behind another film, and behind no film of its own (the wander, or a film still arriving)
+const pace = { at: 0, d: new Float32Array(31), n: 0, hooked: false };
+const hookPace = () => { if (pace.hooked || !globalThis.app?.onFrame) return; pace.hooked = true; app.onFrame.push(() => { const now = performance.now(); if (pace.at) pace.d[pace.n++ % 31] = now - pace.at; pace.at = now; }); };
+const frameMs = () => { const k = Math.min(pace.n, 31); if (k < 5) return 1000 / 60; const s = pace.d.slice(0, k).sort(); return Math.min(34, Math.max(6.9, s[k >> 1])); };
+
 // Returns { jumps: [{ t, by, id }], bad: [pattern ids], rides: [what each gesture rides], ways: [each transformation], sitOut: [no good run], seconds }
 // stale: asked between looks. Once it says yes the rehearsal stops where it is, by throwing, because someone's made another film and this one will never be shown.
 // gentle: a film's playing in front of this one, so it takes less of each frame.
@@ -462,21 +516,23 @@ async function rehearseOn(R, lent, score, until, onProgress = () => {}, { lastTr
   const aspect = score.aspect ?? (globalThis.app?.canvas?.width && app.canvas.height ? app.canvas.width / app.canvas.height : 16 / 9);
   const stage = globalThis.app?.stage, live = () => stage?.score === score;
 
-  // Don't hold up what's on screen: a film that isn't showing yet can have most of the time, one that's playing very little.
+  // Don't hold up what's on screen: a film that isn't showing yet can have most of the time, one that's playing very little. A share of each frame, right after it's been drawn, and no more however
+  // quickly the loop comes round again. The share is of the frames this screen really has: at 60 a second a film that's playing leaves it 4 ms, at 120 half that. One that isn't showing yet used to run
+  // 16 ms at a go with no regard for the frames, and the wander in front of it missed one every time.
+  hookPace();
   const ch = new MessageChannel();
   let wake = null, last = performance.now();
   ch.port1.onmessage = () => { const w = wake; wake = null; w?.(); };
   const breathe = async () => {
     if (stale?.()) throw new Error('stale');
-    const behind = live() || gentle;
-    if (performance.now() - last < (live() ? 4 : gentle ? 6 : 16)) return;
-    // Behind a film that's playing it takes a little of each frame, right after the frame's been drawn, and no more however quickly the loop comes round again.
-    if (behind && !document.hidden) await new Promise(r => { wake = r; requestAnimationFrame(() => ch.port2.postMessage(0)); });
+    if (performance.now() - last < (live() ? SHARE_LIVE : gentle ? SHARE_GENTLE : SHARE_ALONE) * frameMs()) return;
+    if (!document.hidden) await new Promise(r => { wake = r; requestAnimationFrame(() => ch.port2.postMessage(0)); });
     else await new Promise(r => { wake = r; ch.port2.postMessage(0); });
     last = performance.now();
   };
 
   const task = () => new Promise(r => { wake = r; ch.port2.postMessage(0); }), soon = waiter(task, breathe);
+  task.breathe = breathe;      // what a batch of looks gives the picture between its sums (Eyes.flush)
   lent.task = task;
   const gestures = score.gestures, rides = [], ways = [];
   if (!opening && score.woah) await buildFor(R, score, until, breathe);
@@ -527,28 +583,30 @@ async function rehearseOn(R, lent, score, until, onProgress = () => {}, { lastTr
     const eyes = Eyes.of(R, W, H, batch, task);
     for (let i = 0; i <= n; i++) {
       const f = await drawnSoon(R, score, i * STEP / sub, W, H, false, FILM_ONLY, soon), o = { from: f.from, G: f.G, kind: f.kind };     // what the frame was, now: the pixels come later
-      if (eyes.read(p => seen.take(i, p, o, gestures))) await eyes.flush();
+      if (eyes.read(p => seen.take(i, p, o, gestures))) await eyes.next();
       if (i % 25 === 0) onProgress(0.5 + 0.4 * clamp(i / n));
       await breathe();
     }
     await eyes.flush();
     for (let i = sub; i <= n; i += sub) { const by = (seen.mean[i] - seen.mean[i - sub]) / 255; if (Math.abs(by) >= JUMP) jumps.push({ t: +(i * STEP / sub).toFixed(2), by: +by.toFixed(3), id: gestures[Math.max(seen.who[i], 0)].pattern.id }); }
   } else {
-    let prev = null;
+    // A world: true colour for the flash count, and every sub-th frame drawn again as coverage for the jumps, read the same way as the film's, a batch to a wait
+    const eyes = Eyes.of(R, W, H, batch, task), L = new Float64Array(Math.floor(n / sub) + 1), ids = [];
     for (let i = 0; i <= n; i++) {
-      const t = i * STEP / sub, f = shot(R, score, t, W, H, px, colour);
-      seen?.take(i, px, f, gestures);
+      if (eyes.q.length + 2 > eyes.K) await eyes.next();     // room for both of this frame's reads: the second draw is of what's in the block now, so nothing may come between them
+      const t = i * STEP / sub, f = drawn(R, score, t, W, H, colour), o = { from: f.from, G: f.G, kind: f.kind };
+      eyes.read(p => seen?.take(i, p, o, gestures));
       if (i % sub === 0) {
-        if (colour && R.wp) { R.wp.block[0] = 1; R.draw(); R.wp.block[0] = 0; R.gl.readPixels(0, 0, W, H, R.gl.RGBA, R.gl.UNSIGNED_BYTE, px); }     // a jump is in coverage, as it is on the film
-        let s = 0;
-        for (let k = 1; k < px.length; k += 4) s += px[k];
-        const L = s / (W * H) / 255;
-        if (prev !== null && Math.abs(L - prev) >= JUMP) jumps.push({ t: +t.toFixed(2), by: +(L - prev).toFixed(3), id: f.G.pattern.id });
-        prev = L;
+        const k = i / sub;
+        if (colour && R.wp) { R.wp.block[0] = 1; R.draw(); R.wp.block[0] = 0; }     // a jump is in coverage, as it is on the film
+        ids[k] = f.G.pattern.id;
+        eyes.read(p => { let s = 0; for (let q = 1; q < p.length; q += 4) s += p[q]; L[k] = s / (W * H) / 255; });
       }
       if (i % 25 === 0) onProgress(0.5 + (guard ? 0.4 : 0.5) * clamp(i / n));
       await breathe();
     }
+    await eyes.flush();
+    for (let k = 1; k * sub <= n; k++) if (Math.abs(L[k] - L[k - 1]) >= JUMP) jumps.push({ t: +(k * sub * STEP / sub).toFixed(2), by: +(L[k] - L[k - 1]).toFixed(3), id: ids[k] });
   }
   const ctxG = { W, H, px, breathe, task, mayChangeFor, opening, aspect, batch };
   const clocked = { scan: (performance.now() - t0) / 1000 - rangeSeconds }, lap = (k, was) => { clocked[k] = +((performance.now() - was) / 1000).toFixed(2); };
@@ -678,7 +736,7 @@ async function guardHeard(R, score, until, colour, ctx, film = null) {
     const eyes = Eyes.of(R, W, HH, ctx.batch, ctx.task);
     for (let i = a; i < b; i++) {
       const f = await drawnSoon(R, score, i / fps, W, HH, colour, edits, waiter(ctx.task, ctx.breathe)), o = { from: f.from, G: f.G, kind: f.kind };
-      if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
+      if (eyes.read(p => seen.take(i, p, o, g))) await eyes.next();
       await ctx.breathe();
     }
     await eyes.flush();
@@ -818,7 +876,7 @@ function swapLooks(R, score, seen, ctx) {
     const eyes = Eyes.of(R, seen.W, seen.H, ctx.batch, ctx.task);
     for (let i = a; i < b; i++) {
       const f = await drawnSoon(R, score, i / fps, seen.W, seen.H, false, FILM_ONLY, waiter(ctx.task, ctx.breathe)), o = { from: f.from, G: f.G, kind: f.kind };
-      if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
+      if (eyes.read(p => seen.take(i, p, o, g))) await eyes.next();
       await ctx.breathe();
     }
     await eyes.flush();
@@ -853,7 +911,7 @@ async function jumpsFirst(R, score, until, ctx) {
     for (let i = a; i < b; i++) {
       const f = await drawnSoon(R, score, i * STEP, W, H, false, FILM_ONLY, waiter(ctx.task, ctx.breathe)), G = f.from ?? f.G;
       who[i] = g.indexOf(G);
-      if (eyes.read(p => { let s = 0; for (let k = 1; k < p.length; k += 4) s += p[k]; mean[i] = s / (W * H); })) await eyes.flush();
+      if (eyes.read(p => { let s = 0; for (let k = 1; k < p.length; k += 4) s += p[k]; mean[i] = s / (W * H); })) await eyes.next();
       await ctx.breathe();
     }
     await eyes.flush();
@@ -934,7 +992,7 @@ async function lookClose(R, score, a, b, { aspect, task, breathe, batch }, count
   const s = new FlashSeen(n, W, H, fps), eyes = Eyes.of(R, W, H, Math.min(batch, GPU_BATCH_CLOSE), task);
   for (let i = 0; i < n; i++) {
     const f = await drawnSoon(R, score, a + i / fps, W, H, false, edits, waiter(task, breathe)), o = { from: f.from, G: f.G, kind: f.kind };
-    if (eyes.read(p => s.take(i, p, o, g))) await eyes.flush();
+    if (eyes.read(p => s.take(i, p, o, g))) await eyes.next();
     await breathe();
   }
   await eyes.flush();
@@ -1010,7 +1068,7 @@ async function guardFilm(R, score, seen, ctx) {
     const was = performance.now(), eyes = Eyes.of(R, seen.W, seen.H, ctx.batch, ctx.task);
     for (let i = a; i < b; i++) {
       const f = await drawnSoon(R, score, i / fps, seen.W, seen.H, false, FILM_ONLY, waiter(ctx.task, ctx.breathe)), o = { from: f.from, G: f.G, kind: f.kind };
-      if (eyes.read(p => seen.take(i, p, o, g))) await eyes.flush();
+      if (eyes.read(p => seen.take(i, p, o, g))) await eyes.next();
       await breathe();
     }
     await eyes.flush();
@@ -1185,9 +1243,14 @@ async function guardFlashes(R, score, seen, { W, H, px, breathe, mayChangeFor, o
   const realOnly = async frames => { if (colour) return frames; const fps = seen.fps, keep = []; for (const w of stretches(frames, fps)) if ((await lookClose(R, score, w.a, w.b, closeCtx)).at.length) keep.push(...frames.filter(i => i / fps >= w.a && i / fps <= w.b)); return keep; };
   // Many looks to one wait for the GPU (Eyes), not a wait a look: the same frames, read in the same order. A world reads its colour as it did.
   const frames = async (Wl, Hl, pl, a, b, at, take) => {
-    if (colour) { for (let i = a; i < b; i++) { const f = shot(R, score, at(i), Wl, Hl, pl, colour); take(i, pl, f); await breathe(); } return; }
+    if (colour) {
+      const eyes = Eyes.of(R, Wl, Hl, batch, task);
+      for (let i = a; i < b; i++) { const f = drawn(R, score, at(i), Wl, Hl, colour), o = { from: f.from, G: f.G, kind: f.kind }; if (eyes.read(p => take(i, p, o))) await eyes.next(); await breathe(); }
+      await eyes.flush();
+      return;
+    }
     const eyes = Eyes.of(R, Wl, Hl, batch, task);
-    for (let i = a; i < b; i++) { const f = await drawnSoon(R, score, at(i), Wl, Hl, false, FILM_ONLY, waiter(task, breathe)), o = { from: f.from, G: f.G, kind: f.kind }; if (eyes.read(p => take(i, p, o))) await eyes.flush(); await breathe(); }
+    for (let i = a; i < b; i++) { const f = await drawnSoon(R, score, at(i), Wl, Hl, false, FILM_ONLY, waiter(task, breathe)), o = { from: f.from, G: f.G, kind: f.kind }; if (eyes.read(p => take(i, p, o))) await eyes.next(); await breathe(); }
     await eyes.flush();
   };
   const look = ([a, b]) => frames(W, H, px, a, b, i => i / seen.fps, (i, p, f) => seen.take(i, p, f, g));
