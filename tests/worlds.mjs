@@ -47,7 +47,7 @@ export default async ({ page, log, save, sleep: _s, out }) => {
       return { progs: app.R.progs.filter(Boolean).length, worlds: !!app.R.worldPrograms, wp: app.R.wp, world: app.stage.world, stamped: 'world' in app.stage.score, parallel: !!app.R.parallel && !app.R.bare };
     });
     // Sixteen, and once those are warm the four the sheet in space wants first (SPACE_LATER), where programs build behind the picture
-    check(log, 'sixteen film programs (and space\'s four) and no world programs', (v.progs === 16 || (v.parallel && v.progs === 20)) && !v.worlds && !v.wp && !v.world && !v.stamped, JSON.stringify(v));
+    check(log, 'sixteen film programs (and space\'s four, and the sky\'s two) and no world programs', (v.progs === 16 || (v.parallel && v.progs === 22)) && !v.worlds && !v.wp && !v.world && !v.stamped, JSON.stringify(v));
   }
 
   // ---- 2. Compile: the longest gap in the frames while a world's programs build
