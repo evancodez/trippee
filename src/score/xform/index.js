@@ -10,8 +10,9 @@ import shock from './shock.js';
 import iris from './iris.js';
 import { SPACE_XFORMS } from './space.js';
 import span from './span.js';
+import window_ from './window.js';      // trans9: a screen's way out, into the next pattern
 
-export const XFORMS = { slide, bend, flight, dive: flight, rise: flight, shock, iris, fall, span, ...SPACE_XFORMS };
+export const XFORMS = { slide, bend, flight, dive: flight, rise: flight, shock, iris, fall, span, window: window_, ...SPACE_XFORMS };
 export const xformOf = kind => XFORMS[kind];
 // How a director asks for one: wearShock moves G's end, so that the hit lands where it's told, and wearFall lands on G's end as it stands. Each returns a falsy value and touches nothing if it can't.
 export { canShock, shockFit, wearShock } from './shock.js';

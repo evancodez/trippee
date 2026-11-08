@@ -9,6 +9,8 @@
 //     turn   how far each is turned, radians. Default .5
 //     speed  how fast the camera flies, ln a second on the strong beats' surge. Default .3, and a big moment throws it a level further on
 //     par    1: each level is the negative of the last, so its edge always shows. Default 1
+//     into   true (trans9): it doesn't shut. It's still all open when the gesture's change starts, and that change is a Window (src/score/xform/window.js): the next pattern comes up
+//            through the windows and the camera lands in the one that holds it. The camera comes to rest on a whole number of levels as the change starts, and the change takes the flight on.
 // By hand: screenDrive.
 import { OFF } from '../../pattern/layout.js';
 import { clamp, smoother } from '../curves.js';
@@ -46,10 +48,10 @@ export default {
     return m;
   },
   write(out, c) {
-    const { m, t } = c, S = songNow(c), k = inBy(m, t), w = m._go(t);
+    const { m, t } = c, S = songNow(c), k = m.into ? inBy({ ...m, close: 0 }, t) : inBy(m, t), w = m._go(t);
     if (k <= 0) return;
     // How many are open, counted from the camera: going in, from the frame's edge; going out, the deepest shut first, while the camera flies on, so it lands inside the last one as it shuts, on a whole number of levels (tau 0), and that frame is the plain sheet
-    const tau = w % 2, P = Math.min(levelsAt(clamp((t - m.from) / m.open)), m.stay ? DEEP : levelsAt(clamp((m.to - t) / m.close)));
+    const tau = w % 2, P = Math.min(levelsAt(clamp((t - m.from) / m.open)), m.stay || m.into ? DEEP : levelsAt(clamp((m.to - t) / m.close)));
     out[OFF['sf.par']] = m.par;
     write(out, { k, tau, Sz: m.S, turn: m.turn, S, open: P >= DEEP ? FEEDBACK_ALL : tau + P });
   },

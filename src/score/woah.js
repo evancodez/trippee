@@ -8,7 +8,7 @@
 //
 // Two kinds of trick. A stretch is a move on a gesture's body, which comes up and goes back to the plain sheet by itself, so what's either side of it stays as it was. A change is a transformation through space at a landing, with the hit in the middle of its journey.
 import { rng, clamp, lerp } from './curves.js';
-import { directing } from './flags.js';
+import { directing, flag } from './flags.js';
 import { MOVES } from './moves/index.js';
 import { flightOver } from './moves/sky.js';      // space8
 import { rewindClock } from './moves/time.js';
@@ -78,6 +78,7 @@ const SUIT = {
   hall: f => 0.1 + 0.6 * f.bridge + 0.35 * f.turn,
   span: f => 0.1 + 0.3 * f.turn + 0.45 * (1 - f.loud),
 };
+const WINDOW_D = 4;      // trans9: bars a screen's Window takes at least, flying two levels on into the next pattern
 const LEAST = { forever: 8, limit: 8, echo: 9, screen: 9, pearls: 9, fan: 9, crumple: 9, roll: 8, slit: 7, ghost: 9, fringe: 11, snakes: 10, ouchi: 10, slice: 11, swell: 11, terraces: 11, pleats: 10, ride: 13, hallway: 14, rewind: 0, strata: 7 };
 const WANT = { forever: 18, limit: 18, echo: 14, screen: 18, pearls: 16, fan: 18, crumple: 14, roll: 9, slit: 12, ghost: 12, fringe: 16, snakes: 14, ouchi: 12, slice: 18, swell: 18, terraces: 16, pleats: 15, ride: 20, hallway: 20, rewind: 0, strata: 24 };
 // Strata (src/score/moves/space.js) is only cast with ?strata=1, and then it's put on the stays that build into a landing: the panes part as far as the build has come and lock back into register on its hit.
@@ -454,13 +455,24 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
       if (!c) return null;
       on = c.G;
     }
+    // trans9: a screen that runs to its gesture's change doesn't shut: the change is a Window, and the camera flies on into the next pattern (src/score/xform/window.js)
+    const into = id === 'screen' && flag('window') && on.morph > 0 && !on.xform && !on.hero && g[g.indexOf(on) + 1] && bodyOf(on)[1] - Math.min(to, bodyOf(on)[1]) < 4 * bar;
+    const before0 = into ? keepOf(on) : null;
+    if (into) {
+      const D = Math.max(on.morph, Math.min(WINDOW_D * bar, 0.3 * (on.t1 - Math.max(from, on.t0))));
+      on.morph = D; to = on.t1 - D;
+      if (!on.fixedRange) on.arcEnd = on.t1 - D + Math.min(D * 0.4, 3.5) / 2;
+      forget(on);
+    }
     to = Math.min(to, bodyOf(on)[1]);
-    if (to - Math.max(from, on.t0) < 4) return null;
+    if (to - Math.max(from, on.t0) < 4) { if (before0) putBack(on, before0); return null; }
     const made = MAKE[id](on, Math.max(from, on.t0), to, s, more);
+    if (made && into) made.into = true;
     const m = made && cueIt(id, made, on);
-    if (!m) return null;
+    if (!m) { if (before0) putBack(on, before0); return null; }
     m.woahId = id;
-    const before = keepOf(on);
+    const before = before0 ?? keepOf(on);
+    if (into) on.xform = { id: 'window', woah: true };
     if (wish && on.moves) on.moves = on.moves.filter(x => !yields(x) || x.to < from - 1 || x.from > to + 1);      // modes lane
     holdRelay(on, from, to);
     addMove(on, m);
