@@ -25,6 +25,10 @@ const OVER_FRAMES = 3, ROOM_FRAMES = 480;
 const WAY_OVER = 17, SLOW_FRAME = 0.025, SLOW_OF_8 = 6;
 // A program that's only there now and then (a ghost hand on each strong beat) used to snap the size down and back up on every one, and on fine lines each snap is a pop (PPP 92-109 s, twice a second). So a smaller size is held for a while after the program changes, and then goes back up a tier at a time.
 const HOLD = 2.5, RISE = 0.4;     // seconds
+// perf9: a recording takes its own share of the GPU every frame, copying the picture out and turning it into video: 2 to 4 ms at 3024 x 1964, the same whichever way the copy's made
+// (measured: a 2D copy, a WebGL copy, or the canvas captured as it is). A trick that just fitted then misses frames. While recording, a program over REC_OVER with frames being missed is drawn
+// at the size that leaves that room, never below the recording's own size, so the file loses nothing: it's 1080 high, and the canvas is drawn bigger than that. When the recording stops, each goes back to the size it had.
+const REC_OVER = 12, REC_FITS = 11, REC_SLOW_OF_8 = 2;      // a frame in three or four missed is the stutter a recording brings: it seldom misses six running
 const SHARE = { plates: 1.9, flight: 1.3, shock: 1.8, extra: 1.15, hand: 1.1 };    // how much more than a plain frame each costs, roughly. Only a first guess for a program not yet seen.
 const costOf = key => { const v = Math.floor(key), w = v >= 16 ? 1 : (v & 2 ? SHARE.plates : 1) * (v & 4 ? SHARE.flight : 1) * (v & 8 ? SHARE.extra : 1) * (v & 1 ? SHARE.hand : 1); return key !== v ? w * SHARE.shock : w; };
 
@@ -38,7 +42,7 @@ export class Governor {
     this.states = new Map();
     this.v = 0; this.s = this._state(0);
     this.timed = false;        // has the GPU said anything yet?
-    this.slow = 0; this.ri = 0;
+    this.slow = 0; this.ri = 0; this.recFloor = 0;
     this.byGpu = flag('gpuTiers');
     if (R.timer) R.onCost = (key, scale, ms) => this.cost(key, scale, ms);
     this._reset();
@@ -57,9 +61,19 @@ export class Governor {
     if (key !== this.v || TIERS[s.tier] !== scale) return;
     const here = s.cost * scale * scale;
     if (!this.byGpu) {
-      if (here <= WAY_OVER || s.tier >= TIERS.length - 1 || this.slow < SLOW_OF_8) { s.over = 0; return; }
+      const rec = this.recFloor > 0 && here > REC_OVER && here <= WAY_OVER;      // perf9
+      if ((here <= WAY_OVER && !rec) || s.tier >= TIERS.length - 1 || this.slow < (rec ? REC_SLOW_OF_8 : SLOW_OF_8)) { s.over = 0; return; }
       if (++s.over < OVER_FRAMES) return;
       s.over = 0;
+      if (rec) {      // perf9: room for the recording, never smaller than the file
+        let fits = TIERS.findIndex((x, i) => i > s.tier && s.cost * x * x <= REC_FITS);
+        if (fits < 0) fits = TIERS.length - 1;
+        while (fits > s.tier && TIERS[fits] < this.recFloor) fits--;
+        if (fits <= s.tier) return;
+        if (s.recFrom == null) s.recFrom = s.tier;
+        this._set(fits, 'gpu: room for the recording');
+        return;
+      }
       if (s.trial) { s.trial = false; s.wait = Math.min(MAX_WAIT, s.wait * 2); }      // it had been tried bigger: wait longer before trying again, as the frame rate's own test does
       const fits = TIERS.findIndex((x, i) => i > s.tier && s.cost * x * x <= FITS);
       this._set(fits < 0 ? TIERS.length - 1 : fits, 'gpu: way over');
@@ -102,6 +116,12 @@ export class Governor {
 
   // Something known to hold up the main thread for a moment (composing a film, say) isn't the pixels' fault.
   quiet(seconds) { this.quietUntil = Math.max(this.quietUntil, performance.now() + seconds * 1000); this._reset(); }
+  // perf9: a recording starts (the file's height, in pixels) or stops (0). Stopping gives back what it took, a tier at a time, as after a hold.
+  recording(fileH) {
+    this.recFloor = fileH > 0 ? Math.min(1, fileH / Math.max(1, this.R.canvas.height)) : 0;
+    if (fileH > 0) return;
+    for (const s of this.states.values()) if (s.recFrom != null) { s.tier = Math.min(s.tier, s.recFrom); s.recFrom = null; }
+  }
   // The window changed: everything measured so far is about a different number of pixels.
   resized() {
     this.gaveUp = false; this.states.clear(); this.s = this._state(this.v);

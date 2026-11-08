@@ -63,6 +63,7 @@ export class Recorder {
     app.onFrame.push(this.draw);
     app.onFrame.push(this.listen);
     rec.start(1000);
+    app.governor?.recording?.(H);      // perf9: room on the GPU for the copy and the encoder
     this.rec = rec; this.frames = 0; this.started = performance.now();
   }
 
@@ -73,6 +74,7 @@ export class Recorder {
     const f = this.finished;
     if (this.rec.state !== 'inactive') this.rec.stop();
     this.rec = null;
+    app.governor?.recording?.(0);
     f.then(() => { this.mix?.close?.().catch(() => {}); this.mix = null; });
     return f;
   }
