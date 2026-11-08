@@ -4,6 +4,7 @@
 // Under the field every pattern is plain stripes, LINES to the picture unit, and the field takes them away again: phase = share*k*S + (1-share)*LINES*y. With the field all there that's only k*S. With it gone (the middle of a change of world, where no program but this one can draw it, or a check) it's lines, and never a solid.
 // group: flower, motif or op. The film goes round them by group (src/worlds/flower/direct.js).
 import { byId } from '../../pattern/library.js';
+import { OFF as OFF_ } from '../../pattern/layout.js';
 
 const LINES = 2.2;
 export const FLOW = 6;         // lines per cycle of the film's clock: with no song that's about one a second
@@ -29,23 +30,45 @@ function flower({ id, name, group = 'flower', k = 2.6, n = 6, a = 0.5, kappa = 0
     'p2.x': P[4][0], 'p2.y': P[4][1], 'p2.q': P[4][2], 'p2.ay': P[4][3],
     ...over,
   };
-  const phase = poles.map((_, i) => 1.7 * i + 0.4);
+  const wander = orbitOf(poles.length, { orbit, sway, spin });
   return {
     id, name, family: 'flower', group, fine: true, lambda: 0.05, g, can, run,
     // The rings' flow is in drive, and what's declared as flow is on a family that's off, because the song's slideLines goes wherever flow says. It stays off: a line's number and place stay on the one clock.
     flow: { 'f1.ph': 1, ...flow },
     arcs,
-    // Flowers orbit, each on its own small circle, and turn as they go. On the film's clock, so they go with the music and stop when it stops. A heart only sways: upside down it isn't one.
-    drive(out, { phi, OFF }) {
-      out[OFF['f0.ph']] -= FLOW * phi;
-      const w = phi * 1.1;
-      for (let i = 0; i < poles.length; i++) {
-        const [nx, ny, na] = NAMES[i], th = w * (i % 2 ? -1 : 1) * (1 + 0.2 * i) + phase[i], A = orbit * (0.7 + 0.15 * i);
-        if (A) { out[OFF[nx]] += A * Math.cos(th); out[OFF[ny]] += A * Math.sin(th); }
-        if (sway) out[OFF[na]] += sway * Math.sin(th * 0.7);
-        else if (spin) out[OFF[na]] += w * (i % 2 ? spin : -spin);
-      }
-    },
+    drive(out, { phi, OFF }) { out[OFF['f0.ph']] -= FLOW * phi; wander(out, phi); },
+  };
+}
+// Flowers orbit, each on its own small circle, and turn as they go. On the film's clock, so they go with the music and stop when it stops. A heart only sways: upside down it isn't one.
+function orbitOf(n, { orbit, sway, spin }) {
+  const phase = Array.from({ length: n }, (_, i) => 1.7 * i + 0.4);
+  return (out, phi) => {
+    const w = phi * 1.1;
+    for (let i = 0; i < n; i++) {
+      const [nx, ny, na] = NAMES[i], th = w * (i % 2 ? -1 : 1) * (1 + 0.2 * i) + phase[i], A = orbit * (0.7 + 0.15 * i);
+      if (A) { out[OFF_[nx]] += A * Math.cos(th); out[OFF_[ny]] += A * Math.sin(th); }
+      if (sway) out[OFF_[na]] += sway * Math.sin(th * 0.7);
+      else if (spin) out[OFF_[na]] += w * (i % 2 ? spin : -spin);
+    }
+  };
+}
+
+// A film pattern with flowers coming up through it: its own lines, with Flower's field added to its first family, so they swell and bend round a few flowers as a river bends round stones. Its lines wear the song, on the one clock.
+// The field's own stripes are taken away by star._3 (patterns.js's note at the top), so here that's made huge and the film's lines stay. Only the first three poles: the film's own p1 and p2 are left as they are.
+const BLOOM_KEYS = ['field.kind', 'field.a', 'field.b', 'field.ph', 'field.spin', 'star._1', 'star._2', 'field.scale', 'field._1', 'field._2', 'spare.a', 'spare.b', 'spare.c', 'spare.d', 'blobs.on', 'blobs.beta', 'blobs.t', 'blobs.k', 'ribbon.a',
+  ...['x', 'y', 'r', 'a'].flatMap(c => [1, 2, 3].map(i => `blobs.${c}${i}`))];
+function bloomed(from, id, name, { k = 1.6, ks = 1, n = 6, a = 0.7, fat = 0.5, beta = 2.2, e = 0.22, fade = 0.1, swell = 0.3, orbit = 0.22, spin = 0.45, sway = 0, poles, motif = 0, group = 'film', arcs = null } = {}) {
+  const o = byId[from], F = flower({ id, name, n, a, k, fat, beta, e, fade, swell, poles, motif });
+  const flat = {};
+  for (const key of BLOOM_KEYS) { const [h, c] = key.split('.'); flat[key] = F.g[key] ?? F.g[h]?.[c] ?? 0; }
+  const g = { ...o.g, ...flat, 'star._3': 1e4, 'field.k0': k };
+  for (let i = 1; i < ks; i++) g[`field.k${i}`] = k * (i % 2 ? -1 : 1);      // a check's or a lattice's other lines bend round the flowers too, the other way, so they meet round each one as petals
+  const flow = { ...o.flow };
+  delete flow['f0.ph'];
+  const wander = orbitOf(poles.length, { orbit, sway, spin });
+  return {
+    ...o, id: `flower.${id}`, name, family: 'flower', group, pool: true, fine: o.fine, flow, g, arcs: arcs ?? o.arcs,
+    drive(out, ctx) { o.drive?.(out, ctx); out[ctx.OFF['f0.ph']] -= FLOW * ctx.phi; wander(out, ctx.phi); },
   };
 }
 
@@ -224,6 +247,16 @@ export const pool = [
     poles: [[-0.8, 0.12, 1, 0.3], [1.1, 0.5, 0.62, 1.1], [0.9, -0.75, 0.42, 2.2]],
     arcs: [{ path: 'rot', from: -0.18, to: 0.18 }, { path: 'scale', from: 1.15, to: 1.3, log: true }],
   }),
+  // ---------------------------------------------------------------- the film's own patterns, with flowers coming up through them
+  bloomed('lines.river', 'river', 'River Bloom', { k: 1.5, n: 6, poles: [[-0.95, 0.32, 0.7, 0.2], [0.85, -0.38, 0.62, 1.1], [1.95, 0.72, 0.42, 2.0]] }),
+  bloomed('lines.lens', 'lens', 'Lens Bloom', { k: 1.4, n: 5, a: 0.8, fat: 0.45, poles: [[-0.62, 0.02, 0.86, 0.4], [1.3, 0.56, 0.46, 1.6], [1.25, -0.7, 0.4, 2.7]] }),
+  bloomed('waves.current', 'current', 'Flower Current', { k: 1.6, n: 7, poles: [[-1.2, -0.3, 0.62, 0], [0.3, 0.45, 0.76, 1], [1.62, -0.52, 0.5, 2]] }),
+  bloomed('lines.bowtie', 'bowtie', 'Bow Tie Bloom', { k: 1.4, n: 6, a: 0.75, poles: [[-1.1, 0.1, 0.7, 0.6], [1.05, -0.15, 0.7, 1.9]] }),
+  bloomed('checks.twist', 'twist', 'Garden Check', { k: 1.25, n: 6, ks: 2, poles: [[-0.72, 0.22, 0.8, 0.3], [1.12, -0.42, 0.6, 1.4], [-1.9, -0.75, 0.4, 2.2]] }),
+  bloomed('lattice.kagome', 'kagome', 'Kagome Daisies', { k: 1.1, n: 6, ks: 3, a: 0.6, poles: [[-0.85, -0.15, 0.78, 0.2], [0.95, 0.4, 0.66, 1.0]] }),
+  bloomed('riley.swarm', 'swarm', 'Swarm in Bloom', { k: 1.2, n: 5, ks: 3, a: 0.8, poles: [[0.15, 0.05, 0.95, 0.5], [-1.75, 0.7, 0.42, 1.7], [1.8, -0.72, 0.42, 2.6]] }),
+  bloomed('pole.dipole', 'dipole', 'Wheel in Bloom', { k: 1.3, n: 5, a: 0.85, fat: 0.4, orbit: 0.16, poles: [[-1.35, 0.55, 0.5, 0.3], [1.4, -0.5, 0.55, 1.2], [1.5, 0.8, 0.3, 2.2]] }),
 ];
 // These two have no way across but a flight, and here a flight looks laid over what it's leaving. They stay in the library, out of the film's rotation.
-for (const p of pool) if (p.id === 'flower.floor' || p.id === 'flower.tunnel') p.pool = false;
+// And Nested Rooms: one motif that fills the frame, so each of its rings going by is most of the frame changing ink, and the whole frame swung in brightness and in red against cyan wherever it was cast (MGMT 118 and 123 s here, 129.6 s in round 6). The film's own patterns with flowers have taken its place.
+for (const p of pool) if (p.id === 'flower.floor' || p.id === 'flower.tunnel' || p.id === 'flower.nested') p.pool = false;

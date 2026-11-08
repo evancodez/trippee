@@ -8,14 +8,14 @@ import { MOVES } from '../../score/moves/index.js';
 import { base } from '../../score/slot.js';
 
 // How much of a film each group should have.
-const SHARE = { flower: 0.46, motif: 0.3, op: 0.24 };
+const SHARE = { flower: 0.36, motif: 0.24, op: 0.18, film: 0.22 };       // film: the film's own patterns with flowers coming up through them
 const rng = seed => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return (seed >>> 8) / 16777216; };
 
 export function cast(score, A, M) {
   let g = score.gestures;
   const rand = rng(((score.seed | 0) * 7919 + (A.hash ? parseInt(String(A.hash).slice(0, 7), 16) : 3)) >>> 0), energyAt = t => { try { return reactAt(score.react, M?.C ? M.C(t) : t).energy; } catch { return 0.5; } };
-  const P = score.patterns.filter(p => p.pool !== false), by = { flower: P.filter(p => p.group === 'flower'), motif: P.filter(p => p.group === 'motif'), op: P.filter(p => p.group === 'op') };
-  const had = { flower: 0, motif: 0, op: 0 }, seen = new Map();
+  const P = score.patterns.filter(p => p.pool !== false), by = { flower: P.filter(p => p.group === 'flower'), motif: P.filter(p => p.group === 'motif'), op: P.filter(p => p.group === 'op'), film: P.filter(p => p.group === 'film') };
+  const had = { flower: 0, motif: 0, op: 0, film: 0 }, seen = new Map();
   let last = null, run = 0, total = 0;
   const pickFrom = (group, i) => {
     const pool = by[group], least = Math.min(...pool.map(p => seen.get(p) ?? -1));
@@ -29,8 +29,8 @@ export function cast(score, A, M) {
     if (i === 0) group = 'flower';
     else {
       // The group furthest behind its share, and loud goes for the bold op, quiet for a flower.
-      const lean = { flower: (0.5 - e) * 0.15, motif: 0, op: (e - 0.5) * 0.15 };
-      group = Object.keys(SHARE).filter(k => !(k === last?.group && run >= (k === 'flower' ? 2 : 1))).sort((a, b) => (SHARE[b] - had[b] / Math.max(total, 1) + lean[b]) - (SHARE[a] - had[a] / Math.max(total, 1) + lean[a]))[0];
+      const lean = { flower: (0.5 - e) * 0.15, motif: 0, op: (e - 0.5) * 0.15, film: (e - 0.5) * 0.08 };
+      group = Object.keys(SHARE).filter(k => by[k].length && !(k === last?.group && run >= (k === 'flower' ? 2 : 1))).sort((a, b) => (SHARE[b] - had[b] / Math.max(total, 1) + lean[b]) - (SHARE[a] - had[a] / Math.max(total, 1) + lean[a]))[0];
     }
     const p = i === 0 ? by.flower.find(x => x.id === 'flower.daisy') ?? by.flower[0] : pickFrom(group, i);
     run = last?.group === p.group ? run + 1 : 1;
@@ -71,7 +71,7 @@ const tideCentre = p => { const g = p.g, c = [[g['blobs.r1'], g['blobs.x1'], g['
 
 // What it does while it's there. A gesture has at most one of these and there's a rest now and then: not everything has to be doing something.
 export function moves(score, A, M) {
-  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['pump', 'scissor', 'turnover', 'voices', 'wind', 'lead', 'wring', 'bellows', 'beads', 'waltz', 'ratchet', 'ramp'];
+  const g = score.gestures, bar = M?.bar ?? 2, rotation = ['pump', 'swirl', 'scissor', 'turnover', 'voices', 'wind', 'puff', 'lead', 'wring', 'bellows', 'beads', 'waltz', 'ratchet', 'ramp'];
   let at = 0, sinceStar = 99, runs = 0;
   const fits = (id, G) => {
     const p = G.pattern, S = base(p), num = n => S[OFF[n]], ours = num('field.kind') === 4, field = ours && num('field.k0') !== 0, whip = num('spare.a') !== 0 || num('spare.c') !== 0;
@@ -85,7 +85,10 @@ export function moves(score, A, M) {
     if (id === 'beads') return field && !whip && p.group !== 'op' && !num('ribbon.a') && (p.g.fams?.length ?? 1) < 2;
     if (id === 'wind') return field && !whip && !num('field.b');
     if (id === 'pump') return field && !whip && num('field.ph') > 0;
-    if (id === 'lead' || id === 'waltz') return field && !num('blobs.beta') && countPoles(p) > 1;
+    if (id === 'lead' || id === 'waltz') return field && !num('blobs.beta') && countPoles(p) > 1 && !(id === 'lead' && p.group === 'film');      // a film pattern's p1 and p2 are its own, and lead would grow them
+    // Swirl: the sheet drags round every flower and lets go. Not on what's already swirled or tiled, or on a motif, which only reads the right way up.
+    if (id === 'swirl') return field && !whip && !num('star._2') && !num('blobs.beta') && !num('field.b') && countPoles(p) > 0;
+    if (id === 'puff') return field && !whip && num('field.ph') > 0 && !num('field.b') && num('field.a') > 1;
     return false;
   };
   for (let i = 1; i + 1 < g.length; i++) {
@@ -98,7 +101,7 @@ export function moves(score, A, M) {
       let id = null;
       for (let n = 0; n < rotation.length; n++) { const c = rotation[(at + n) % rotation.length]; if (fits(c, G) && !G.moves?.some(m => m.id === c) && !(c === 'ramp' && part)) { id = c; at = (at + n + 1) % rotation.length; break; } }
       if (!id) continue;
-      const beats = (id === 'pump' || id === 'wring' || id === 'ratchet' || id === 'bellows' || id === 'scissor' || id === 'turnover') ? 'half' : 'bar';
+      const beats = (id === 'pump' || id === 'puff' || id === 'wring' || id === 'ratchet' || id === 'bellows' || id === 'scissor' || id === 'turnover') ? 'half' : 'bar';
       // A tile takes one edge a second, near enough, and the rings are already using most of that. So never faster than a hit every so often, whatever the tempo.
       let hits = hitsFor(beats, { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
       if (hits.length > 1 && (hits.at(-1) - hits[0]) / (hits.length - 1) < 1.15) hits = hitsFor('bar', { score, A, from: from + bar * 0.5, to: to - bar * 0.5 });
