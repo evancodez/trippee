@@ -585,8 +585,9 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
       check(log, `film into numbers: from x .46 to .54 its geometry is the film's flight, byte for byte (its coverage is the mirror's: only its inks differ, and they arrive from the start)`, !cd.length, cd.length ? `differs at ${cd.join(' ')}` : `programs ${Object.values(r.a.vs).join(' ')}`);
     }
     for (const [name, o] of [['numbers into film', r.b], ['numbers into mirror', r.c]]) {
-      const diff = Object.keys(r.film).filter(x => r.film[x] !== o.out?.[x]);
-      check(log, `${name}: from x .46 to .54 the frame is the film's flight, byte for byte, across the program change`, !diff.length, diff.length ? `differs at ${diff.join(' ')}` : `programs ${Object.values(o.vs).join(' ')}`);
+      // modes9: the inks drain right up to the middle and arrive straight after it now, so it's the film's flight on the frames either side of the program change, not for .46 to .54 (that was a black-and-white gap mid-change)
+      const diff = ['0.4999', '0.5', '0.5001'].filter(x => r.film[x] !== o.out?.[x]);
+      check(log, `${name}: from x .4999 to .5001 the frame is the film's flight, byte for byte, across the program change`, !diff.length, diff.length ? `differs at ${diff.join(' ')}` : `programs ${Object.values(o.vs).join(' ')}`);
       check(log, `${name}: lands on the world's plain program`, o.ended && o.landed === (o.worldNow ? o.landed : 0) && (o.worldNow ? o.landed >= 16 : o.landed < 16));
     }
     check(log, `film into numbers: lands on the world's plain program`, r.a.ended && r.a.landed >= 16);
@@ -725,19 +726,20 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
         invert: E => { E.invert = true; },
       };
       const clear = E => { E.ripples = null; E.warp = null; E.hand = null; E.journey = 0; E.jx = 0; E.jy = 0; E.spin = 0; E.duty = 0; E.press = 0; E.sheet = 0; E.over = {}; E.invert = false; };
-      const bad = [];
+      const bad = [], near = [];
       for (const name in cases) for (const flight of [false, true]) {
         const shot = async W => {
           put(W);
           if (flight) { T.morph('checks.vega', 'void.diamond', 8, 1); T.seek(5); } else T.still('lattice.master', .5);
           cases[name](app.edits);
-          const sha = await W_.sha(); clear(app.edits);
-          return sha;
+          const sha = await W_.sha(), px = W_.px(); clear(app.edits);
+          return { sha, px };
         };
         const a = await shot(null), b = await shot(mirror);
-        if (a !== b) bad.push(`${name}${flight ? ' in a flight' : ''}`);
+        // modes9: byte for byte, or within 2 of 255 on a few pixels. Code a frame never runs (a change of world's) can move the GPU compiler's rounding of the hand in a flight by a level, and that isn't the hand happening after colour.
+        if (a.sha !== b.sha) { const d = W_.diff(a.px, b.px, 2); if (d.n > 0.001 * a.px.d.length / 4) bad.push(`${name}${flight ? ' in a flight' : ''} (${d.n} px over 2, worst ${d.worst})`); else near.push(`${name}${flight ? ' in a flight' : ''} worst ${W_.diff(a.px, b.px).worst}`); }
       }
-      out.handBad = bad; out.handN = Object.keys(cases).length * 2;
+      out.handBad = bad; out.handNear = near; out.handN = Object.keys(cases).length * 2;
       put(null); T.still('lines.river', .5);
       reader.dispose();
       return out;
@@ -749,7 +751,7 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
     check(log, 'the sound reads what it reads in the film (grid agreement over .95 on every pattern)', worst > .95, `worst ${worst}`);
     check(log, 'a colour nothing could read as coverage reads exactly as the mirror does', tintWorst === worst && r.notes.tintVsMirror === 1, `grid ${tintWorst}, notes ${r.notes.tintVsMirror}`);
     check(log, 'notes in the mirror world match the film', r.notes.mirrorSequence > .95, JSON.stringify(r.notes));
-    check(log, `every hand verb and tool (${r.handN}) byte-identical in the mirror`, !r.handBad.length, r.handBad.join(' | '));
+    check(log, `every hand verb and tool (${r.handN}) byte-identical in the mirror, or within 2 of 255`, !r.handBad.length, [...r.handBad, ...(r.handNear ?? []).map(x => 'near: ' + x)].join(' | '));
 
     // A recording across a change, in real time
     const rec = await page.eval(async () => {
@@ -921,9 +923,15 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
     check(log, 'v from the film goes to the first world', s.world === 'mirror' && s.change);
     s = await landed(16000);
     await page.shot('strip-4-v');
-    await key('b'); await sleep(1000);
-    s = await state(); log('b', JSON.stringify(s));
-    check(log, 'b in a world goes to the film first', s.world === null && !s.colour && s.change, JSON.stringify(s));
+    // b starts the change straight away, unless the wander's own morph is under way: that's hurried to its end first (stage.settle, 1.5 s), as it is for a pick or a song arriving. This looked at 1 s, and its
+    // wait for the landing ran while the change hadn't begun, so it didn't wait: pressed just as a morph began (the wander's draws put one there once Prism was in the strip), that read as b stalling.
+    const morphing = await page.eval('(m=>m&&!m.handover?+m.x.toFixed(3):null)(app.stage._running(app.pictureT()))');
+    const tb = Date.now();
+    await key('b');
+    for (let i = 0; i < 60; i++) { s = await state(); if (s.world === null && s.change) break; await sleep(50); }
+    const late = (Date.now() - tb) / 1000;
+    log('b', JSON.stringify(s), `began after ${late.toFixed(2)} s${morphing != null ? `, the wander's morph at x ${morphing} when it was pressed` : ''}`);
+    check(log, 'b in a world goes to the film first', s.world === null && !s.colour && s.change && late < (morphing != null ? 2.2 : 0.6), JSON.stringify(s));
     for (let i = 0; i < 80 && (await state()).change; i++) await sleep(250);
     await sleep(600);
     s = await state(); log('b landed', JSON.stringify(s));

@@ -51,7 +51,7 @@ export class Renderer {
     this.ready = false;
     this.pushOn = false;
     this.wp = null;      // the world programs in use (src/worlds/engine.js). Null is the film, and nothing below does anything else.
-    this.warm = null;    // a world program waiting for its first draw
+    this._warmQ = [];    // programs waiting for their first draw, one a frame (warmSoon)
     this.drawScale = 1;
     this.parallel = gl.getExtension('KHR_parallel_shader_compile');
     // How long the GPU really took over each frame, for the governor. It knows within a few frames instead of after seconds of dropped ones. No extension, and it goes by the frame rate as before.
@@ -401,6 +401,31 @@ export class Renderer {
     return false;
   }
 
+  // modes9: a program's first draw, on its own frame. fn(canvas) draws one scissored pixel to a small target and, if canvas, to the canvas as well: the frame's own draw covers it, so it has to be in a frame.
+  // One queue, taken one at a time at the start of a frame's draw: two first draws in one frame were one long frame, and hooks chained one after another could lose each other and waited on however the frames came.
+  // Nothing drawing for a while (a hidden page, a test stepping by hand), and a timer takes them on the small target only, never the canvas, so nothing that waits on one waits on frames that aren't coming. Resolves with whether it reached the canvas.
+  warmSoon(fn) {
+    return new Promise(res => {
+      this._warmQ.push({ fn, res });
+      if (this._warmT) return;
+      const tick = () => {
+        this._warmT = null;
+        if (!this._warmQ.length) return;
+        if (performance.now() - (this._drewAt ?? 0) > 250) this._warmNext(false);
+        this._warmT = setTimeout(tick, 120);
+      };
+      this._warmT = setTimeout(tick, 120);
+    });
+  }
+  _warmNext(canvas) {
+    const w = this._warmQ.shift();
+    let ok = false;
+    try { w.fn(canvas); ok = canvas; } catch (e) { console.error('a program failed its first draw:', e); }
+    const gl = this.gl;
+    gl.disable(gl.SCISSOR_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    w.res(ok);
+  }
+
   // Slots and frame numbers have already been written into this.block
   // perf9: every frame is drawn into one RGBA8 target the canvas's size and copied onto the canvas. The canvas and that target are two kinds of pixel to the GPU, and it built
   // each program's pipeline once for each, at its first draw there: 400 ms each time, so a trick that came up and then had its size changed by the governor froze twice
@@ -410,6 +435,8 @@ export class Renderer {
     const F = this.frame, res = FRAME.res * 4;
     const sc = this._ease(), low = this._lowTarget();      // perf9: the size actually drawn, easing to the governor's
     const w = sc < 1 ? Math.max(2, Math.round(c.width * sc)) : c.width, h = sc < 1 ? Math.max(2, Math.round(c.height * sc)) : c.height;
+    this._drewAt = performance.now();
+    if (this._warmQ.length) this._warmNext(true);      // modes9: one queued first draw a frame
     if (this.warm) this.warm();
     F[res] = w; F[res + 1] = h; F[res + 2] = sc < 1 ? c.width / c.height : w / h; F[res + 3] = this.pushOn ? 1 : 0;
     gl.bindFramebuffer(gl.FRAMEBUFFER, low.fbo);

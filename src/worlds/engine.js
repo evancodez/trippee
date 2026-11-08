@@ -102,7 +102,7 @@ class WorldPrograms {
     this.ready = false; this.failed = null;
     this.whenReady = new Promise(res => { this._ready = res; });
     this.whenAll = new Promise(res => { this._all = res; });
-    this.warmed = new Set();
+    this.warmed = new Set(); this.warming = {};
     this.times = [];
     this._next();
   }
@@ -161,34 +161,29 @@ class WorldPrograms {
   }
 
   // Linking takes nothing from the picture (tests/worlds.mjs measured no rAF gap at all), but the GPU process builds a program's pipeline at its first draw, and that stops everything for 200 to 500 ms, a film's programs just the same.
-  // So the ones a change is about to need go through one scissored pixel on the real framebuffer, all in one frame, right after the click, and not in the middle of the flight or on the landing. The frame's own draw covers the pixel.
+  // So the ones a change is about to need go through one scissored pixel right after the click, and not in the middle of the flight or on the landing: one a frame, through the renderer's one queue (R.warmSoon, modes9),
+  // since all of them in one frame held the picture still for most of a second. The frame's own draw covers the pixel.
   warm(more = []) {
-    const R = this.R, gl = this.gl;
-    // Plain and flight always. The fuller two if the world's own patterns wear something only they have. And any a change is about to draw with (changePrograms).
-    const fuller = (this.W._pool ?? []).some(p => { const S = base(p); return R._extra(S); });
+    const R = this.R;
+    // Plain and flight always. The fuller two if the world's own patterns wear something only they have, or if it has none of its own and draws the film's, most of which do: Prism's first riley or dial built its pipeline in the middle of its film.
+    // The world's own fuller ones if it has any. And any a change is about to draw with (changePrograms).
+    const fuller = !this.W._pool?.length || this.W._pool.some(p => R._extra(base(p)));
     const list = [...new Set([0, FLIGHT, ...(fuller ? [EXTRA, EXTRA | FLIGHT] : []), ...(this.W.fuller ? [FULL, FULL | FLIGHT] : []), ...more])].filter(v => this.progs[v] && !this.warmed.has(v));
-    if (!list.length) return Promise.resolve();
-    return new Promise(res => {
-      const before = R.warm;
-      R.warm = () => {
-        if (before) before();
-        const small = coverTarget(R);
-        gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
-        gl.bindBuffer(gl.UNIFORM_BUFFER, R.ubo);
-        gl.bufferSubData(gl.UNIFORM_BUFFER, 0, R.block);
-        this.upload();
-        // To the canvas and to a target like the governor's smaller one, which the GPU may build separately.
-        for (const v of list) {
-          gl.useProgram(this.progs[v]);
-          gl.bindFramebuffer(gl.FRAMEBUFFER, small.fbo); gl.viewport(0, 0, COVER_W, COVER_H); gl.drawArrays(gl.TRIANGLES, 0, 3);
-          gl.bindFramebuffer(gl.FRAMEBUFFER, null);      // perf9: the picture is drawn into an RGBA8 target like this one, never on the canvas, so one first draw is the build (renderer.js draw)
-          this.warmed.add(v);
-        }
-        gl.disable(gl.SCISSOR_TEST);
-        R.warm = null;
-        res();
-      };
-    });
+    return Promise.all(list.map(v => this._warmOne(v)));
+  }
+
+  // One program's first draw, queued once however many ask for it (modes9). The picture is drawn into an RGBA8 target like the small one, never on the canvas (perf9, renderer.js draw), so a first draw there is the whole build.
+  _warmOne(v) {
+    const R = this.R, gl = this.gl;
+    return this.warming[v] ??= R.warmSoon(() => {
+      const small = coverTarget(R);
+      gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
+      gl.bindBuffer(gl.UNIFORM_BUFFER, R.ubo);
+      gl.bufferSubData(gl.UNIFORM_BUFFER, 0, R.block);
+      this.upload();
+      gl.useProgram(this.progs[v]);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, small.fbo); gl.viewport(0, 0, COVER_W, COVER_H); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }).then(() => { delete this.warming[v]; this.warmed.add(v); });
   }
 
   // What a frame needs: what the film would, without colour's plates, and whatever the world says only its fuller programs have (W.fuller).
@@ -327,7 +322,10 @@ function writeWorld(st, score, R, edits) {
   let geo = 1;
   if (ch) {
     const out = 1 - smoother(x / 0.45), inn = smoother((x - 0.55) / 0.45);
-    E[2] = fresh ? clamp((x - 0.04) / 0.96) : leaving ? clamp(x / 0.45) : clamp((x - 0.55) / 0.45);
+    // modes9: from the film the inks start flowing in at once. Between two worlds the old ones hold on longer and drain right up to the middle, and the new ones start flowing straight after it and come on quickly, so the picture is only
+    // black and white around the one frame where the program changes. It was 0.45 to 0.55 of the flight (1.3 s), and with the drain's and the arrival's thin ends three to four seconds of the plain film. The flight is slowest there, so it isn't a rush.
+    const hl = clamp(x / 0.5), ha = clamp((x - 0.5) / 0.5);
+    E[2] = fresh ? clamp(x / 0.85) : leaving ? hl * hl : 1 - (1 - ha) * (1 - ha);
     E[6] = leaving ? -1 : 1;
     geo = leaving ? out : inn;
     quietForeign(A, leaving ? out : 0); quietForeign(B, leaving ? 0 : inn);
@@ -415,8 +413,8 @@ function changePrograms(R, from, to, warm) {
     if (!wp || wp.failed) continue;
     const list = [...new Set([...all, ...(W.fuller ? all.map(v => v | FULL) : [])])], need = list.filter(v => !wp.progs[v]), cold = list.filter(v => !wp.warmed.has(v));
     if (!need.length && !(warm && cold.length)) continue;
-    // One program's first draw a frame: all of them in one frame held the picture still for 0.6 s (Dusk into Flyer).
-    waits.push((async () => { if (need.length) await wp.whenBuilt(need); if (warm) for (const v of list) if (wp.progs[v] && !wp.warmed.has(v)) await wp.warm([v]); })());
+    // One program's first draw a frame (wp.warm): all of them in one frame held the picture still for 0.6 s (Dusk into Flyer).
+    waits.push((async () => { if (need.length) await wp.whenBuilt(need); if (warm) await wp.warm(list); })());
   }
   return waits.length ? Promise.all(waits) : null;
 }
@@ -436,8 +434,10 @@ function change(stage, to, opts) {
     if (stage.hold) g.push({ t0: T, t1: T + 3600, arcEnd: T + 44, period: 44, pattern: pat, morph: 0 });
     else {
       const m = to?.motion;
-      const len = stage.rand.range(...(m?.len ?? [24, 38]));
-      const G = { t0: T, t1: T + len, arcEnd: T + len, pattern: pat, morph: stage.rand.range(...(m?.morph ?? [8, 12])) };
+      // The first pattern's own morph begins a while after the change has landed (modes9). Drawn as short as a world's len less its morph (Flower: 13 less 9), it began in the middle of the change's flight and was still under way
+      // when the change landed: the picture never rested, and a b pressed then waited 1.5 s for that morph to be hurried before anything began. That was the b stall: which draws came up depended on the modes visited, Prism's among them.
+      const len0 = stage.rand.range(...(m?.len ?? [24, 38])), morph = stage.rand.range(...(m?.morph ?? [8, 12])), len = Math.max(len0, (opts.dur ?? CHANGE_S) + morph + 4);
+      const G = { t0: T, t1: T + len, arcEnd: T + len, pattern: pat, morph };
       if (m?.glide === false) G.noGlide = true;
       if (m?.rise != null) G.rise = m.rise;
       g.push(G);
