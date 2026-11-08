@@ -2,6 +2,7 @@
 // See src/gl/chunks/space.js, src/score/xform/space.js and src/score/moves/space.js.
 import { plane, ring, spokes, triLattice } from '../kit.js';
 import { writeSpace, reliefNumbers, pleatNumbers, rideNumbers, TERRACES, sliceDrive, hallNumbers, strataLoop } from '../../score/moves/space.js';
+import { domeRound, planetRound, canyonRound, skimRound } from '../../score/moves/sky.js';
 
 const item = (id, name, via, g, drive, more = {}) => ({ id: `space.${id}`, name, family: 'space', pool: false, via: via && { id: via, D: 13 }, g, arcs: [], flow: {}, drive, lambda: 0.2, ...more });
 const worn = G => G?.moves?.length > 0;       // a shot in a cut says what it wants, and one that wears nothing is the pattern as it stands: flat. A click, in a film or not, has no moves.
@@ -24,4 +25,13 @@ export default [
   // Then the panes sink back into register and it's the triangles, whole. Its sets are the ones a film's own sheets have, so a film casts it with ?strata=1 when what's there can't come apart
   item('strata', 'Strata', null, { fams: triLattice(1.9, 90), rot: 0.08 }, (out, { t, G }) => { if (!worn(G)) strataLoop(out, t, G?.t0 ?? 0); },
     { solid: 0.72, strata: true, lambda: 0.15, flow: { 'f0.ph': 1, 'f1.ph': -1 }, arcs: [{ path: 'rot', from: 0.08, to: -0.3 }, { path: 'scale', from: 0.85, to: 1.25, log: true }] }),
+  // The sheet as a world (src/score/moves/sky.js, src/gl/chunks/sky.js). Each is a round: the flat sheet, then it becomes the world, travels, and goes back to the flat sheet, and again
+  // Dome: the floor curls up all round you and closes overhead, and the sheet pours out of the point up there, down the walls and under you. Halfway, the camera tips back and looks up into it, and the floor's the sky
+  item('dome', 'Dome', null, { fams: [plane(2.2, 0), plane(2.2, 90)] }, (out, { t, G }) => { if (!worn(G)) domeRound(out, t, G?.t0 ?? 0); }, { sky: true }),
+  // Planet: the sheet gathers into a ball under you, in a sky of the same sheet turned, and you go round it
+  item('planet', 'Planet', null, { fams: [plane(2.6, 0), plane(2.6, 90)] }, (out, { t, G }) => { if (!worn(G)) planetRound(out, t, G?.t0 ?? 0); }, { sky: true }),
+  // Canyon: the sheet folds into steps either side of a floor, and you fly down it. The steps jump on the beat
+  item('canyon', 'Canyon', null, { fams: [plane(3, 0), plane(3, 90)] }, (out, { t, G }) => { if (!worn(G)) canyonRound(out, t, G?.t0 ?? 0); }, { sky: true }),
+  // Skim: low between a floor and a ceiling of the same sheet, turned against each other, curving towards each other ahead, and going opposite ways. On the beat they close like jaws
+  item('skim', 'Skim', null, { fams: [plane(1.7, 0), plane(3.4, 90)] }, (out, { t, G }) => { if (!worn(G)) skimRound(out, t, G?.t0 ?? 0); }, { sky: true }),
 ];
