@@ -56,5 +56,9 @@ float wSmooth(float x){ x=clamp(x,0.,1.); return x*x*x*(x*(x*6.-15.)+10.); }
 float wHash(float n){ n=fract(n*.1031); n*=n+33.33; n*=n+n; return fract(n); }
 // How far along one band is, out of x: bands near the focus go first, with a hash of the band's number so that they don't go as one ring.
 float wShare(float x,float w,float cell,vec2 p,vec2 focus){ return wSmooth((x*(1.+w)-(.6*clamp(length(p-focus)/2.4,0.,1.)+.4*wHash(cell)))/w); }
+// A change of world's own order (modes9): each band in its own time (the hash of its number), over slow blobs that stay where they are, so the new inks come in band by band along the pattern's own lines, in patches all over the picture.
+// It was the distance from the focus, and out of a corner's focus that was a disc growing over the picture. Nothing here jumps where a flight's outer pattern changes but the band's hash, as before.
+float wNoise(vec2 q){ vec2 i=floor(q),f=fract(q); f=f*f*(3.-2.*f); float n=i.x+57.*i.y; return mix(mix(wHash(n),wHash(n+1.),f.x),mix(wHash(n+57.),wHash(n+58.),f.x),f.y); }
+float wShare(float x,float w,float cell,vec2 p){ return wSmooth((x*(1.+w)-(.6*clamp((wNoise(p*1.1+vec2(3.7,1.3))-.15)/.7,0.,1.)+.4*wHash(cell)))/w); }
 #endif
 `;

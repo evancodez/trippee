@@ -324,7 +324,10 @@ function writeWorld(st, score, R, edits) {
   let geo = 1;
   if (ch) {
     const out = 1 - smoother(x / 0.45), inn = smoother((x - 0.55) / 0.45);
-    E[2] = fresh ? clamp((x - 0.04) / 0.96) : leaving ? clamp(x / 0.45) : clamp((x - 0.55) / 0.45);
+    // modes9: from the film the inks start flowing in at once. Between two worlds the old ones hold on longer and drain right up to the middle, and the new ones start flowing straight after it and come on quickly, so the picture is only
+    // black and white around the one frame where the program changes. It was 0.45 to 0.55 of the flight (1.3 s), and with the drain's and the arrival's thin ends three to four seconds of the plain film. The flight is slowest there, so it isn't a rush.
+    const hl = clamp(x / 0.5), ha = clamp((x - 0.5) / 0.5);
+    E[2] = fresh ? clamp(x / 0.85) : leaving ? hl * hl : 1 - (1 - ha) * (1 - ha);
     E[6] = leaving ? -1 : 1;
     geo = leaving ? out : inn;
     quietForeign(A, leaving ? out : 0); quietForeign(B, leaving ? 0 : inn);

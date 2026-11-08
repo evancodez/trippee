@@ -311,7 +311,7 @@ void main(){
     wAcross=fract(2.*length(p0-dv.xy));      // with no bands to go by, across rings round the focus
     float wc=wBand(jo*FAM,(jo+1)*FAM),wv=1.;      // the outer pattern's band here: each changes at its own edges, in its own time
     // A change of world: this world's inks drain from the film, or arrive in it, band by band. Past the end of either it's exactly the film's frame, and nothing's worked out.
-    if(uW[1].z!=0.){ wv=wFront(wShare(uW[0].z,uW[0].w,wc,p0,dv.xy)); if(uW[1].z<0.) wv=1.-wv; }
+    if(uW[1].z!=0.){ wv=wFront(wShare(uW[0].z,uW[0].w,wc,p0)); if(uW[1].z<0.) wv=1.-wv; }
     if(wv>0.){
       float ws=wFront(wShare(uW[1].w,.6,wc,p0,dv.xy));
       vec3 wa=ws<1.?worldColor(0,FAM,c):vec3(0.),wb=ws>0.?worldColor(FAM,2*FAM,c):vec3(0.);
