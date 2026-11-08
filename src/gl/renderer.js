@@ -3,6 +3,7 @@ import { VERT, FRAG, BRUSH_FRAG } from './shader.js';
 import { SLOT_FLOATS, FRAME_VEC4, FRAME, OFF } from '../pattern/layout.js';
 
 const BLOCK_FLOATS = 2 * SLOT_FLOATS + FRAME_VEC4 * 4;
+const DRAW_RISE = 0.35;      // perf9: how fast the size drawn comes back up, of the canvas's size a second
 
 // One shader, built sixteen ways: with or without the hand, colour's second plate, a flight between two patterns, and the rarer moves (slip, star, coin, fields). A GPU pays for what
 // a program declares on every pixel, drawn from or not (a flight's branch alone cost a plain 1080p frame more than half its speed), so each is only in the program while it's in use.
@@ -178,22 +179,22 @@ export class Renderer {
     if (!list.length) { done(); return; }
     const gl = this.gl, c = this.canvas;
     let i = 0;
-    // The two targets in two different frames: each first draw is a build on the GPU, and two of them together were one long frame
     const pixel = (p, low) => {
       gl.useProgram(p);
       gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
       gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
-      if (low) { gl.bindFramebuffer(gl.FRAMEBUFFER, low.fbo); gl.viewport(0, 0, low.w, low.h); }
+      if (low) { gl.bindFramebuffer(gl.FRAMEBUFFER, low.fbo); gl.viewport(0, 0, 1, 1); }
       else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, c.width, c.height); }
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.SCISSOR_TEST);
     };
+    // perf9: only ever on the target the picture's drawn into (draw()): the canvas itself is never drawn on with these, so a first draw there would be a build for nothing
     const one = () => {
       if (i >= list.length) { done(); return; }
       const p = list[i++];
-      pixel(p, this._lowTarget(0.5));
-      setTimeout(() => { pixel(p, null); setTimeout(one, 60); }, 40);
+      pixel(p, this._lowTarget());
+      setTimeout(one, 100);
     };
     one();
   }
@@ -401,14 +402,17 @@ export class Renderer {
   }
 
   // Slots and frame numbers have already been written into this.block
+  // perf9: every frame is drawn into one RGBA8 target the canvas's size and copied onto the canvas. The canvas and that target are two kinds of pixel to the GPU, and it built
+  // each program's pipeline once for each, at its first draw there: 400 ms each time, so a trick that came up and then had its size changed by the governor froze twice
+  // (Flower Power's folds and time: 466 and 433 ms, three seconds apart). One kind of target, one build. The copy is exact at full size, and costs a fraction of a millisecond.
   draw() {
     const gl = this.gl, c = this.canvas;
     const F = this.frame, res = FRAME.res * 4;
-    const low = this.drawScale < 1 ? this._lowTarget() : null;
-    const w = low ? low.w : c.width, h = low ? low.h : c.height;
+    const sc = this._ease(), low = this._lowTarget();      // perf9: the size actually drawn, easing to the governor's
+    const w = sc < 1 ? Math.max(2, Math.round(c.width * sc)) : c.width, h = sc < 1 ? Math.max(2, Math.round(c.height * sc)) : c.height;
     if (this.warm) this.warm();
-    F[res] = w; F[res + 1] = h; F[res + 2] = w / h; F[res + 3] = this.pushOn ? 1 : 0;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, low ? low.fbo : null);
+    F[res] = w; F[res + 1] = h; F[res + 2] = sc < 1 ? c.width / c.height : w / h; F[res + 3] = this.pushOn ? 1 : 0;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, low.fbo);
     gl.viewport(0, 0, w, h);
     const prog = this._programFor(F);
     gl.useProgram(prog);
@@ -427,13 +431,11 @@ export class Renderer {
     const timing = this._timeBegin(F);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     if (timing) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
-    if (low) {
-      // Stretched back up to fill a canvas that hasn't changed size
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, low.fbo);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-      gl.blitFramebuffer(0, 0, w, h, 0, 0, c.width, c.height, gl.COLOR_BUFFER_BIT, gl.LINEAR);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    }
+    // Onto the canvas: stretched back up when it was drawn smaller, pixel for pixel when not
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, low.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, c.width, c.height, gl.COLOR_BUFFER_BIT, sc < 1 ? gl.LINEAR : gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   // Hands in the frames the GPU has finished, then starts timing this one. A few at a time at most: a query is cheap but it isn't nothing.
@@ -449,14 +451,25 @@ export class Renderer {
     if (this._timing.length >= 4) return false;
     const q = this._spareQ.pop() ?? gl.createQuery();
     gl.beginQuery(T.TIME_ELAPSED_EXT, q);
-    this._timing.push({ q, key: this.costKey, scale: this.drawScale });
+    this._timing.push({ q, key: this.costKey, scale: this.shownScale });      // perf9: what was really drawn, which mid-ease isn't a tier
     return true;
   }
 
-  // The smaller picture the governor draws into, remade when the size it wants changes
-  _lowTarget(scale = this.drawScale) {
-    const gl = this.gl, c = this.canvas;
-    const w = Math.max(2, Math.round(c.width * scale)), h = Math.max(2, Math.round(c.height * scale));
+  // perf9: the size drawn goes to the governor's a little at a time. All at once, a fine sheet went soft (or sharp) in one frame, which is a pop; now it's a short focus pull.
+  // Down is quick, a few frames, because frames are being missed while it's on its way. Up is slow: nothing's waiting on it.
+  _ease() {
+    const want = this.drawScale, now = performance.now(), dt = Math.min(0.1, Math.max(0, (now - (this._easeAt ?? now)) / 1000));
+    this._easeAt = now;
+    let s = this.shownScale ?? want;
+    if (s > want) s = Math.max(want, s - Math.max(0.025, (s - want) * 0.35));
+    else if (s < want) s = Math.min(want, s + DRAW_RISE * dt);
+    if (s > 0.995 && want >= 1) s = 1;
+    return (this.shownScale = s);
+  }
+
+  // The picture's own target (draw()). perf9: the canvas's size, drawn into a corner of when the governor wants it smaller, so a size between the tiers costs nothing to change to
+  _lowTarget() {
+    const gl = this.gl, c = this.canvas, w = c.width, h = c.height;
     let t = this.low;
     if (t && t.w === w && t.h === h) return t;
     if (!t) { t = this.low = { fbo: gl.createFramebuffer(), rb: gl.createRenderbuffer() }; }
