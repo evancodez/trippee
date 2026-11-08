@@ -6,7 +6,7 @@ export const flags = {
   // ways of moving
   slip: true, star: true, coin: true, snap: true,
   // transformations
-  shock: true, fall: true, iris: true,
+  shock: true, fall: true, iris: true, window: true,      // window (trans9): a screen ends by flying into the next pattern
   // fields and worlds
   river: true, arcade: true, blaze: true, octagrid: true, metamorphosis: true, labyrinth: true,
   // the director

@@ -26,7 +26,7 @@ export function runMoves(out, ctx) {
   for (const m of ctx.G.moves) {
     const move = MOVES[m.id];
     // src/score/woah.js: at either end of its time it's the plain sheet, so outside that it needn't be drawn with what it's drawn with. A sheet in space has flown on by its end (it lands flat, but where it's looking has travelled), so it's kept to the end of its gesture and through the transformation out of it: dropped there it jumped (Disclosure 217.42 s, pleats into a rise, 123 against 2.5)
-    if (m.gate && (ctx.t < m.from || (ctx.t > m.to && !move?.flies))) continue;
+    if (m.gate && (ctx.t < m.from || (ctx.t > m.to && !move?.flies && !m.into))) continue;      // trans9: a screen going into a Window stays up through the change
     if (move && flag(m.id)) move.write(out, { ...ctx, m });
   }
 }
