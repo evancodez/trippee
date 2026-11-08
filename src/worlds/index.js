@@ -27,7 +27,8 @@
 //   hear: { pulse, melody, tone, harmony, lung, threshold }    gains on the song, 1 by default. threshold: how much of the strong beats moves the threshold (gBeat is there either way).
 //   needs: ['wave']                      extras it waits for: they're in A.x by the time tables() runs. direct(score, A, M): its own director.
 //   fuller(slot)                         does this slot need the world's code that most of its patterns don't? That code goes in #ifdef WORLD_FULL in any hook, and is built into programs of its own. A program pays for its peak on every pixel, used or not.
-export const WORLDS = ['flower', 'retina', 'matter'];      // Dusk, Flyer and Pearl are kept in src/worlds/ but out of the strip for now: the owner asked to scrap them (2026-11-07)
+// Dusk, Flyer and Pearl are out of the strip for now (the owner asked to scrap them, 2026-11-07): their files are all still here, and adding an id back brings one back.
+export const WORLDS = ['flower', 'prism', 'retina', 'matter'];
 // Test worlds. They load like any other, and are only in the strip with ?worlds=test.
 export const TEST = ['mirror', 'numbers'];
 

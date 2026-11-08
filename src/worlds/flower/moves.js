@@ -40,6 +40,10 @@ const own = {
     out[OFF['f2.on']] = 1; out[OFF['f2.d']] = -1 + a * Math.sin(Math.PI * u) ** 2; out[OFF['f2.ph']] = 0.3 * surged(s * (m.each ?? 2));
     if (v.t1) out[OFF['p1.ay']] = 1;
   } },
+  // Swirl: on the strong beats the sheet is dragged round every flower, one way, and lets go, and then the other way, so petals sweep into paisley curls and straighten through the daisy they were. Slowest on the hit, the way a pendulum is at the top of its swing.
+  swirl: { write(out, { t, m }) { out[OFF['star._2']] += (m.amp ?? 1.1) * ampAt(m, t) * swing(evalTrack(clockOf(m), t)); } },
+  // Puff: every petal swells fat and round on the beat, and draws in thin and pointed after it, a flower breathing.
+  puff: { write(out, { t, m }) { const s = evalTrack(clockOf(m), t), v = Math.abs(swing(s)); out[OFF['field._2']] *= Math.exp(ampAt(m, t) * (m.amp ?? 0.9) * (2 * v - 1)); } },
   // Beads: bead strings come through every other band, on the petals and in between, run round the flowers and go again. On the strong beats. Anything with flowers can wear it.
   beads: { write(out, { t, m }) {
     const a = ampAt(m, t);

@@ -27,7 +27,7 @@ const inkOf = (song, score) => {
   return f;
 };
 const clamp01 = x => Math.max(0, Math.min(1, x));
-const POLE_SIZES = ['blobs.r1', 'blobs.r2', 'blobs.r3', 'p1.q', 'p2.q'].map(n => OFF[n]);
+const POLE_SIZES = ['blobs.r1', 'blobs.r2', 'blobs.r3', 'p1.q', 'p2.q'].map(n => OFF[n]), POLE_TURNS = ['blobs.a1', 'blobs.a2', 'blobs.a3', 'p1.ay', 'p2.ay'].map(n => OFF[n]), MOTIFS = OFF['field.b'];
 const PH0 = 3;      // about where a pattern's rings sit before the flow
 const BULGE = OFF['bulge.a'], TEETH = OFF['zig.a'], BEND = OFF['bend1.a'];
 const SWEEP = 1.2, SWEEP_LINES = 6;      // seconds from the line being born to the farthest showing: bands this bold are only about this many lines out from a flower to the corner
@@ -92,7 +92,8 @@ export default {
     const s = ctx.at(ctx.c);
     if (s) {
       // Lung and the strong beats: petal depth. A flower opens on the beat, and with the phrase.
-      const k = 1 + 0.3 * Math.min(s.lung, 1.2) + 0.18 * Math.min(s.pulse, 1.2);
+      // A garden of several flowers opens further on the strong beats than it used to. One that's the whole frame (a single motif, a peace sign, a smile) doesn't: every ring in the frame changing shape at once is the whole frame's brightness on the beat.
+      const many = POLE_SIZES.filter(p => A[p] >= 0.3).length >= 3, k = 1 + 0.3 * Math.min(s.lung, 1.2) + (many ? 0.26 : 0.16) * Math.min(s.pulse, 1.2);
       // A peace sign and a smile are drawn exactly at their depth, and past it their lines cross and the face tears down the middle. They take the beat in the rest of it.
       const tender = p => p?.id === 'flower.smile' || p?.id === 'flower.peace', kOf = p => (tender(p) ? 1 + 0.15 * (k - 1) : k);
       A[OFF['field.ph']] *= kOf((from ?? ctx.G)?.pattern); B[OFF['field.ph']] *= kOf(to?.pattern);
@@ -101,7 +102,12 @@ export default {
       for (const S of [A, B]) { S[BULGE] *= 1 + 0.5 * (p - 1); S[TEETH] *= 1 + 0.3 * (p - 1); S[BEND] *= 1 + 0.4 * (p - 1); }
       // The tune: whichever flower it's singing to swells, and the rest make room. Each pole has its place on the scale.
       const m = s.voiced * Math.min(1, s.gains?.tune ?? 1) * 0.16;
-      if (m > 0.002) for (const S of [A, B]) POLE_SIZES.forEach((p, i) => { if (S[p] > 0) { const d = s.melody * 0.32 - (i - 1.5) * 1.2; S[p] *= Math.exp(m * (Math.exp(-d * d) - 0.4)); } });
+      // A film pattern's own p1 and p2 are its own (how square, how tall), so only the three flowers it was given answer.
+      const poles = [[A, (from ?? ctx.G)?.pattern], [B, to?.pattern]].map(([S, p]) => [S, p?.group === 'film' ? 3 : 5]);
+      if (m > 0.002) for (const [S, n] of poles) POLE_SIZES.forEach((p, i) => { if (i < n && S[p] > 0) { const d = s.melody * 0.32 - (i - 1.5) * 1.2; S[p] *= Math.exp(m * (Math.exp(-d * d) - 0.4)); } });
+      // And the flowers turn with it: up the scale one way, down it the other, every other one against the rest, as if the tune were stirring them. Slowly: it's the phrase's line, not each note.
+      const turn = 0.32 * Math.max(-1.5, Math.min(1.5, s.melSlow ?? 0)) * Math.min(1, (s.gains?.tune ?? 1) * 1.3);
+      if (turn) for (const [S, n] of poles) POLE_TURNS.forEach((p, i) => { if (i < n && S[POLE_SIZES[i]] > 0 && !S[MOTIFS]) S[p] += i % 2 ? -turn : turn; });
     }
   },
   // src/score/woah.js casts these, by the music, on its own patterns and with its own landings. Space isn't in a mode's programs; folds and time are. Its own moves on a stay give way to a trick there.

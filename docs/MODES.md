@@ -4,6 +4,26 @@ The owner asked for modes that are worlds, plus music that is more engaging. Thi
 
 With no world on, the black and white film and Beyond stay byte-identical. `docs/DESIGN.md`'s "Never build" list and `docs/NEXT.md`'s "Do not build" list don't bind a world's own contents. They still bind the film. The owner's standing taste binds everything (below, and `docs/ENGINE.md`).
 
+## 0. Where the modes stand (round 8)
+
+The owner tried them all and kept three: black and white, colour (Beyond, the b key) and Flower Power. So v now goes film, Flower Power, Prism, film.
+
+- **Dusk, Flyer and Pearl are out of the strip for now.** Their files are all still in `src/worlds/`, their tests still load them by id, and putting an id back in `WORLDS` (`src/worlds/index.js`) brings one back. The placeholder ids with no file (acid, liquid, station, supergraphic, cut, polariscope) are gone from the list.
+- **Flower Power** (`src/worlds/flower.js`, `src/worlds/flower/`):
+  - Bolder inks: the pastel set (candy) and the brown one (harvest) are replaced by Cosmic (Peter Max's sun yellow and bubblegum on midnight and magenta) and Day-Glo (the blacklight poster). Lagoon is more saturated. None is saturated red by WCAG's measure.
+  - The film's own patterns, flowering: `bloomed()` in `flower/patterns.js` adds Flower's field to a film pattern's first family (and a check's or lattice's other lines, the other way), so its lines swell and bend round two or three flowers. A river, a lens, a current, a bow tie, a check, a kagome lattice, Riley's swarm and a wheel of rings and spokes. They're the group `film` in the casting, about a fifth of a film, and they Bud with the flowers.
+  - Nested Rooms is out of the rotation (still in the library): one motif that fills the frame, so its rings swung the whole frame wherever it was cast.
+  - Two new moves: Swirl (on the strong beats the sheet drags round every flower one way, then the other, so petals curl into paisley and straighten) and Puff (petals swell round on the beat and draw in pointed after it).
+  - Every Bud twists: the petals spiral in as the flowers close and spiral out the other way as they open as the next.
+  - The flowers turn with the tune's line (melSlow), each against its neighbour, and a garden of several opens further on the strong beats (a single flower that fills the frame doesn't, or the whole frame swings on the beat).
+- **Prism** (`src/worlds/prism.js`, `src/worlds/prism/`), new: the film's own patterns and direction, with the spectrum running through them.
+  - Each band is one flat ink. Its hue goes by how far its cell is from the middle of the frame, counted in bands of every family that's open, each by its own number less its offset. So rings are rings of spectrum, stripes mirror stripes of it about the middle, a check makes diamonds of it, and nothing changes at a landing (the offset and the number take the same whole turns), when a relay swaps two families' parts, or when a slide flips one. Spokes are a whole number of turns of colour round, so there's no atan cut; a spiral's colour runs along its arms.
+  - The white side wears a light wheel and the black side a deep one, both OKLCH at each hue's most vivid. The deep wheel is the light one in a mirror about red-orange, so yellow meets magenta, green meets violet, blue meets teal: two hues at every edge, and the pair is about as red as it is cyan, so a band going by hardly moves a tile's red against cyan (true complements moved it 210 out of 255 on average, the mirror 43). Neither wheel has a saturated red that counts: a deep red sinks to maroon, its neighbours with it.
+  - The bolder the pattern, the smaller the step in colour from one band to the next, because a big band going by is a change over a whole tile or the frame. On a surface (a tunnel, a floor, a room) or a very bold sheet it's calmer still: the deep side comes towards the light one and it keeps to a few neighbouring hues.
+  - The strong beats push the colour out across the bands (a flow clock surged on the beat). The song's size opens the spectrum, from a few neighbouring hues to most of the wheel. The tune bends it. The harmony leans the wheel a little, and each big arrival turns it, the biggest half way round. Those pour across the bands from the middle out, two turns of colour in 2.6 s, so a change is never a glow across a big flat shape.
+  - Where the colour would change faster than a pixel can show, or a family is closing up, it settles to the centre hue.
+  - A mode with no patterns of its own warms the film's extra programs too, one a frame, when it's chosen (engine.js), so the first riley or dial doesn't build its pipeline mid-film.
+
 ## 1. What the review changed
 
 The designers' reports were checked against the code. These are the changes that matter.

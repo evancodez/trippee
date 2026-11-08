@@ -1,4 +1,4 @@
-// Pearl: what no other test does. Muted, like every browser here.
+// Pearl (out of the strip for now, so off v; its file and this test still work by id): what no other test does. Muted, like every browser here.
 //   STAGE=sheet                        every pattern on one sheet, to judge them against each other. TIMES=20,21,22 for several moments, NAME=file
 //   STAGE=lands                        landings as sheets: LANDS=newton>silk:rack,bubbles>scales:drain,silk>nacre:breath, D=seconds. No song.
 //   STAGE=clicks                       every pattern in the library by a real click on its tile, and what it arrived by. On its own: the others stop the clock

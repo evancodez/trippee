@@ -80,7 +80,9 @@ export default {
     if (!hasField(a) || !hasField(b)) return melt.plan(a, b, ctx);
     // Nobody chose (a wander, or a film that didn't say): it isn't always the one thing. Which goes by the two patterns, so the same two always go the same way.
     if (!ctx.xform?.chosen) { const h = Math.abs(Math.round((a[OFF['field.k0']] + b[OFF['blobs.x1']] * 7 + a[OFF['blobs.y1']] * 13 + b[OFF['field.a']]) * 10)) % 5; if (h === 1) return melt.plan(a, b, ctx); if (h === 3) return tide.plan(a, b, { ...ctx, xform: { dir: 2 } }); }
-    return { kind: 'bud', onClock: true, ...partners(a, b) };
+    // Which way it twists goes by the two patterns, so the same two always go the same way, and the next pair likely the other.
+    const twist = Math.abs(Math.round((a[OFF['blobs.x1']] * 11 + b[OFF['blobs.y1']] * 17 + a[OFF['field.a']] + b[OFF['field.a']] * 3) * 10)) % 2 ? 1 : -1;
+    return { kind: 'bud', onClock: true, ...partners(a, b), twist };
   },
   write(st, A, B) {
     const x = st.x, from = x < 0.5 ? A : B, kept = STEPPED.map(n => from[n]), ta = A[TILE], tb = B[TILE], X = x * x * (3 - 2 * x);
@@ -95,9 +97,12 @@ export default {
     A[DEPTH] = depth;
     // Tiles grow as a whole, so the walls fly off the frame all the way to one flower, and don't all go at the start.
     if (ta !== tb) A[TILE] = Math.exp(lerp(Math.log(Math.max(ta, 0.08)), Math.log(Math.max(tb, 0.08)), X));
+    // The twist: as the flowers close the sheet winds round each of them, so the petals spiral in, and as they open as the next it unwinds the other way, so they spiral out. Nothing at either end, nothing at the middle where they're round.
+    if (st.plan.twist && !A[WHIP] && !A[TILE]) A[CURL] += TWIST * st.plan.twist * Math.sin(2 * Math.PI * x) * Math.min(1, 4 * x * (1 - x) + 0.25);
     st.two = false;
   },
 };
+const TWIST = 0.95, CURL = OFF['star._2'], WHIP = OFF['spare.a'];
 
 // The front's width as a share of its travel, how far it reaches, and how hard it pushes the sheet aside going by. Wide, so no line whips.
 const WIDE = 0.55, PUSH = 0.05;

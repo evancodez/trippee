@@ -1,4 +1,4 @@
-// Flyer: every pattern as it looks, how each change goes, real clicks. Muted. Say STAGE=sheet,lands,clicks,film.
+// Flyer (out of the strip for now, so off v; its file and this test still work by id): every pattern as it looks, how each change goes, real clicks. Muted. Say STAGE=sheet,lands,clicks,film.
 //   LAB_URL=http://localhost:5342/ STAGE=sheet node tools/lab.mjs tests/world-flyer.mjs --out lab-out/fly
 //   STAGE=film SONG=media/mgmt.mp3 FROM=40 TO=70 ...          frames of a song's film, with what it's wearing
 //   STAGE=lands SONG=media/mgmt.mp3 ...                       each landing of a film as a strip
