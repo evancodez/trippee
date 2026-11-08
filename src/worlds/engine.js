@@ -164,12 +164,11 @@ class WorldPrograms {
   // So the ones a change is about to need go through one scissored pixel on the real framebuffer, all in one frame, right after the click, and not in the middle of the flight or on the landing. The frame's own draw covers the pixel.
   warm(more = []) {
     const R = this.R, gl = this.gl;
-    // Plain and flight always. The fuller two if the world's own patterns wear something only they have, or if it has none of its own and draws the film's, most of which do (Prism: the first riley or dial would otherwise build its pipeline in the middle of the film). And any a change is about to draw with (changePrograms).
-    const fuller = !this.W._pool?.length || this.W._pool.some(p => { const S = base(p); return R._extra(S); });
+    // Plain and flight always. The fuller two if the world's own patterns wear something only they have. And any a change is about to draw with (changePrograms).
+    const fuller = (this.W._pool ?? []).some(p => { const S = base(p); return R._extra(S); });
     const list = [...new Set([0, FLIGHT, ...(fuller ? [EXTRA, EXTRA | FLIGHT] : []), ...(this.W.fuller ? [FULL, FULL | FLIGHT] : []), ...more])].filter(v => this.progs[v] && !this.warmed.has(v));
     if (!list.length) return Promise.resolve();
-    // One a frame: each first draw holds the GPU while it builds the pipeline, and all of them in one frame held the picture still for most of a second.
-    const one = v => new Promise(res => {
+    return new Promise(res => {
       const before = R.warm;
       R.warm = () => {
         if (before) before();
@@ -179,16 +178,17 @@ class WorldPrograms {
         gl.bufferSubData(gl.UNIFORM_BUFFER, 0, R.block);
         this.upload();
         // To the canvas and to a target like the governor's smaller one, which the GPU may build separately.
-        gl.useProgram(this.progs[v]);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, small.fbo); gl.viewport(0, 0, COVER_W, COVER_H); gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, R.canvas.width, R.canvas.height); gl.drawArrays(gl.TRIANGLES, 0, 3);
-        this.warmed.add(v);
+        for (const v of list) {
+          gl.useProgram(this.progs[v]);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, small.fbo); gl.viewport(0, 0, COVER_W, COVER_H); gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, R.canvas.width, R.canvas.height); gl.drawArrays(gl.TRIANGLES, 0, 3);
+          this.warmed.add(v);
+        }
         gl.disable(gl.SCISSOR_TEST);
         R.warm = null;
         res();
       };
     });
-    return list.reduce((p, v) => p.then(() => one(v)), Promise.resolve());
   }
 
   // What a frame needs: what the film would, without colour's plates, and whatever the world says only its fuller programs have (W.fuller).
