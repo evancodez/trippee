@@ -50,7 +50,7 @@ export class Renderer {
     this.ready = false;
     this.pushOn = false;
     this.wp = null;      // the world programs in use (src/worlds/engine.js). Null is the film, and nothing below does anything else.
-    this.warm = null;    // a world program waiting for its first draw
+    this._warmQ = [];    // programs waiting for their first draw, one a frame (warmSoon)
     this.drawScale = 1;
     this.parallel = gl.getExtension('KHR_parallel_shader_compile');
     // How long the GPU really took over each frame, for the governor. It knows within a few frames instead of after seconds of dropped ones. No extension, and it goes by the frame rate as before.
@@ -400,13 +400,39 @@ export class Renderer {
     return false;
   }
 
+  // modes9: a program's first draw, on its own frame. fn(canvas) draws one scissored pixel to a small target and, if canvas, to the canvas as well: the frame's own draw covers it, so it has to be in a frame.
+  // One queue, taken one at a time at the start of a frame's draw: two first draws in one frame were one long frame, and hooks chained one after another could lose each other and waited on however the frames came.
+  // Nothing drawing for a while (a hidden page, a test stepping by hand), and a timer takes them on the small target only, never the canvas, so nothing that waits on one waits on frames that aren't coming. Resolves with whether it reached the canvas.
+  warmSoon(fn) {
+    return new Promise(res => {
+      this._warmQ.push({ fn, res });
+      if (this._warmT) return;
+      const tick = () => {
+        this._warmT = null;
+        if (!this._warmQ.length) return;
+        if (performance.now() - (this._drewAt ?? 0) > 250) this._warmNext(false);
+        this._warmT = setTimeout(tick, 120);
+      };
+      this._warmT = setTimeout(tick, 120);
+    });
+  }
+  _warmNext(canvas) {
+    const w = this._warmQ.shift();
+    let ok = false;
+    try { w.fn(canvas); ok = canvas; } catch (e) { console.error('a program failed its first draw:', e); }
+    const gl = this.gl;
+    gl.disable(gl.SCISSOR_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    w.res(ok);
+  }
+
   // Slots and frame numbers have already been written into this.block
   draw() {
     const gl = this.gl, c = this.canvas;
     const F = this.frame, res = FRAME.res * 4;
     const low = this.drawScale < 1 ? this._lowTarget() : null;
     const w = low ? low.w : c.width, h = low ? low.h : c.height;
-    if (this.warm) this.warm();
+    this._drewAt = performance.now();
+    if (this._warmQ.length) this._warmNext(true);
     F[res] = w; F[res + 1] = h; F[res + 2] = w / h; F[res + 3] = this.pushOn ? 1 : 0;
     gl.bindFramebuffer(gl.FRAMEBUFFER, low ? low.fbo : null);
     gl.viewport(0, 0, w, h);

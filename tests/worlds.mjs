@@ -921,9 +921,15 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
     check(log, 'v from the film goes to the first world', s.world === 'mirror' && s.change);
     s = await landed(16000);
     await page.shot('strip-4-v');
-    await key('b'); await sleep(1000);
-    s = await state(); log('b', JSON.stringify(s));
-    check(log, 'b in a world goes to the film first', s.world === null && !s.colour && s.change, JSON.stringify(s));
+    // b starts the change straight away, unless the wander's own morph is under way: that's hurried to its end first (stage.settle, 1.5 s), as it is for a pick or a song arriving. This looked at 1 s, and its
+    // wait for the landing ran while the change hadn't begun, so it didn't wait: pressed just as a morph began (the wander's draws put one there once Prism was in the strip), that read as b stalling.
+    const morphing = await page.eval('(m=>m&&!m.handover?+m.x.toFixed(3):null)(app.stage._running(app.pictureT()))');
+    const tb = Date.now();
+    await key('b');
+    for (let i = 0; i < 60; i++) { s = await state(); if (s.world === null && s.change) break; await sleep(50); }
+    const late = (Date.now() - tb) / 1000;
+    log('b', JSON.stringify(s), `began after ${late.toFixed(2)} s${morphing != null ? `, the wander's morph at x ${morphing} when it was pressed` : ''}`);
+    check(log, 'b in a world goes to the film first', s.world === null && !s.colour && s.change && late < (morphing != null ? 2.2 : 0.6), JSON.stringify(s));
     for (let i = 0; i < 80 && (await state()).change; i++) await sleep(250);
     await sleep(600);
     s = await state(); log('b landed', JSON.stringify(s));
