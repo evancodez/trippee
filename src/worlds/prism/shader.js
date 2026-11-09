@@ -57,9 +57,15 @@ vec3 worldColor(int k0,int k1,float c){
   }
   // Lines finer than about 12 pixels a cycle at 720 lines (whatever the canvas) give up their colour steps too: there a sheet moving fast sweeps its colours through every tile faster than the eye can follow (MGMT 227 s, a fine floor going by).
   float f=(1.-smoothstep(.015,.05,g*a))*(1.-smoothstep(.04,.1,g*uF[8].y/720.));
-  u*=a;
   vec4 st=texelFetch(uWT,ivec2(clamp(int(a*ud*f*${REACH}.),0,255),0),0);
-  float h=st.x+st.z+.5*st.y*f*(1.-.85*calm)*sin(TAU*(u-uW[4].y));      // a surface going by fast (a floor, a tunnel) sweeps its colours with it: there it keeps to a few neighbouring hues (MGMT 227 s)
+  // prism12: a ladder round the wheel, not a fold back and forth: every band one step on from the band inside it, so the whole spectrum lies across the pattern, and on every strong beat each band's colour moves on to the next band (uW[4].y, in bands).
+  // The song's size stretches the step (quiet, near neighbours; loud, bigger leaps), except round spokes, where it has to come back to its own colour. A surface going by fast keeps to smaller steps (MGMT 227 s).
+  float lk=sl.w;
+#ifndef FLIGHT
+  if(two) lk=max(lk,uW[34].w);
+#endif
+  float W=lk>.5?1.:mix(.7,1.5,clamp((st.y-.2)/.58,0.,1.))*(1.-.5*calm);
+  float h=st.x+st.z+f*W*a*(u-uW[4].y);
   int i=int(fract(h)*256.)&255;
   vec3 L=texelFetch(uWT,ivec2(i,1),0).rgb;
   if(c>=1.) return gamma(L);

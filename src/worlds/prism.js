@@ -7,7 +7,7 @@
 import { OFF } from '../pattern/layout.js';
 import { wheels, HUES, sRGB } from './prism/wheel.js';
 import { DEFS, PHASE, COLOR } from './prism/shader.js';
-import { hearPrism, centreAt, flowAt, readR } from './prism/song.js';
+import { hearPrism, centreAt, flowBands, readR } from './prism/song.js';
 
 const POUR = 2.6;           // seconds for a change to go out two turns of colour across the bands
 const PALETTES = 256;
@@ -36,8 +36,8 @@ export function colourOf(S) {
     a = clamp(f / 36, 1 / 24, 1 / 6);
     calm = Math.max(S[SURF] > 0.5 ? 0.75 : 0, 0.7 * clamp((2.6 - f) / 1.6, 0, 1));
   }
-  if (!a) return [0.1, 0];
-  return [n ? Math.max(1, Math.round(a * n)) / n : a, calm];
+  if (!a) return [0.1, 0, 0];
+  return [n ? Math.max(1, Math.round(a * n)) / n : a, calm, n ? 1 : 0];      // prism12: the last says spokes lock the step, so the shader doesn't stretch it
 }
 // Where each family's structure stands at the middle of the frame, in lines (without its offset or its turns): the colour counts bands from there, so a sheet turning or zooming about somewhere far off doesn't sweep the colours across the frame.
 // The sheet's own view only, no warps: near enough, and it's smooth in time, which is all it has to be.
@@ -83,9 +83,9 @@ export default {
   },
   tables: (A, M) => hearPrism(A, M),
   uniforms(U, ctx) {
-    [U.a[0], U.a[2]] = colourOf(ctx.A); [U.b[0], U.b[2]] = colourOf(ctx.B);
+    [U.a[0], U.a[2], U.a[3]] = colourOf(ctx.A); [U.b[0], U.b[2], U.b[3]] = colourOf(ctx.B);
     centreOf(ctx.A, U.a.subarray(4, 8)); centreOf(ctx.B, U.b.subarray(4, 8));
-    U.a[1] = flowAt(ctx.score, ctx.t) % 64;
+    U.a[1] = flowBands(ctx.score, ctx.tables, ctx.t);      // prism12: in bands, a band a strong beat
   },
   // The film's own tricks, but not the ones in space, which a mode's programs don't have.
   woah: { gap: [30, 48], fond: { well: 1.3 } },      // well11: Time Well

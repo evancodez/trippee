@@ -73,3 +73,39 @@ export function flowAt(score, t) {
 }
 // A table of the song's, read anywhere (src/score/react.js keeps them at R.hz, on the collapsed axis)
 export const readR = (R, arr, c) => { if (!arr) return 0; const x = Math.max(0, Math.min(R.n - 1.001, c * R.hz)), i = Math.floor(x); return arr[i] + (arr[i + 1] - arr[i]) * (x - i); };
+
+// prism12: the colour flows out through the pattern, a band at a time. On every strong beat each band's colour moves on to the next band out (it surges just after the beat and glides into the next one, as the flow does),
+// and at every turn of the wheel (the song's sections) it turns round over FLIP seconds and flows the other way, in towards the middle. Counted in bands, so the shader's step from one band to the next is what a beat moves.
+export const BANDS_PER_PULSE = 1;
+const SURGE = 0.42, FLIP = 2.4;
+function pulseCount(R, tau, t) {
+  const P = R.pulses;
+  if (!P || P.length < 2) return t * 0.5;
+  if (t < P[0]) return (t - P[0]) / Math.max(P[1] - P[0], 0.5);
+  const N = P.length - 1;
+  if (t >= P[N]) return N + (t - P[N]) / Math.max(P[N] - P[N - 1], 0.5);
+  let lo = 0, hi = N;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (P[m] <= t) lo = m; else hi = m; }
+  const b0 = tau(P[lo]), b1 = tau(P[lo + 1]), x = Math.max(0, Math.min(1, (tau(t) - b0) / Math.max(b1 - b0, 1e-3)));
+  return lo + x + (SURGE / (2 * Math.PI)) * Math.sin(2 * Math.PI * x);
+}
+// The way the colour flows, +1 out and -1 in, turning round smoothly at each of the wheel's turns
+const dirAt = (steps, t) => { let s = 1; for (const p of steps) { const x = (t - p.t + FLIP / 2) / FLIP; if (x <= 0) break; s *= 1 - 2 * smoother(x); } return s; };
+const flows = new WeakMap();
+// flow = the integral of dir over the pulses = dir(t)·B(t) − ∫ B dir' dτ. The last part is only nonzero while it turns round, so it's baked once per song, finely, at HZ.
+export function flowBands(score, song, t) {
+  const R = score?.react;
+  if (!R || !score.tau || !song?.steps) return t * 0.5;
+  let F = flows.get(song);
+  if (!F || F.R !== R) {
+    const n = song.centre.length, C = new Float32Array(n), dt = 1 / 120;
+    let acc = 0, s0 = dirAt(song.steps, 0);
+    for (let i = 1; i < n; i++) {
+      for (let k = 1; k <= 6; k++) { const tt = (i - 1) / HZ + k * dt, s1 = dirAt(song.steps, tt); if (s1 !== s0) acc += pulseCount(R, score.tau, tt - dt / 2) * (s1 - s0); s0 = s1; }
+      C[i] = acc;
+    }
+    flows.set(song, F = { R, C });
+  }
+  const x = Math.max(0, Math.min(F.C.length - 1.001, t * HZ)), i = Math.floor(x), C = F.C[i] + (F.C[i + 1] - F.C[i]) * (x - i);
+  return BANDS_PER_PULSE * (dirAt(song.steps, t) * pulseCount(R, score.tau, t) - C);
+}
