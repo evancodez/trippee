@@ -310,7 +310,8 @@ export function init(app) {
       const decoded = await a.decodeAudioData(bytes.slice(0));
       if (token !== loadToken) return null;
       // warm11: the first world v goes to, built and first drawn while the song's heard in a worker (perf10 did it alongside the rehearsal, and ready came 8 s later). Then the next world, in calm stretches.
-      if (!app.manual && !app.R.bare) import('../worlds/engine.js').then(m => { m.warmAhead(app.R); m.warmCalm(app); }).catch(e => console.warn('the next world could not be warmed:', e));
+      let heard = false;
+      if (!app.manual && !app.R.bare) import('../worlds/engine.js').then(m => { m.warmAhead(app.R, undefined, () => !heard && token === loadToken); m.warmCalm(app); }).catch(e => console.warn('the next world could not be warmed:', e));
       const t0 = performance.now();
       let A = await cacheGet(key);
       song.fromCache = !!A;
@@ -325,6 +326,7 @@ export function init(app) {
       }
       if (token !== loadToken) return null;
       song.analyseSeconds = (performance.now() - t0) / 1000;
+      heard = true;
       stopSource();
       endedAt = 0; resting = false;
       buffer = decoded; duration = decoded.duration; offset = 0; playing = false; analysis = A;

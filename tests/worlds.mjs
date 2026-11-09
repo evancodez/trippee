@@ -899,8 +899,11 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
     await move(...n); await sleep(1200);
     const built = await page.eval(`[...(app.R.worldPrograms?.values()??[])].map(w=>[w.W.id,Object.keys(w.progs).length])`);
     check(log, 'pointing at a world starts building it', built.some(b => b[0] === 'numbers' && b[1] > 0), JSON.stringify(built));
-    await click(...n); await sleep(1000);
-    s = await state(); log('clicked numbers', JSON.stringify(s));
+    // warm11: how long a change takes to begin is up to the settle (a running morph is hurried, up to 1.5 s) and the first draws before it, one a frame, and those vary with the machine's load.
+    // A fixed look 1 or 1.5 s after the key failed now and then on a busy machine. So each of these waits for the change to begin, and says how long it took.
+    const begins = async (id, ms) => { const t0 = Date.now(); for (;;) { const q = await state(); if ((q.world === id && q.change) || Date.now() - t0 > ms) return [q, (Date.now() - t0) / 1000]; await sleep(100); } };
+    await click(...n);
+    let took; [s, took] = await begins('numbers', 5000); log('clicked numbers', JSON.stringify(s), `began after ${took.toFixed(2)} s`);
     check(log, 'clicking it starts the change', s.world === 'numbers' && s.change);
     await sleep(4000); await page.shot('strip-2-mid');
     for (let i = 0; i < 80 && (await state()).change; i++) await sleep(250);      // a change takes 9 seconds, or longer if it's been looked at and flashed
@@ -914,12 +917,12 @@ vec3 worldColor(int k0,int k1,float c){ ivec2 n=ivec2(mod(naiveCells(k0,k1),WROW
     // A world's first visit builds its programs before its change starts, which can take a few seconds (Flower, Matter): wait for it to have started before waiting for it to land.
     const begun = async (id, ms) => { const t0 = Date.now(); for (;;) { const q = await state(); if (q.world === id || Date.now() - t0 > ms) return q; await sleep(250); } };
     for (const id of after) { await key('v'); await sleep(1500); await begun(id, 15000); s = await landed(22000); check(log, `v goes on to ${id}`, s.world === id, JSON.stringify(s)); }
-    await key('v'); await sleep(1500);
-    s = await state(); log('v, from the last world', JSON.stringify(s));
+    await key('v');
+    [s, took] = await begins(null, 6000); log('v, from the last world', JSON.stringify(s), `began after ${took.toFixed(2)} s`);
     check(log, 'v from the last world goes round to the film', s.world === null && s.change);
     s = await landed(16000);
-    await key('v'); await sleep(1500);
-    s = await state(); log('v again', JSON.stringify(s));
+    await key('v');
+    [s, took] = await begins('mirror', 6000); log('v again', JSON.stringify(s), `began after ${took.toFixed(2)} s`);
     check(log, 'v from the film goes to the first world', s.world === 'mirror' && s.change);
     s = await landed(16000);
     await page.shot('strip-4-v');
