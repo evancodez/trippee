@@ -462,7 +462,8 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
       on = c.G;
     }
     // trans9: a screen that runs to its gesture's change doesn't shut: the change is a Window, and the camera flies on into the next pattern (src/score/xform/window.js)
-    const into = id === 'screen' && flag('window') && on.morph > 0 && !on.xform && !on.hero && g[g.indexOf(on) + 1] && bodyOf(on)[1] - Math.min(to, bodyOf(on)[1]) < 4 * bar;
+    const into = (id === 'screen' || id === 'forever') && flag('window')      // fx10: and a forever, into the sheet inside one of its rings
+       && on.morph > 0 && !on.xform && !on.hero && g[g.indexOf(on) + 1] && bodyOf(on)[1] - Math.min(to, bodyOf(on)[1]) < 4 * bar;
     const before0 = into ? keepOf(on) : null;
     if (into) {
       const D = Math.max(on.morph, Math.min(WINDOW_D * bar, 0.3 * (on.t1 - Math.max(from, on.t0))));

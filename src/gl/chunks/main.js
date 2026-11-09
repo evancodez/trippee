@@ -108,7 +108,12 @@ void main(){
   if(dv.w>5.5){ spaceTwo(p,pA,pz,irisB,spEdge2); limb=spEdge2; }
   else
 #endif
-  if(iris&&uF[F_XF2].x<0.){
+  if(iris&&uF[F_XF2].x<-1.5){
+    // fx10, the window into a Forever (src/score/xform/window.js): the next pattern is the sheet inside the tunnel's ring of ln radius xa.y, at its own scale times e^(xa.z - xa.y)
+    vec2 lc=dv.xy,d=p-lc; float lq=log(max(length(d),1e-9)); bool inB=lq<uF[F_XF2].y;
+    pz=inB?lc+d*exp(uF[F_XF2].z-uF[F_XF2].y):p; irisB=inB?1.:0.;
+  }
+  else if(iris&&uF[F_XF2].x<0.){
     // trans9, the window (src/score/xform/window.js): A is a screen, and the next pattern is in one of its windows, xa.y in from the camera. B is that window's own frame, so the camera lands in it exactly.
     vec4 d=uG[I_sfD],d2=uG[I_sfD2]; vec2 wc=d2.xy,z=wc+pow(d.x,d2.z)*(rot(d.y*d2.z)*(p-wc)); mat2 R=rot(-d.y);
     int nw=int(uF[F_XF2].y+.5); bool inB=d.x>0.;
