@@ -13,7 +13,7 @@
 // By hand (a pattern's drive and time): wellWith.
 import { OFF } from '../../pattern/layout.js';
 import { clamp, smoother, lerp, evalTrack } from '../curves.js';
-import { surged, clockOf } from './surge.js';
+import { clockOf } from './surge.js';
 import { momentsOf } from '../hear.js';
 import screen, { screenWith } from './screen.js';
 import { songNow, inBy } from './foldkit.js';
@@ -43,7 +43,9 @@ const laneAt = (K, t) => {
   return K.at(-1)[1];
 };
 // The turn on the strong beats: a twist one way through one, back through the next, so it never winds up and can go back to nothing at either end.
-const zig = s => { const n = Math.floor(s), f = s - n; return n % 2 ? 1 - f : f; };
+// wellfix12: a sine on the plain beat clock, not a zigzag on the surged one. The zigzag turned round at full speed on every strong beat, a jerk.
+// This one is fastest on the beat, as the zigzag was, but slows to turn round between beats, so it never reverses at speed. Through one beat one way, through the next back: it still never winds up.
+const zig = s => 0.5 * Math.sin(Math.PI * s);
 const wantWell = (want, dl) => { want.map = 'well'; want.now = NOW; want.step = STEP; want.D = dl / STEP; };
 
 // By hand there's no song to read: it looks ahead and back by turns, sixteen seconds round, through zero each way.
@@ -52,7 +54,7 @@ export const wellWith = (o = {}) => {
   return (out, c) => {
     if (c.G.moves?.some(m => m.id === 'well' || m.id === 'screen')) return;
     drive(out, c);
-    out[OFF.rot] += kick * zig(surged(timeClock(c)));
+    out[OFF.rot] += kick * zig(timeClock(c));
   };
 };
 export const wellTime = { id: 'well' };
@@ -71,7 +73,7 @@ export default {
   write(out, c) {
     screen.write(out, c);
     const { m, t } = c, k = m.into ? inBy({ ...m, close: 0 }, t) : inBy(m, t);
-    if (k > 0) out[OFF.rot] += m.kick * k * zig(surged(evalTrack(clockOf(m), t)));
+    if (k > 0) out[OFF.rot] += m.kick * k * zig(evalTrack(clockOf(m), t));
   },
   sheet(want, m, c) {
     if (c.hand) {
