@@ -866,8 +866,8 @@ async function buildFor(R, score, until, breathe) {
   if (W && built && !globalThis.app?.manual) built.then(() => there.warm(list)).catch(() => {});
   await on.whenBuilt(list);
   score.woahPrograms = { list, seconds: +((performance.now() - t0) / 1000).toFixed(2) };
-  // perf10: and the first world v goes to, at the first song's load, while the picture's only waiting: its first draws were 0.4 s and 0.3 s of frozen picture on the key, and two more of 0.25 s once its film had a time trick
-  if (!W && shown && !shown.bare && !shown._ahead && !globalThis.app?.manual) { shown._ahead = true; import('../worlds/engine.js').then(m => m.warmAhead(shown)).catch(e => console.warn('the next world could not be warmed:', e)); }
+  // perf10: the first world v goes to was warmed here: its first draws were 0.4 s and 0.3 s of frozen picture on the key, and two more of 0.25 s once its film had a time trick.
+  // warm11: the first world v goes to is now warmed from the start of the song's load (song.js), not here alongside the rehearsal.
 }
 const drawnNot = (R, score, t, edits) => { const h = score.world || score.handover?.change ? score.handover : null; if (h) score.handover = null; frame(score, t, R, edits); if (h) score.handover = h; };
 

@@ -309,6 +309,9 @@ export function init(app) {
       const a = context();
       const decoded = await a.decodeAudioData(bytes.slice(0));
       if (token !== loadToken) return null;
+      // warm11: the first world v goes to, built and first drawn from here, while the song's heard in a worker, and paced through the rehearsal until it plays (perf10 began it with the rehearsal, all at once). Then the next world, in calm stretches.
+      let played = false;
+      if (!app.manual && !app.R.bare) import('../worlds/engine.js').then(m => { m.warmAhead(app.R, undefined, () => !played && token === loadToken); m.warmCalm(app); }).catch(e => console.warn('the next world could not be warmed:', e));
       const t0 = performance.now();
       let A = await cacheGet(key);
       song.fromCache = !!A;
@@ -364,6 +367,7 @@ export function init(app) {
       lastPerf = 0; tEst = 0; needSnap = true;
       app.stage.morphFrom(snap, 0, song.arrival, { clocked: true });
       onProgress(1);
+      played = true;      // warm11: the first world's warm-up hands over to the calm one
       if (autoplay) song.play();
       if (cutComing) rehearseCut(cut, token);
       return song;
