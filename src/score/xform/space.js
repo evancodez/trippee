@@ -3,7 +3,10 @@
 import { OFF, FRAME } from '../../pattern/layout.js';
 import { clamp, lerp, smoother } from '../curves.js';
 
-import { kickAt, surgeAt, tuneAt, bigAt } from '../moves/space.js';
+import { kickAt as kickNow, surgeAt, tuneAt, bigAt } from '../moves/space.js';
+
+// audit10: a change's beat comes up over a sixth of a second, not 70 ms. A whole sheet heaving on that took two frames to swing (Wildflower 92 s, a flood on dots.lobes, 36/255 against 12)
+const kickAt = t => kickNow(t, 0.45, 0.16);
 
 const k = (x, a, b) => smoother((x - a) / (b - a));
 

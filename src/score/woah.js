@@ -433,6 +433,12 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     if (wish?.fits && !wish.fits(id, G, s)) return false;      // modes lane: what a mode says its own sheets can wear
     return true;
   };
+  // audit10: on a floor, a tunnel or a Relay the sheet's far off is the middle of the frame, so the balls, and the fold at their rim, came up out of the vanishing point as a white dot and shrank back into it: a thing laid on
+  // and taken off (PPP 253 and 272 s). Left out at the end, as OFF_CAST is, so everything else is read and scored and the take's dice fall as they did.
+  const pearlsSheet = G => !!G && flatSheet(base(G.pattern)) && !relayOf(G);
+  // audit10: a sheet carved for the dome or the planet runs on after its ball goes flat, and a second trick there was laid on a sheet already done with (Disclosure 206-214 s: a fan on space.planet, 91/255 a frame for 8 s)
+  // And in a riot the song's own shaking goes on over a ball, and a check flown over that fast was 70 to 90/255 a frame (Disclosure 200-214 s)
+  const skyTaken = (id, G) => (!!G?.pattern?.sky && !SKY_SET.has(id)) || (SKY_SET.has(id) && P?.register === 'riot');
   const canCarve = G => !world && !!film.remake && G.k != null && !G.moves?.some(m => m.woah) && !marches(G) && !G.hero;
   const canWear = (id, G) => directFits(id, G) || (canCarve(G) && (OWN[id] ? !!lib(OWN[id]) : !!OWN_IF[id]?.some(lib)));
 
@@ -616,7 +622,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
         }
       }
     }
-    return out.filter(x => (!OFF_CAST.has(x.id) || directing.woahOnly?.includes(x.id)) && !wish?.off?.includes(x.id)).sort((x, y) => y.v - x.v);      // modes lane: wish.off is a mode's own OFF_CAST
+    return out.filter(x => (!OFF_CAST.has(x.id) || directing.woahOnly?.includes(x.id)) && !wish?.off?.includes(x.id) && !(x.id === 'pearls' && !pearlsSheet(g[x.i])) && !skyTaken(x.id, g[x.i])).sort((x, y) => y.v - x.v);      // modes lane: wish.off is a mode's own OFF_CAST
   };
 
   // ---------------------------------------------------------------- the climax: what's saved
@@ -709,7 +715,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     const suits = id => (slot.f ? SUIT[id](slot.f) : 0) + (fond[id] ?? 0) * 0.2;
     const pool = slot.kind === 'change'
       ? CHANGES.filter(id => TRICKS.includes(id) && !OFF_CAST.has(id) && (slot.climax || !SAVED.has(id)))
-      : STR.filter(id => id !== 'rewind' && TRICKS.includes(id) && !OFF_CAST.has(id) && !wish?.off?.includes(id) && slot.to - slot.from >= LEAST[id] && directFits(id, slot.G));
+      : STR.filter(id => id !== 'rewind' && TRICKS.includes(id) && !OFF_CAST.has(id) && (id !== 'pearls' || pearlsSheet(slot.G)) && !skyTaken(id, slot.G) && !wish?.off?.includes(id) && slot.to - slot.from >= LEAST[id] && directFits(id, slot.G));
     const more = pool.filter(id => !slot.alts.includes(id)).sort((a, b) => suits(b) - suits(a));
     // What the film hasn't got elsewhere first, so a swap doesn't make a second screen or a second pearls
     const elsewhere = id => slots.filter(x => x !== slot && x.id === id).length;

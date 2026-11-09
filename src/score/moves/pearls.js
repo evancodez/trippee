@@ -14,7 +14,7 @@ import { cueFold, inBy, songNow, boldUp, writeChain, circleIn, circleOut, TAU } 
 const RIM = 2.3, REPS = 8, OFF_FRAME = 4;
 const list = [];
 function write(out, { k, n = 3, r = 0.62, far = 0.85, orbit = 0.12, S }) {
-  boldUp(out, k, 2.2);
+  boldUp(out, smoother(clamp(k * 3)), 2.2);      // audit10: bold first and fine last, so the balls go out over a bold sheet, not grey on a fine one (Wildflower 64-66 s)
   const a0 = orbit * S.sec + (TAU / n) * S.big, near = far * (1.18 - 0.36 * S.en), beat = S.s - Math.floor(S.s), which = ((Math.floor(S.s) % n) + n) % n;
   list.length = 0;
   list.push(circleOut(0, 0, RIM * (1 + 5 * (1 - smoother(clamp(k * 3))))));

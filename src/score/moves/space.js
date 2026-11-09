@@ -20,12 +20,12 @@ import { drawnScore } from '../drawing.js';
 
 const pulses = () => drawnScore()?.react?.pulses;
 // A strong beat just happened: a moment's rise before it, and it dies away.
-export function kickAt(t, tau = 0.45) {
+export function kickAt(t, tau = 0.45, rise = 0.07) {      // rise: how long it takes to come up to the beat (audit10)
   const P = pulses();
   if (!P || !P.length) return 0;
   let lo = 0, hi = P.length;
   while (lo < hi) { const m = (lo + hi) >> 1; if (P[m] <= t) lo = m + 1; else hi = m; }
-  const after = lo > 0 ? Math.exp(-(t - P[lo - 1]) / tau) : 0, before = lo < P.length ? smoother(1 - (P[lo] - t) / 0.07) : 0;
+  const after = lo > 0 ? Math.exp(-(t - P[lo - 1]) / tau) : 0, before = lo < P.length ? smoother(1 - (P[lo] - t) / rise) : 0;
   return Math.max(after, before);
 }
 // Going by more quickly into each strong beat and more slowly after it, the same distance on average: a position, so its speed is smooth and it never stops. In seconds of travel, per unit of surge.
