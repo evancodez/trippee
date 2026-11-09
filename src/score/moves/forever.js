@@ -15,12 +15,18 @@ import { cueFold, inBy, songNow, journey, boldUp, fanIn, writeLog } from './fold
 
 const FAR_OUT = 1.25;
 
+// fx10: how many pairs of rings are open, from the rim in, against how far in it is. Pair 0 is the first ring and the sheet inside it; past the third they're under two pixels at 1080p and all the rest open as one.
+// It goes as the square, so the first, which carries the whole picture, takes most of the way and the deeper ones come quicker, each about as many pixels a second as the last.
+const PAIRS = 3.2, pairsAt = k => PAIRS * Math.pow(clamp((k - 0.05) / 0.75), 2);
+
 function write(out, { k, off, n, inner, outer, tw, S, rot0 = 0.2 }) {
-  // The rim comes in from past the corners and the inner circle opens from a point, each at about the same speed across the frame. Then the mirrors part.
-  const c = smoother(clamp(k / 0.7)), rIn = Math.exp(inner) * c + 1e-3 * (1 - c);
+  // The rim comes in from past the corners. Then (fx10) each ring opens where it lies, out of the sheet: a mirror band widening at its circle while the sheet inside it draws back and gets smaller, one pair of rings after another, from the rim in.
+  // The sheet inside the deepest open one is the plain sheet, smaller, so nothing starts as a dot. Then the mirrors part.
+  const c = smoother(clamp(k / 0.7)), D = outer - inner, b = outer + (FAR_OUT - outer) * (1 - c), P = pairsAt(k);
   boldUp(out, k, 3);
   fanIn(out, smoother(clamp((k - 0.15) / 0.85)), n, rot0 + 0.3 * S.mel + 0.012 * S.sec);
-  writeLog(out, { a: Math.log(rIn), b: outer + (FAR_OUT - outer) * (1 - c), off, tw: tw * smoother(clamp((k - 0.85) / 0.15)) * (0.35 + 0.65 * S.en) });      // once the fan's first mirror is through the middle (fanIn): a twist about another centre tears
+  writeLog(out, { a: b - D, b, off, tw: tw * smoother(clamp((k - 0.85) / 0.15)) * (0.35 + 0.65 * S.en) });      // once the fan's first mirror is through the middle (fanIn): a twist about another centre tears
+  out[OFF['lf._1']] = P >= PAIRS ? 0 : 1 + P;
   out[OFF.rot] += 0.01 * S.sec * k;
 }
 
@@ -39,13 +45,13 @@ export default {
     if (!cueFold(m, ctx)) return null;
     m.inner ??= IN0; m.outer ??= OUT0; m.n ??= 6; m.tw ??= 0.45; m.speed ??= 0.42;
     m._D = m.outer - m.inner;
-    const go = m.from + m.open * 0.75, stop = m.stay ? m.to + 600 : m.to - m.close * 0.9;
+    const go = m.from + m.open * 0.75, stop = m.stay ? m.to + 600 : m.into ? m.to : m.to - m.close * 0.9;      // into (fx10): it doesn't shut, the flight comes to rest on a whole number as the change starts, and the change (a Window, src/score/xform/window.js) flies on into the next pattern
     if (stop - go < 2) return null;
     m._go = journey(m, { go, stop, speed: m.speed / (2 * m._D), lurch: 0.5, ramp: 2 * ctx.bar });
     return m;
   },
   write(out, c) {
-    const { m, t } = c, S = songNow(c), k = inBy(m, t), wholes = m._go(t), period = 2 * m._D;
+    const { m, t } = c, S = songNow(c), k = m.into ? inBy({ ...m, close: 0 }, t) : inBy(m, t), wholes = m._go(t), period = 2 * m._D;
     if (k <= 0) return;
     const off = -(wholes - Math.floor(wholes)) * period;      // at a whole number it's the same picture, exactly: that's how it gets out at the end
     write(out, { k, off, n: m.n, inner: m.inner, outer: m.outer, tw: m.tw, S });

@@ -1,4 +1,4 @@
-// Screen. The picture holds a smaller, turned picture of itself, which holds another: a camera pointed at its own monitor. The frame's own edge draws in and the picture goes back into it, a screen inside the sheet, and another
+// Screen. The picture holds a smaller, turned picture of itself, which holds another: a camera pointed at its own monitor. A window is cut in the sheet where it'll be and the sheet inside it draws back into it (fx10), a screen inside the sheet, and another
 // draws in from that one's edge, and so on down, each quicker than the last, as each is half the size; then the camera flies through them. At every whole level the frame is exactly what it was, so it never gets there. At the end the
 // windows shut from the inside out, each going back out to the edge of the one round it, while the camera flies on into the last of them: it fills the frame, and its edge goes out past the frame's, and that's the sheet as it was.
 // Nothing starts as a dot or ends as one. Each level is the same size against its own frame, so the bold shapes are as bold in the first window as out here, only smaller, and they're under a few pixels only over the last few pixels of the middle.
@@ -41,8 +41,8 @@ export default {
   cue(m, ctx) {
     if (!cueFold(m, ctx)) return null;
     m.S ??= 0.5; m.turn ??= 0.5; m.speed ??= 0.3; m.par ??= 1;
-    // It flies once it's all open, and on through the way out, into the last window, coming to rest as the way out does
-    const go = m.from + m.open, stop = m.stay ? m.to + 600 : m.to;
+    // It flies from halfway in (fx10: the camera's already moving as the first window opens, so it goes in to meet it), and on through the way out, into the last window, coming to rest as the way out does
+    const go = m.from + 0.5 * m.open, stop = m.stay ? m.to + 600 : m.to;
     if (stop - go < 2) return null;
     m._go = journey(m, { go, stop, speed: m.speed / Math.log(1 / m.S), lurch: 2, ramp: ctx.bar, unit: 2 });      // two levels: with each the negative of the last, one level on is the whole frame inverted
     return m;

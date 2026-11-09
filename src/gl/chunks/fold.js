@@ -5,7 +5,7 @@
 //             open 0: all 14 levels are open. 1 + x: x of them are, counting from the outside. A shut level is the same size as the one round it with no turn, so it's exactly nothing, and one opens by drawing in from its parent's edge: so the windows come in from the frame's own edge and go back out to it, one at a time, and nothing ever starts as a dot. Still counted, so its parity is the deepest level's, as it is with all of them open.
 //   mobius    the Riemann sphere rolling: z -> (az+b)/(cz+d). uG[sfM]: a, b. uG[sfM2]: c, d. All zero off.
 //   fan       mirrors through one centre, at every multiple of `al`, for any real al: an exact kaleidoscope only at pi/n, and always continuous, because the angle is folded after |th| and both sides of th = pi are the same. uG[sfF]: centre, al (0 off), its turn.
-//   log       the radius folds between two circles, again and again, in and out for ever. uG[sfL]: ln of the inner circle, ln of the outer (equal: off), how far the circles have flown, the twist. uG[sfL2]: their centre. A twist needs the fan on, and on the same centre, or it tears where th wraps.
+//   log       the radius folds between two circles, again and again, in and out for ever. uG[sfL]: ln of the inner circle, ln of the outer (equal: off), how far the circles have flown, the twist. uG[sfL2]: their centre, and how many pairs of rings are open (0: all; fx10). A twist needs the fan on, and on the same centre, or it tears where th wraps.
 //   chain     up to 8 generalised mirrors, a line or a circle: reflect what's on the far side, in order, up to `reps` times round. uG[sfM0+i]: a, bx, by, c. f = a|z|^2 - 2 b.z + c, with |b|^2 - ac = 1, and where f > 0 z becomes (z + b f) / (1 + a f). A line has a = 0.
 // par: every reflection also inverts the sheet, so each room is the negative of the next and the mirrors show as an edge. The phase jumps there, but gPh takes it after the gradient, so it's only the edge's own pixels: gFoldE takes those to their true coverage in main.js.
 export default `#ifdef FOLD
@@ -30,8 +30,9 @@ vec2 spaceFold(int b,vec2 z,inout float par){
     mat2 Rp=rot(-d.y*fr);
     for(int i=0;i<14;i++){
       if(i>=nOpen){
-        vec2 q=Rp*(z-c)/Sp;
-        if(abs(q.x)>d.z||abs(q.y)>d.w) break;
+        // fx10: the first window doesn't draw in from the frame's edge. It's cut where it'll be, at its size and turn, and the sheet inside it draws back into it: shut, that's the sheet exactly, so it opens out of the sheet itself
+        vec2 q=Rp*(z-c)/Sp,qb=i==0?R*(z-c)/d.x:q;
+        if(abs(qb.x)>d.z||abs(qb.y)>d.w) break;
         z=c+q; jac/=Sp; lv+=float(14-i);
         break;
       }
@@ -65,7 +66,19 @@ vec2 spaceFold(int b,vec2 z,inout float par){
     vec2 lc=uG[b+I_sfL2].xy,c=rot(f.w)*(z-lc);      // past the fan's fold, the angle's already in one wedge, so a twist can't tear where it wraps
     float r=max(length(c),1e-6),th=atan(c.y,c.x),lr=log(r),rho=lr+l.z-l.w*th,D=l.y-l.x,x=rho-l.x,mm=mod(x,2.*D);
     float rr=l.y-abs(mm-D);
-    if(flip){
+    // fx10: uG[sfL2].z 0, every ring is open. Else 1 + how many pairs of rings are, from the rim in. Past those, one pair is part open: a mirror band at its inner circle, w wide, and inside it the sheet as it was, smaller by e^2w. Shut (w 0) that's the plain sheet,
+    // so each pair opens out of the sheet where its circle is, as a band widening, and the sheet inside it draws back: nothing comes from a dot.
+    float lo=uG[b+I_sfL2].z,sD=l.y-rho;
+    if(lo>0.){
+      float np=floor(lo-1.),w=(lo-1.-np)*D,s1=sD-2.*D*np;
+      if(sD>=0.&&s1>=0.){
+        float y=s1<=D?s1:s1<=D+w?2.*D-s1:s1-2.*w;
+        rr=l.y-y; x=s1>D&&s1<=D+w?-D*.5:D*.5;
+        if(flip){ if(x<0.) par=-par; e=max(e,clamp(.5-min(min(abs(s1),abs(s1-D)),abs(s1-D-w))*r/sqrt(1.+l.w*l.w)/jac*pxs,0.,.5)); }
+        x=1e9;
+      }
+    }
+    if(flip&&x<1e8){
       if(mod(floor(x/D),2.)>.5) par=-par;
       float md=mod(x,D);
       e=max(e,clamp(.5-min(md,D-md)*r/sqrt(1.+l.w*l.w)/jac*pxs,0.,.5));
