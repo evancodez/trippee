@@ -11,7 +11,7 @@ import { base } from '../score/slot.js';
 import { wearWorlds } from '../score/frame.js';
 import { reactAt } from '../score/react.js';
 import { XFORMS } from '../score/xform/index.js';
-import { load } from './index.js';
+import { load, WORLDS } from './index.js';
 
 const HOOKS = { field: 'WORLD_FIELD', surface: 'WORLD_SURFACE', phase: 'WORLD_PHASE', warp: 'WORLD_WARP', preInk: 'WORLD_PREINK', T: 'WORLD_T' };
 const FILM_COLOR = 'vec3 worldColor(int k0,int k1,float c){ return film(c); }\n';
@@ -411,12 +411,29 @@ function changePrograms(R, from, to, warm) {
     }
     const wp = R.worldPrograms?.get(W);
     if (!wp || wp.failed) continue;
-    const list = [...new Set([...all, ...(W.fuller ? all.map(v => v | FULL) : [])])], need = list.filter(v => !wp.progs[v]), cold = list.filter(v => !wp.warmed.has(v));
+    const list = [...new Set([...all, ...(W.fuller ? all.map(v => v | FULL) : []), ...(W === to ? ownPrograms(W) : [])])], need = list.filter(v => !wp.progs[v]), cold = list.filter(v => !wp.warmed.has(v));
     if (!need.length && !(warm && cold.length)) continue;
     // One program's first draw a frame (wp.warm): all of them in one frame held the picture still for 0.6 s (Dusk into Flyer).
     waits.push((async () => { if (need.length) await wp.whenBuilt(need); if (warm) await wp.warm(list); })());
   }
   return waits.length ? Promise.all(waits) : null;
+}
+
+// perf10: what a world's own film draws with, past what its change needs: its time programs, which its films cast, and its folds. Built on its first draw, each froze the song for 0.25 s (Flower's TIME and TIME|FULL|FLIGHT).
+function ownPrograms(W) {
+  const b = [0, FLIGHT, EXTRA, EXTRA | FLIGHT, FOLD, FOLD | FLIGHT, FOLD | EXTRA | FLIGHT, TIME, TIME | FLIGHT];
+  return W.fuller ? [...b, ...b.map(v => v | FULL)] : b;
+}
+// perf10: the first world v goes to, built and warmed while a song's loading and nothing's playing yet (rehearse.js buildFor). Its change then has nothing left to build.
+export async function warmAhead(R, id = WORLDS[0]) {
+  const W = await loadWorld(id);
+  if (!W || R.bare) return;
+  await prepare(R, W);
+  const wp = R.worldPrograms.get(W);
+  if (wp.failed) return;
+  const list = ownPrograms(W);
+  await wp.whenBuilt(list);
+  await wp.warm(list);
 }
 
 function change(stage, to, opts) {

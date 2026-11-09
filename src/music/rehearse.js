@@ -8,7 +8,7 @@
 // A flight between two gestures can go either way, in or out. Where the way it chose spends too long in noise or a flat shape, the other way is tried, and the better one kept.
 //
 // Then the film is played through for jumps. A jump in brightness is the one thing that must never reach the screen, so a pattern that makes one sits out too.
-import { Renderer, TIME } from '../gl/renderer.js';
+import { Renderer, TIME, PLATES } from '../gl/renderer.js';
 import { frame } from '../score/frame.js';
 import { flag, hearing } from '../score/flags.js';
 import { fillSlot, noHorizon, withTravel } from '../score/slot.js';
@@ -860,9 +860,14 @@ async function buildFor(R, score, until, breathe) {
     await breathe();
   }
   const list = [...want], shown = globalThis.app?.R, there = W ? shown?.worldPrograms?.get(W) : shown;
-  there?.whenBuilt?.(list);
+  // perf10: on screen, colour's versions too, since b can come at any moment: a fold or a time trick in colour was built and first drawn in the middle of the song. And a world's are warmed as well as built.
+  const onScreen = !W && shown && !shown.bare ? [...new Set([...list, ...list.map(v => v | PLATES)])] : list;
+  const built = there?.whenBuilt?.(onScreen);
+  if (W && built && !globalThis.app?.manual) built.then(() => there.warm(list)).catch(() => {});
   await on.whenBuilt(list);
   score.woahPrograms = { list, seconds: +((performance.now() - t0) / 1000).toFixed(2) };
+  // perf10: and the first world v goes to, at the first song's load, while the picture's only waiting: its first draws were 0.4 s and 0.3 s of frozen picture on the key, and two more of 0.25 s once its film had a time trick
+  if (!W && shown && !shown.bare && !shown._ahead && !globalThis.app?.manual) { shown._ahead = true; import('../worlds/engine.js').then(m => m.warmAhead(shown)).catch(e => console.warn('the next world could not be warmed:', e)); }
 }
 const drawnNot = (R, score, t, edits) => { const h = score.world || score.handover?.change ? score.handover : null; if (h) score.handover = null; frame(score, t, R, edits); if (h) score.handover = h; };
 
