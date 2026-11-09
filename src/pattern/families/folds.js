@@ -8,6 +8,7 @@ import { limitWith } from '../../score/moves/limit.js';
 import { crumpleWith } from '../../score/moves/crumple.js';
 import { pearlsWith } from '../../score/moves/pearls.js';
 import { rollDrive } from '../../score/moves/roll.js';
+import { wellWith, wellTime } from '../../score/moves/well.js';      // well11
 
 const ZOOM = { id: 'zoom', name: 'zoom', path: 'scale', min: 0.5, max: 2.5, log: true };
 const TURN = { id: 'turn', name: 'turn', path: 'rot', min: -1.6, max: 1.6 };
@@ -31,4 +32,7 @@ export default [
   item('roll', 'Roll', { g: { fams: [plane(2.4, 30)] }, flow: { 'f0.ph': 1 }, drive: rollDrive }),
   item('rollwaves', 'Roll, Waves', { g: waves(2.2), drive: rollDrive }),
   item('pearlscheck', 'Pearls, Check', { g: check(1.4), drive: pearlsWith({ n: 3 }) }),
+  // well11: Time Well. The screen, with every window another moment: deeper looks ahead, then back, through zero each way, and the sheet twists on each beat in each window at its own moment
+  item('well', 'Time Well', { g: { fams: [plane(1.7, 30)] }, flow: { 'f0.ph': 1 }, drive: wellWith({ turn: 0.4 }), time: wellTime }),
+  item('wellcheck', 'Time Well, Check', { g: check(1.5, 15), drive: wellWith({ turn: 0.55 }), time: wellTime }),
 ];

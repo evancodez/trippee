@@ -88,5 +88,5 @@ export default {
     U.a[1] = flowAt(ctx.score, ctx.t) % 64;
   },
   // The film's own tricks, but not the ones in space, which a mode's programs don't have.
-  woah: { gap: [30, 48] },
+  woah: { gap: [30, 48], fond: { well: 1.3 } },      // well11: Time Well
 };

@@ -78,7 +78,7 @@ export default {
   },
   // src/score/woah.js casts these on the bold sheets, by the music. Never on the dots while they're dividing, and never on a sheet that's going to break: each of those is its own big moment.
   // Not limit, pearls or echo: their small tiles and rings swung a corner of the frame twice a second on these bold sheets (MGMT 158 s, PPP 89 s), and a mode has once.
-  woah: { tricks: ['crumple', 'roll', 'slit'], fond: { crumple: 1.2, roll: 0.8, slit: 0.6 }, gap: [30, 50], least: 6,
+  woah: { tricks: ['crumple', 'roll', 'slit', 'well'], fond: { well: 1.2, crumple: 1.2, roll: 0.8, slit: 0.6 }, gap: [30, 50], least: 6,      // well11: Time Well
     fits: (id, G, S) => !G.mitosis && !G.shatter && G.pattern.group !== 'cells' && S[OFF['surf.kind']] < 0.5 && S[OFF['fold.n']] < 2 },
   // Changes take a little longer than the film's: a flight over bold shapes in less swings a tile more than once a second.
   pace: { bars: [10, 8, 6, 5, 4], morph: [7, 10], most: 20 },

@@ -3,7 +3,7 @@
 //
 // A slit-scan with no frames kept: a frame is a pure function of t, so "the picture a moment ago" is only some numbers. The table holds how the camera and each family's phase differ at 48 moments, from what they are
 // now. Each pixel picks its own moment and reads the table, so it's looking at the sheet as it was then, or as it's going to be. The lines stay exact: it all goes in before the gradient.
-//   uT[0]  x: the map (0 off, 1 sweep, 2 target, 3 wave, 4 spiral, 5 cells), y: how many bands it's cut into (0 none), z: the wave's phase, w: 1 when the figure is you, from the webcam (uCamo), in place of the capsules
+//   uT[0]  x: the map (0 off, 1 sweep, 2 target, 3 wave, 4 spiral, 5 cells, 6 well: by how deep in a screen's windows, src/score/moves/well.js), y: how many bands it's cut into (0 none), z: the wave's phase, w: 1 when the figure is you, from the webcam (uCamo), in place of the capsules
 //   uT[1]  x, y: its centre; z, w: its direction
 //   uT[2]  x: its reach, in picture units; y: the wave's or the cells' frequency; z: the cells' turn
 //   uT[3]  x: Ghost: how far what's inside the figure has slid, in cycles; y: how many capsules; z: how far the sheet inside it has turned; w: how far it's zoomed. uT[9] x, y: about where
@@ -50,7 +50,7 @@ vec2 timeWarp(vec2 p0,vec2 p){
   }
   if(uT[5].x!=0.) gFringe=uT[5].x*figH(p);
   vec4 a=uT[0];
-  if(a.x<.5) return p;
+  if(a.x<.5||a.x>5.5) return p;      // the well picks its moment inside the fold, by window (wellAt)
   vec4 m=uT[1]; vec2 d=p0-m.xy; float e;
   if(a.x<1.5) e=.5+.5*dot(d,m.zw)/uT[2].x;
   else if(a.x<2.5) e=length(d)/uT[2].x;
@@ -64,6 +64,18 @@ vec2 timeWarp(vec2 p0,vec2 p){
   gTimePh=mix(uT[${T_B}+2*k+1],uT[${T_B}+2*k+3],f);
   return rot(c.y)*p*exp(c.x)+c.zw;
 }
+// Time Well (well11): each of a screen's windows is another moment of the song. L is how many windows deep this pixel is, counted from where the camera is (whole levels less the flight, so it's continuous as the camera flies on), and each level is uT[2].x of the table
+// further along, with uT[1].x of it before the first window: the frame itself is near now, and deeper is the future in a build and the past in a breakdown. What's moved: the camera and each family's phase, as with every other map, in the window's own coordinates.
+#ifdef FOLD
+vec2 wellAt(float L,vec2 c,vec2 z){
+  if(uT[0].x<5.5) return z;
+  float e=clamp(uT[1].x+L*uT[2].x,0.,1.)*${(T_N - 1).toFixed(1)};
+  int k=int(min(e,${(T_N - 2).toFixed(1)})); float f=e-float(k);
+  vec4 q=mix(uT[${T_B}+2*k],uT[${T_B}+2*k+2],f);
+  gTimePh=mix(uT[${T_B}+2*k+1],uT[${T_B}+2*k+3],f);
+  return rot(q.y)*z*exp(q.x)+q.zw;
+}
+#endif
 // Fraser and Wilcox, and Kitaoka's Rotating Snakes. Black, dark, white, light, over and over: the eye reads a drift from black to dark, and white to light, in a picture that isn't moving at all, most of all when it's just been nudged.
 // Each half cycle of the family that runs along keeps its own colour for its first half and takes a tone for its second, and the next row the other way about. It's coverage: how much of the pixel a line much finer than a pixel would have covered.
 #ifndef FLIGHT

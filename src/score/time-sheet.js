@@ -14,7 +14,7 @@ import { T_N, T_B, T_C, T_R, T_G, T_ALL, CAPS, BUMPS } from '../gl/chunks/time.j
 const now = new Float32Array(SLOT_FLOATS), tmp = new Float32Array(SLOT_FLOATS), T = new Float32Array(T_ALL * 4);
 const Fh = new Float32Array(FRAME.hear * 4 + 40), Hm = FRAME.hear * 4;
 const PH = Array.from({ length: FAMILIES }, (_, i) => OFF[`f${i}.ph`]);
-const MAPS = { sweep: 1, target: 2, wave: 3, spiral: 4, cells: 5 };
+const MAPS = { sweep: 1, target: 2, wave: 3, spiral: 4, cells: 5, well: 6 };      // well11: well picks by window, in the fold (chunks/time.js wellAt): T[4] where now is, T[8] the table a level
 const MOSTLY = { sweep: 0.5, target: 0, wave: 0.5, spiral: 0, cells: 0.5 };
 
 // The song's camera as a similarity: what takes where it is now to where it was at that moment.
@@ -82,6 +82,7 @@ function movesSheet(st, score, R, edits, tReal, phiOf, walkT) {
     T[4] = want.cx ?? 0; T[5] = want.cy ?? 0; T[6] = want.map === 'spiral' ? want.wind ?? 1 : ca; T[7] = want.map === 'spiral' ? want.arms ?? 1 : sa;
     if (want.map === 'cells') T[10] = a;
     T[8] = want.reach ?? (want.map === 'target' ? Math.hypot(aspect, 1) : Math.abs(aspect * ca) + Math.abs(sa)); T[9] = want.wave ?? 2;
+    if (want.map === 'well') { T[4] = want.now; T[8] = want.step; }      // well11
     table(want, st, score, edits, tReal, phiOf, walkT, G, t);
   }
   const g = want.ghost;
