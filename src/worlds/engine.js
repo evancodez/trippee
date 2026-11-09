@@ -467,7 +467,9 @@ export function warmCalm(app) {
 }
 async function calmStep(app, R, lastAt, setLast) {
   const stage = app.stage, song = app.song;
-  if (app.manual || document.hidden || !song?.analysis || app.ui?.song?.state === 'listening') return;
+  // Not while a song plays (lead, round 11): every first draw holds the picture for 0.2 to 0.8 s, and held frames in a playing song are the stutter the owner asked to be rid of.
+  // Paused, or before it starts, the picture can wait. A mode reached before then still builds at the key, as in v2.9.
+  if (app.manual || document.hidden || !song?.analysis || song.playing || app.ui?.song?.state === 'listening') return;
   const at = WORLDS.indexOf(stage.world?.id ?? null), id = WORLDS[at + 1];       // the film: the first world. The last: the film, which has its own
   if (!id) return;
   const W = await loadWorld(id);
