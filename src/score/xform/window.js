@@ -16,8 +16,8 @@ export const isScreen = a => a[OFF['sf.on']] > 0.5 && a[OFF['sf.S']] > 0;
 // towards you with the rest of the tunnel, one ring among the others, and the camera flies through it. The ring fills the frame and its edge goes out past the corners, and that's the next pattern, plain.
 export const isTunnel = a => a[OFF['sf.on']] > 0.5 && a[OFF['lf.b']] > a[OFF['lf.a']];
 const LAND = 0.85;      // ln of the ring's radius at the landing: the frame's corners are at .71
-// tunnel11: where it starts. Not the sixth ring in, which is 1.4 px across at 1080p and comes out of the vanishing point as a dot: the deepest ring that's still 40 px or so across (ln r -3.4, a half-height being 1),
-// which with forever's own rings is the third. And the next pattern in it is a far wall behind the ring: it comes towards you at DEPTH of the ring's pace, so it starts readable, at about an eighth of its size, not a sixtieth, and grows with the flight to exactly itself at the landing.
+// tunnel11: where it starts. Not the sixth ring in, which is 1.4 px across at 1080p and comes out of the vanishing point as a dot: the deepest ring that's still 100 px or so across (ln r -2.5, a half-height being 1),
+// which with forever's own rings is the second. And the next pattern in it is a far wall behind the ring: it comes towards you at DEPTH of the ring's pace, so it starts readable, at about a fifth of its size, not a sixtieth, and grows with the flight to exactly itself at the landing.
 const LMIN = -2.5, DEPTH = 0.5;
 
 export default {
@@ -55,7 +55,7 @@ function tunnel(st, A, B, F) {
   A[OFF['lf.off']] = R0 - R; A[OFF['lf._1']] = 0;
   A[OFF['lf.tw']] *= 1 - smoother(clamp(x / 0.3));      // the rings go round before the one that holds it is big enough to see, so its edge is a ring of the tunnel
   F[Dv] = A[OFF['lf.x']]; F[Dv + 1] = A[OFF['lf.y']]; F[Dv + 2] = 1; F[Dv + 3] = 5;
-  F[X2] = -2; F[X2 + 1] = x >= 1 ? 9 : R; F[X2 + 2] = R + DEPTH * (LAND - R);      // the shader scales the sheet inside by e^(z - y)
+  F[X2] = -2; F[X2 + 1] = x >= 1 ? 9 : R; F[X2 + 2] = x >= 1 ? 9 : R + DEPTH * (LAND - R);      // the shader scales the sheet inside by e^(z - y): at the end, all of it is the next pattern at exactly its own scale
   const by = st.theta - lerp(st.thA, st.thB, T);
   A[OFF.theta] = st.thA + by; B[OFF.theta] = st.thB + by;
   F[FRAME.weight * 4 + 1] = F[FRAME.weight * 4];
