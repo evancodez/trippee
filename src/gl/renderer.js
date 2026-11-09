@@ -50,6 +50,7 @@ export class Renderer {
     this.frame = this.block.subarray(2 * SLOT_FLOATS);
     this.ready = false;
     this.pushOn = false;
+    this.wp2 = null;     // modes11: the other world's, through the middle of a change between two
     this.wp = null;      // the world programs in use (src/worlds/engine.js). Null is the film, and nothing below does anything else.
     this._warmQ = [];    // programs waiting for their first draw, one a frame (warmSoon)
     this.drawScale = 1;
@@ -456,13 +457,24 @@ export class Renderer {
     if (this.wp) this.wp.upload();
     if (this.timeOn && this.camoField) this._camoBind(prog);
     const timing = this._timeBegin(F);
+    if (this.wp) this.worldBlend(true);      // modes11
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     if (timing) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
+    if (this.wp2 && this.wp && !this.wp.block[0]) this.wp2.over(F);
+    if (this.wp) this.worldBlend(false);      // modes11: a change between two worlds draws the other one over its middle (src/worlds/engine.js)
     // Onto the canvas: stretched back up when it was drawn smaller, pixel for pixel when not
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, low.fbo);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
     gl.blitFramebuffer(0, 0, w, h, 0, 0, c.width, c.height, gl.COLOR_BUFFER_BIT, sc < 1 ? gl.LINEAR : gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  // modes11: a world's programs always draw blended, the way a change between two draws the other one over the frame (src/worlds/engine.js over). Blending is part of the GPU's pipeline, so one
+  // way of drawing is one build: drawn over only in a change, each program built its pipeline a second time there, 200 to 600 ms. Alpha is 1 except over a change's middle, so a plain frame is exactly what it was.
+  worldBlend(on) {
+    const gl = this.gl;
+    if (!on) { gl.disable(gl.BLEND); return; }
+    gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   }
 
   // Hands in the frames the GPU has finished, then starts timing this one. A few at a time at most: a query is cheap but it isn't nothing.

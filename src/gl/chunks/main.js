@@ -308,6 +308,7 @@ void main(){
 #ifdef WORLD_COVER
   col=vec3(c);
 #else
+  float wOver=1.;      // modes11
   // The colour stage. c is already what the planner, the sound and the hand read, and it stays exact: colour is worked out beside it, never instead of it. uW[0].x: the coverage draw, as the film draws it, for the planner's look.
 #ifdef FLIGHT
   vec3 wFilm=film(c);
@@ -318,7 +319,7 @@ void main(){
     wAcross=fract(2.*length(p0-dv.xy));      // with no bands to go by, across rings round the focus
     float wc=wBand(jo*FAM,(jo+1)*FAM),wv=1.;      // the outer pattern's band here: each changes at its own edges, in its own time
     // A change of world: this world's inks drain from the film, or arrive in it, band by band. Past the end of either it's exactly the film's frame, and nothing's worked out.
-    if(uW[1].z!=0.){ wv=wFront(wShare(uW[0].z,uW[0].w,wc,p0)); if(uW[1].z<0.) wv=1.-wv; }
+    if(uW[1].z!=0.){ wv=wFront(wShare(uW[0].z,uW[0].w,wc,p0)); if(uW[1].z<0.) wv=1.-wv; if(abs(uW[1].z)>1.5){ wOver=wv; wv=1.; } }      // modes11: 2 and -2, drawn over another world's frame, by as much as this share
     if(wv>0.){
       float ws=wFront(wShare(uW[1].w,.6,wc,p0,dv.xy));
       vec3 wa=ws<1.?worldColor(0,FAM,c):vec3(0.),wb=ws>0.?worldColor(FAM,2*FAM,c):vec3(0.);
@@ -330,5 +331,9 @@ void main(){
 #endif
 #endif
 #endif
+#if defined(WORLD)&&defined(FLIGHT)&&!defined(WORLD_COVER)
+  outColor=vec4(col,wOver);
+#else
   outColor=vec4(col,1.);
+#endif
 }`;
