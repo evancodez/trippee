@@ -184,7 +184,8 @@ class WorldPrograms {
       gl.bufferSubData(gl.UNIFORM_BUFFER, 0, R.block);
       this.upload();
       gl.useProgram(this.progs[v]);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, small.fbo); gl.viewport(0, 0, COVER_W, COVER_H); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, small.fbo); gl.viewport(0, 0, COVER_W, COVER_H);
+      R.worldBlend(true); gl.drawArrays(gl.TRIANGLES, 0, 3); R.worldBlend(false);      // modes11: blended, as the picture draws a world (renderer.js worldBlend)
     }).then(() => { delete this.warming[v]; this.warmed.add(v); });
   }
 
@@ -214,6 +215,22 @@ class WorldPrograms {
     if (this.tableDirty) { this.table.upload(); this.tableDirty = false; }
     gl.activeTexture(gl.TEXTURE0);
     if (this.trace) this.trace.bind();
+  }
+
+  // modes11: the other world of a change, drawn over the frame just drawn, in the same target, its inks where its share of the change says (alpha). The renderer calls it (renderer.js draw).
+  over(F) {
+    const R = this.R, gl = this.gl, keep = R.variant, prog = this.program(F);
+    R.variant = keep;
+    if (!prog) return;
+    gl.useProgram(prog);
+    if (R.timeOn) {
+      let loc = R._tLocs.get(prog);
+      if (loc === undefined) R._tLocs.set(prog, loc = gl.getUniformLocation(prog, 'uT'));
+      if (loc) gl.uniform4fv(loc, R.timeT);
+    }
+    this.upload();
+    R.worldBlend(true);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   // The planner's look: a slot on its own, in this world's fields, as coverage.
@@ -307,31 +324,53 @@ function letGo(st, geo) {
   for (const k of ['A', 'B', 'F']) { const S = st[k], H = held[k]; for (let i = 0; i < S.length; i++) if (S[i] !== H[i]) S[i] = H[i] + (S[i] - H[i]) * geo; }
 }
 
+// modes11: a change from one world to another doesn't pass through the plain film. Its middle, MERGE_A to MERGE_B of the flight, has neither world's own geometry (THE RULE in index.js), so both programs draw the same lines,
+// and there the other world is drawn over the frame as well (WorldPrograms.over), its inks taking the bands patch by patch, the way the modes9 change came in: the old colours flow straight into the new.
+const MERGE_A = 0.36, MERGE_B = 0.64;
 function writeWorld(st, score, R, edits) {
   // A change whose flight is still waiting on its plan is at its start: the world it's leaving, or the film. It was the world it's going to, at full ink, for the frames until the plan came (about 0.4 s), and then black and white: a pop every time anyone went into a mode.
   const h = score.handover, live = !!h?.change && (handoverOn(h, st.t) || !h.plan), waiting = live && !h.plan, ch = live ? h.change : null;
   // From the film there's nothing to drain first: the inks start arriving straight away, over the whole flight, not after half of it in black and white.
   // Until then a world's plain program would draw its inks in full (only a flight's program brings them in), so from the film it's the film.
   const x = !waiting && st.plan ? st.x : 0, fresh = !!ch && !ch.from, leaving = !!ch && !fresh && x < 0.5, W = ch ? (waiting && fresh ? null : leaving ? ch.from : ch.to) : score.world;
+  R.wp2 = null;
   if (!W) { if (R.wp) { R.wp = null; R.world = null; } return; }
   const wp = R.worldPrograms?.get(W);
   if (!wp?.ready || wp.failed) { R.wp = null; R.world = null; return; }
   R.wp = wp; R.world = W;
+  const { A, B } = st;
+  // modes11: world to world. The geometry goes in the first stretch and comes in the last, and in between the inks change hands.
+  const pair = !!ch && !!ch.from && !!ch.to && !waiting, m = pair ? clamp((x - MERGE_A) / (MERGE_B - MERGE_A)) : 0;
+  let geo = 1;
+  if (ch) {
+    geo = pair ? (leaving ? 1 - smoother(x / MERGE_A) : smoother((x - MERGE_B) / (1 - MERGE_B))) : leaving ? 1 - smoother(x / 0.45) : smoother((x - 0.55) / 0.45);
+    quietForeign(A, leaving ? geo : 0); quietForeign(B, leaving ? 0 : geo);
+  }
+  const E = wp.U.e;
+  if (!ch) { E[2] = 1; E[6] = 0; }
+  else if (pair) { E[2] = 1; E[6] = 0; }      // its own inks in full: what the other draws over it says where they've gone
+  else {
+    // modes9: from the film the inks start flowing in at once. Into the film the old ones hold on longer and drain right up to the middle.
+    const hl = clamp(x / 0.5), ha = clamp((x - 0.5) / 0.5);
+    E[2] = fresh ? clamp(x / 0.85) : leaving ? hl * hl : 1 - (1 - ha) * (1 - ha);
+    E[6] = leaving ? -1 : 1;
+  }
+  writeOne(W, wp, st, score, R, edits, ch, leaving, geo, waiting);
+  if (pair && m > 0 && m < 1 && R === globalThis.app?.R) {      // the screen's only: a rehearsal reads coverage, which is the same either way
+    const W2 = leaving ? ch.to : ch.from, wp2 = R.worldPrograms?.get(W2);
+    if (wp2?.ready && !wp2.failed) {
+      const E2 = wp2.U.e;
+      E2[2] = m; E2[6] = leaving ? 2 : -2;      // drawn over: the new world's inks where they've arrived, or the old one's where they haven't gone yet
+      writeOne(W2, wp2, st, score, R, edits, ch, !leaving, 0, waiting);
+      R.wp2 = wp2;
+    }
+  }
+}
+function writeOne(W, wp, st, score, R, edits, ch, leaving, geo, waiting) {
   const { F, A, B } = st, U = wp.U, E = U.e;
   F[FRAME.plate * 4 + 1] = 0;      // a world has no second plate
   E[0] = 0;
   E[1] = W.hear?.threshold ?? 1;
-  let geo = 1;
-  if (ch) {
-    const out = 1 - smoother(x / 0.45), inn = smoother((x - 0.55) / 0.45);
-    // modes9: from the film the inks start flowing in at once. Between two worlds the old ones hold on longer and drain right up to the middle, and the new ones start flowing straight after it and come on quickly, so the picture is only
-    // black and white around the one frame where the program changes. It was 0.45 to 0.55 of the flight (1.3 s), and with the drain's and the arrival's thin ends three to four seconds of the plain film. The flight is slowest there, so it isn't a rush.
-    const hl = clamp(x / 0.5), ha = clamp((x - 0.5) / 0.5);
-    E[2] = fresh ? clamp(x / 0.85) : leaving ? hl * hl : 1 - (1 - ha) * (1 - ha);
-    E[6] = leaving ? -1 : 1;
-    geo = leaving ? out : inn;
-    quietForeign(A, leaving ? out : 0); quietForeign(B, leaving ? 0 : inn);
-  } else { E[2] = 1; E[6] = 0; }
   E[3] = STAGGER;
   E[7] = waiting ? 0 : st.x;
   E[14] = geo;
@@ -488,6 +527,16 @@ async function calmStep(app, R, lastAt, setLast) {
   wp._warmOne(cold);
 }
 
+// modes11: with a song playing, a change is timed to it. The new world's inks finish arriving (MERGE_B, or the end into or out of the film) on a section's first beat if one's near, or else on a bar's.
+// Between 12 and 15 seconds, so a flight over bold shapes never reads more flashes than at 13.
+function landing(app, from, to) {
+  const A = app.song?.analysis, song = app.song;
+  if (!A?.bars?.length || !song?.playing || app.manual || !app.clock) return null;
+  const now = app.clock(), at = from && to ? MERGE_B : 1, lo = now + 12 * at, hi = now + 15 * at, mid = now + CHANGE_S * at;
+  const near = list => { let best = null; for (const v of list) if (v >= lo && v <= hi && (best === null || Math.abs(v - mid) < Math.abs(best - mid))) best = v; return best; };
+  const hit = near((A.segments ?? []).map(s => s.t0)) ?? near(A.bars);
+  return hit === null ? null : (hit - now) / at;
+}
 function change(stage, to, opts) {
   const app = stage.app, song = app.song, t = app.pictureT(), snap = stage.snapshot(t), from = stage.world ?? null;
   if (from === to) return;
@@ -514,7 +563,7 @@ function change(stage, to, opts) {
     }
   }
   stage.score = stage.score;      // stamped
-  stage.morphFrom(snap, T, opts.dur ?? CHANGE_S, { world: from, noGlide: true });
+  stage.morphFrom(snap, T, opts.dur ?? landing(app, from, to) ?? CHANGE_S, { world: from, noGlide: true });
   if (from && snap.score?.world === from) stage.score.handover.change.score = snap.score;      // the film the world on its way out was showing: writeWorld
 }
 
