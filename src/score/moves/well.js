@@ -24,15 +24,15 @@ const STEP = 4 / 47, NOW = 4 / 47;
 
 // How far behind (+) or ahead (-) each level is, seconds, through the song: behind by default, ahead in the bars before each landing, and through zero on it.
 function delayLane(m, ctx) {
-  const { A, M, bar } = ctx, beat = bar / 4, ahead = m.ahead ?? beat, back = m.back ?? bar / 2;
+  const { A, M, bar } = ctx, beat = bar / 4, ahead = m.ahead ?? beat, back = m.back ?? beat;      // wellfix12: back a beat a level, not half a bar: how fast a deep window's moment changes is the level times how fast the delay does, and at half a bar the deep windows raced, a tile flashing 2 to 3 times a second
   const lands = A && M?.bar ? momentsOf(A, M).filter(x => x.sign > 0 && x.s >= 0.45 && x.t > m.from - bar && x.t < m.to + 6 * bar).map(x => x.t).sort((a, b) => a - b) : [];
   const K = [[m.from - 4 * bar, back]];
   let last = -Infinity;
   for (const tb of lands) {
     if (tb - last < 6 * bar) continue;      // one build to one landing
     const pre = Math.max(tb - 6 * bar, K.at(-1)[0] + bar);
-    if (pre >= tb - 1.5 * bar) continue;
-    K.push([pre, back], [tb - 3 * bar, -ahead], [tb - bar, -ahead], [tb + bar, back], [tb + 5 * bar, back]);      // the last two bars into it run ahead, then from a bar before to a bar after it crosses: through zero on the hit at its fastest
+    if (pre >= tb - 3.5 * bar) continue;
+    K.push([pre, back], [tb - 3 * bar, -ahead], [tb - 2 * bar, -ahead], [tb + 2 * bar, back], [tb + 5 * bar, back]);      // wellfix12: crossing over four bars, not two      // the last two bars into it run ahead, then from a bar before to a bar after it crosses: through zero on the hit at its fastest
     last = tb;
   }
   return K;
