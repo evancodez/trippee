@@ -558,7 +558,7 @@ export function slowCamera(cam, a, b, rate) {
 const HOLD_EASE = 1.5;
 function holdUnderScreens(spin, gestures) {
   for (const G of gestures) for (const m of G.moves ?? []) {
-    if (m.id !== 'screen' || m.from == null || m.to == null) continue;
+    if ((m.id !== 'screen' && m.id !== 'well') || m.from == null || m.to == null) continue;      // well11: the well's windows are the screen's
     let prev = spin[0], held = spin[0];
     for (let i = 0; i < spin.length; i++) {
       const t = i / HZ, h = smoother((t - m.from + HOLD_EASE) / HOLD_EASE) * smoother((m.to + HOLD_EASE - t) / HOLD_EASE);

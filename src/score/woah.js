@@ -99,11 +99,19 @@ Object.assign(SUIT, {
 Object.assign(LEAST, { dome: 14, planet: 16, canyon: 12, skim: 12 });
 Object.assign(WANT, { dome: 22, planet: 24, canyon: 20, skim: 20 });
 // ---- end space8
+// ---- well11: Time Well (src/score/moves/well.js), the screen with each window another moment. The modes cast it; the film and Beyond only with ?well=1, so without it they're exactly what they were. It throws its own dice, as the sky does.
+const WELL = 'well';
+SET.well = 'folds';
+Object.assign(ANSWER, { well: ['screen', 'forever'] });
+ANSWER.screen = [...ANSWER.screen, 'well'];
+SUIT.well = f => 0.15 + 0.7 * f.build + 0.5 * f.breakdown + 0.3 * f.climb + 0.25 * near(f.lv, 2, 2);      // a build to look ahead in or a breakdown to look back in
+Object.assign(LEAST, { well: 9 }); Object.assign(WANT, { well: 18 });
+// ---- end well11
 
 const meanOf = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0);
 // A sheet of the folds family draws its own fold by hand, and gives way only to the trick of its own name. Another trick that writes the same mirrors writes over it for its time, and when that ends the sheet's own
 // mirrors are back on the next frame: Disclosure's crumple, swapped for pearls on the crumple's own sheet at 125 s, ended with the creases all there at once (134.24 s, 13.57x).
-const FOLD_PARTS = { crumple: ['chain'], limit: ['chain', 'mob'], pearls: ['chain'], roll: ['chain', 'mob'], screen: ['feed'], fan: ['fan'], forever: ['fan', 'log'] };
+const FOLD_PARTS = { crumple: ['chain'], limit: ['chain', 'mob'], pearls: ['chain'], roll: ['chain', 'mob'], screen: ['feed'], well: ['feed'], fan: ['fan'], forever: ['fan', 'log'] };
 const foldsClash = (id, P) => {
   if (P.family !== 'folds' || !FOLD_PARTS[id]) return false;
   const own = Object.keys(FOLD_PARTS).find(k => P.id.startsWith(`folds.${k}`));
@@ -130,8 +138,8 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   const note = (t, what, why) => refused.push({ t: +(+t).toFixed(2), what, why });
 
   // ---------------------------------------------------------------- the take
-  const STR = [...(directing.strata && !world ? [...STRETCHES, 'strata'] : STRETCHES), ...(directing.sky !== '0' && !world ? (directing.sky === 'all' ? SKY_ALL : SKY_IDS) : [])];      // strata: with ?strata=1 only, so a film without it draws exactly as it did. space8: the sheet as a world unless ?sky=0
-  const skyRand = rng(((seed | 0) * 7919 + songHash + 31) >>> 0), dice = id => (SKY_SET.has(id) ? skyRand : rand)();      // space8: the sheet as a world throws its own dice, so nobody else's fall differently
+  const STR = [...(directing.strata && !world ? [...STRETCHES, 'strata'] : STRETCHES), ...(directing.sky !== '0' && !world ? (directing.sky === 'all' ? SKY_ALL : SKY_IDS) : []), ...(world || directing.well ? [WELL] : [])];      // well11      // strata: with ?strata=1 only, so a film without it draws exactly as it did. space8: the sheet as a world unless ?sky=0
+  const skyRand = rng(((seed | 0) * 7919 + songHash + 31) >>> 0), wellRand = rng(((seed | 0) * 6151 + songHash + 47) >>> 0), dice = id => (SKY_SET.has(id) ? skyRand : id === WELL ? wellRand : rand)();      // well11: wellRand      // space8: the sheet as a world throws its own dice, so nobody else's fall differently
   const TRICKS = (world ? STR.filter(id => SET[id] !== 'space' && (id !== 'rewind' || wish?.rewind)) : [...STR, ...CHANGES]).filter(id => !directing.woahOnly || directing.woahOnly.includes(id)).filter(id => !wish || ((!wish.tricks || wish.tricks.includes(id) || id === 'rewind') && !wish.never?.includes(id)));      // modes lane: a mode's tricks
   const lean = { space: 0.2 + 1.5 * rand(), folds: 0.2 + 1.5 * rand(), time: 0.2 + 1.5 * rand() };
   const fond = Object.fromEntries(TRICKS.map(id => [id, 2.4 * (dice(id) - 0.5) + (wish?.fond?.[id] ?? 0) + (id === 'strata' ? STRATA.fond : 0) + (SKY_SET.has(id) ? SKY_FOND : 0)]));      // space8: SKY_FOND      // modes lane: and what it's fond of
@@ -340,6 +348,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
     forever: (G, from, to, s) => ({ ...foldOpts('forever', from, to, s), n: 4 + 2 * Math.round(1 + s), tw: 0.3 + 0.3 * s, speed: 0.34 + 0.16 * s }),
     limit: (G, from, to, s) => ({ ...foldOpts('limit', from, to, s), sides: s > 0.5 ? 8 : 6, corner: s > 0.5 ? 3 : 4 }),
     screen: (G, from, to, s) => ({ ...foldOpts('screen', from, to, s), Sz: 0.5, turn: 0.32 + 0.3 * s, speed: 0.26 + 0.1 * s }),
+    well: (G, from, to, s) => ({ ...foldOpts('well', from, to, s), id: 'well', beats: 'strong', S: 0.5, turn: 0.3 + 0.25 * s, speed: 0.24 + 0.08 * s, kick: 0.38 + 0.12 * s }),      // well11
     pearls: (G, from, to, s) => ({ ...foldOpts('pearls', from, to, s), n: Math.min(5, 3 + Math.round(1.5 * s)), r: 0.62 - 0.08 * s }),
     fan: (G, from, to, s) => ({ ...foldOpts('fan', from, to, s), lo: 2, hi: Math.round(6 + 3 * s) }),
     crumple: (G, from, to, s) => ({ ...foldOpts('crumple', from, to, s), folds: Math.min(8, 5 + Math.round(2.5 * s)) }),
@@ -462,7 +471,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
       on = c.G;
     }
     // trans9: a screen that runs to its gesture's change doesn't shut: the change is a Window, and the camera flies on into the next pattern (src/score/xform/window.js)
-    const into = (id === 'screen' || id === 'forever') && flag('window')      // fx10: and a forever, into the sheet inside one of its rings
+    const into = (id === 'screen' || id === 'forever' || id === WELL) && flag('window')      // fx10: and a forever, into the sheet inside one of its rings. well11: and a Time Well, as a screen
        && on.morph > 0 && !on.xform && !on.hero && g[g.indexOf(on) + 1] && bodyOf(on)[1] - Math.min(to, bodyOf(on)[1]) < 4 * bar;
     const before0 = into ? keepOf(on) : null;
     if (into) {

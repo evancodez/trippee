@@ -41,6 +41,6 @@ export default {
     if (k < 1) { F[HEAR + 1] *= k; F[HEAR + 2] *= k; F[HEAR + 3] *= k; }
   },
   // src/score/woah.js casts the film's own fold and time tricks between its big moments, never on them. The ones that go small only on a bold sheet, as in Flyer.
-  woah: { tricks: ['forever', 'limit', 'screen', 'pearls', 'fan', 'crumple', 'roll', 'slit', 'ghost', 'fringe', 'echo', 'ouchi'], gap: [24, 40], least: 6,
-    fits: (id, G, S) => !G.retina && S[OFF['surf.kind']] < 0.5 && !((id === 'screen' || id === 'limit' || id === 'forever') && fineness(S) > 2.45) },
+  woah: { tricks: ['forever', 'limit', 'screen', 'pearls', 'fan', 'crumple', 'roll', 'slit', 'ghost', 'fringe', 'echo', 'ouchi', 'well'], gap: [24, 40], least: 6,      // well11: Time Well
+    fits: (id, G, S) => !G.retina && S[OFF['surf.kind']] < 0.5 && !((id === 'screen' || id === 'well' || id === 'limit' || id === 'forever') && fineness(S) > 2.45) },      // well11: and the well
 };

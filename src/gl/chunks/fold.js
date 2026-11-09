@@ -10,6 +10,9 @@
 // par: every reflection also inverts the sheet, so each room is the negative of the next and the mirrors show as an edge. The phase jumps there, but gPh takes it after the gradient, so it's only the edge's own pixels: gFoldE takes those to their true coverage in main.js.
 export default `#ifdef FOLD
 float gFoldE=0.;
+#ifdef TIME
+vec2 wellAt(float L,vec2 c,vec2 z);      // well11: chunks/time.js
+#endif
 bool gFS=false;
 vec2 spaceFold(int b,vec2 z,inout float par){
   vec4 s=uG[b+I_sf];
@@ -28,18 +31,22 @@ vec2 spaceFold(int b,vec2 z,inout float par){
     int nOpen=d2.w>0.?int(d2.w-1.):14;
     float fr=d2.w>0.?d2.w-1.-float(nOpen):0.,Sp=pow(d.x,fr);
     mat2 Rp=rot(-d.y*fr);
+    float wl=0.;      // well11: levels passed, the part-open one by how far open, so a shut one is its parent's moment
     for(int i=0;i<14;i++){
       if(i>=nOpen){
         // fx10: the first window doesn't draw in from the frame's edge. It's cut where it'll be, at its size and turn, and the sheet inside it draws back into it: shut, that's the sheet exactly, so it opens out of the sheet itself
         vec2 q=Rp*(z-c)/Sp,qb=i==0?R*(z-c)/d.x:q;
         if(abs(qb.x)>d.z||abs(qb.y)>d.w) break;
-        z=c+q; jac/=Sp; lv+=float(14-i);
+        z=c+q; jac/=Sp; lv+=float(14-i); wl+=fr;
         break;
       }
       vec2 q=R*(z-c)/d.x;
       if(abs(q.x)>d.z||abs(q.y)>d.w) break;
-      z=c+q; jac/=d.x; lv+=1.;
+      z=c+q; jac/=d.x; lv+=1.; wl+=1.;
     }
+#ifdef TIME
+    z=wellAt(wl-d2.z,c,z);      // well11
+#endif
     if(flip&&mod(lv,2.)>.5) par=-par;
   }
   vec4 M=uG[b+I_sfM],N=uG[b+I_sfM2];

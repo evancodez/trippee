@@ -113,7 +113,7 @@ export default {
   // src/score/woah.js casts these, by the music, on its own patterns and with its own landings. Space isn't in a mode's programs; folds and time are. Its own moves on a stay give way to a trick there.
   // The kaleidoscope's fan and forever's zoom were what it was fond of. gap: seconds between tricks, loud to quiet. Not echo or the screen: on its zigzags and mandalas they came out as checkered mush and a grey middle (MGMT 86 and 148 s).
   // Forever and the fan are out of the casting, still scored so the take's dice fall as they did (off). On these bands forever's flight puts one ring over most of the frame and its inks change as it flies: the whole frame swung cream, blue, yellow, navy, 2 a second in luma and in red-cyan (MGMT 174-188 s, on flower.poppy). The fan's mirror coming in swung a tile purple and orange 4 a second (MGMT 28 s, on flower.garden).
-  woah: { tricks: ['fan', 'forever', 'pearls', 'crumple', 'slit', 'roll', 'limit'], off: ['forever', 'fan'], fond: { fan: 1.2, forever: 1.1, pearls: 0.6, crumple: 0.4 }, gap: [26, 44], least: 6 },
+  woah: { tricks: ['fan', 'forever', 'pearls', 'crumple', 'slit', 'roll', 'limit', 'well'], off: ['forever', 'fan'], fond: { well: 1.3, fan: 1.2, forever: 1.1, pearls: 0.6, crumple: 0.4 }, gap: [26, 44], least: 6 },      // well11: Time Well
   pace: { bars: [9, 7, 5, 4, 3], morph: [5, 8], most: 18 },       // src/score/pace.js: bars between changes by the song's level, and how long a landing takes. ?pace=0: motion's len and morph
   motion: { len: [13, 22], morph: [6, 9], xforms: { bud, melt, tide }, xform: 'bud', keep: ['bud', 'melt', 'tide'], front: true },
   hear: { pulse: 1, melody: 1, tone: 0.4, harmony: 0.7, lung: 1 },

@@ -19,8 +19,9 @@ import space from './space.js';
 import sky from './sky.js';      // space8: the sheet as a world
 import folds from './folds.js';
 import time from './time.js';
+import well from './well.js';      // well11: Time Well
 
-export const MOVES = { slip, star, coin, snap, cue, moire, vertigo, confocal, mirror, relay, ramp, ...riot, ...space, ...sky, ...folds, ...time };
+export const MOVES = { slip, star, coin, snap, cue, moire, vertigo, confocal, mirror, relay, ramp, ...riot, ...space, ...sky, ...folds, ...time, well };
 
 export function runMoves(out, ctx) {
   for (const m of ctx.G.moves) {
