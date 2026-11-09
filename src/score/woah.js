@@ -271,6 +271,7 @@ export function castWoah(film, A, M, { seed = 7, songHash = 0, world = null, ctx
   // Its body runs on over those. What they were is what it can't get back: a guard's swap keeps this and changes what's worn.
   const absorb = (i, j) => {
     const G = g[i];
+    j = Math.min(j, g.length - 2);      // tunnelfix12: a candidate reached from before an earlier splice can point past the end (PPP seed 14 threw here and the take never loaded). Reach never takes the last gesture
     if (j <= i) return;
     const L = g[j];
     G.t1 = L.t1; G.morph = L.morph; G.kindOut = L.kindOut; G.peak = L.peak; G.rise = L.rise; G.xform = L.xform; G.noGlide = L.noGlide;
