@@ -425,15 +425,55 @@ function ownPrograms(W) {
   return W.fuller ? [...b, ...b.map(v => v | FULL)] : b;
 }
 // perf10: the first world v goes to, built and warmed while a song's loading and nothing's playing yet (rehearse.js buildFor). Its change then has nothing left to build.
+// warm11: now from the start of a song's load (song.js), while it's still being listened to in a worker and nothing else is on the GPU, and not alongside the rehearsal, whose readbacks it held up: ready came 8 s later.
 export async function warmAhead(R, id = WORLDS[0]) {
+  if (R.bare || R._ahead?.[id]) return;
+  (R._ahead ??= {})[id] = true;
   const W = await loadWorld(id);
-  if (!W || R.bare) return;
+  if (!W) return;
   await prepare(R, W);
   const wp = R.worldPrograms.get(W);
   if (wp.failed) return;
   const list = ownPrograms(W);
   await wp.whenBuilt(list);
   await wp.warm(list);
+}
+
+// warm11: the next world in v's order, built and given its first draws while what's showing is calm, one program at a time and a while apart. Each first draw holds the GPU for 0.2 to 0.5 s, and
+// in a change's settle that was a run of them back to back at the key: Prism, Retina and Matter froze for a second or more the first time v reached them. Spread out, each is one held frame in a stretch with
+// nothing much moving. Only with a song in (the first world is warmed while one loads); never in manual stepping, a hidden page or a bare renderer. Started once, from the first song's load.
+const CALM_GAP = 2.2, CALM_EVERY = 250;
+let calmOn = false;
+export function warmCalm(app) {
+  const R = app.R;
+  if (calmOn || R.bare || app.manual) return;
+  calmOn = true;
+  let last = 0;
+  const tick = async () => {
+    try { await calmStep(app, R, () => last, t => { last = t; }); } catch (e) { console.warn('the next world could not be warmed:', e); }
+    setTimeout(tick, CALM_EVERY);
+  };
+  setTimeout(tick, CALM_EVERY);
+}
+async function calmStep(app, R, lastAt, setLast) {
+  const stage = app.stage, song = app.song;
+  if (app.manual || document.hidden || !song?.analysis || app.ui?.song?.state === 'listening') return;
+  const at = WORLDS.indexOf(stage.world?.id ?? null), id = WORLDS[at + 1];       // the film: the first world. The last: the film, which has its own
+  if (!id) return;
+  const W = await loadWorld(id);
+  if (!W) return;
+  prepare(R, W);
+  const wp = R.worldPrograms.get(W);
+  if (wp.failed) return;
+  const list = ownPrograms(W);
+  if (!wp._calmBuilt) { wp._calmBuilt = true; wp.whenBuilt(list); }      // linking's off the frame (KHR_parallel_shader_compile)
+  const cold = list.find(v => wp.progs[v] && !wp.warmed.has(v) && !wp.warming[v]);
+  if (cold === undefined) return;
+  const t = app.pictureT(), v = R._variantOf(R.frame);
+  const calm = !stage.morphing(t) && !stage.score?.handover?.change && !(v & (FLIGHT | FOLD | TIME)) && !R._warmQ.length;
+  if (!calm || performance.now() - lastAt() < CALM_GAP * 1000) return;
+  setLast(performance.now());
+  wp._warmOne(cold);
 }
 
 function change(stage, to, opts) {
