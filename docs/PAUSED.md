@@ -1,76 +1,57 @@
 # Where things stand
 
-Written 2026-11-07, evening, when the owner asked to wind down: "yeah if you could wind down about now ill have you continue later". Read this first when picking the work up. Nothing runs until the owner says continue.
+Written 2026-11-09 when v3.0 shipped. The owner said: "continue until you finish 3.0 then stop". Nothing runs until the owner says to continue.
 
 ## Live
 
-`main` is **v2.7**, tag `v2.7`, commit 177dadc. It is deployed at https://trippee-five.vercel.app, and every push to `main` redeploys it. The owner's own preview of `main` runs at `localhost:5300`.
+`main` is **v3.0**, tag `v3.0`. It is deployed at https://trippee-five.vercel.app, and every push to `main` redeploys it. The owner's own preview of `main` runs at `localhost:5300`. Restore points are the tags `v2.9`, `v2.8`, `v2.7`, `v2.6.1` and earlier.
 
-v2.7 has:
-- the travelling camera, many more tricks, and smooth keys and clicks
-- "another take" working
-- `h` hides the interface and `e` follows the song hard; ripples are rare and depend on the song
-- Matter and Retina on `v`, next to Flower Power
-- Strata in the library, and in films with `?strata=1`
-- Camouflage on `y`
-- Dusk, Flyer and Pearl out of the strip; their files are kept
+## What v3.0 added (since v2.8)
 
-Restore points are the tags: `v2.6.1`, `v2.6`, `evan-snapshot-1`, `evan-snapshot-2` and earlier.
+v2.9:
+- Forever opens ring by ring out of the sheet instead of from a dot.
+- The screen's (picture-in-picture's) first window is cut from the sheet.
+- Pearls are only cast on flat sheets.
+- Disclosure gets no planet or dome.
+- Flower Power is built while a song loads, so the first `v` doesn't freeze.
 
-## The owner's latest notes, in their words
+v3.0:
+- **Forever into the next pattern.** When a forever runs up to a change, its tunnel flies on and the camera goes through a ring into the next pattern. That pattern starts at a readable size (about 100 px), not a dot. See `xform/window.js`.
+- **Mode changes flow colour to colour.** From one mode to another there is no black-and-white middle any more: the new mode's colours take over in patches mid-flight. It lands on a section beat or a bar when a song plays. See `src/worlds/engine.js` (writeOne, over) and the renderer's `wp2`.
+- **Prism is a ladder round the colour wheel.** Each band sits one step round the wheel from its neighbour, so the whole spectrum is in the pattern. The colours flow out a band on every strong beat and turn round at each section. See `src/worlds/prism/*`.
+- **Time Well**, a screen where every window is another moment of the song. It's in the library and behind `?well=1`, but not cast: on PPP in Flower its tiles still flash 2 to 3 times a second.
+- PPP seed 14 loads again.
+- A mode no longer gets stuck waiting for a program something else built.
+- The strip test waits for changes instead of checking at a fixed time.
 
-- "main issue is stuttering and performance issues in song mode and possibly other modes. Gotta fix that."
-- "the infinite recurring picture in picture I think look cool but the way it transitions in and out is bad because it just becomes small at the end then kinda instantly disappears and there are other transitions that are like not smooth/trippy and instead feel like an effect is simply coming into existence rather than merging or whatever into existence."
-- "the other modes besides the original three are kinda bad and id scrap them for now just focus on improving flower power and maybe adding a cooler color mode that does more with colors in some way that makes it even trippier." The original three are black and white, colour (Beyond, `b`) and Flower Power.
-- "matter and retina look cool, strata is good but ride and stuff like that is super dope and I think you could make even cooler trippier things by messing with it in interesting ways as well as separate pattern options."
-- The ripple was "only too crazy when you say follow the song hard". Black and white "looks really cool as it was". Leave the plain film alone.
+## Known, not fixed
 
-## Next: v2.8, on `wip/round-8` (not uploaded)
-
-`wip/round-8` is v2.7 with five lanes merged in. Their reports are in `.wt/reports/round8-*.txt`.
-- **perf8:** the rehearsal behind a playing song no longer makes the page wait on the GPU. Hitches go from about 61 frames over 50 ms in 172 s to 2 in 144 s. Compose is 30 ms shorter. A heavy trick is drawn smaller within a few frames. A second press of "another take" now waits for its rehearsal. The fix for the opening re-check wiping the song layer's dips is in. Films are byte-identical.
-- **trans8:** screen (the picture-in-picture) grows in from the frame's own edge and ends by flying into its last window. The camera's turn holds under a screen. Fan and crumple are eased. Disclosure's worst tile goes from 6 to 4.
-- **colour8:** Flower Power is bolder, with flowering film patterns, Swirl, Puff and twisting Buds. Prism is new. Dusk, Flyer and Pearl are out.
-- **space8:** Dome, Planet, Canyon and Skim are in the library. Dome and Planet are cast in films unless `?sky=0`; Canyon only with `?sky=all`.
-- `v` cycles: film, Flower Power, Prism, Retina, Matter.
-
-Checks on `wip/round-8`: hash 433 identical, boot 0 errors, and `v` steps through every mode.
-
-**Blocking, found at merge: `b` inside a mode stalls.**
-- In `tests/worlds.mjs STAGE=strip`, once `v` has visited Prism, `b` in the next mode starts its change late and is still changing 20 s later.
-- It passes with `'prism'` taken out of WORLDS, and passes on v2.7 and after the first three merges. So something Prism leaves behind stalls a later change.
-- It is not colour8's warm-up commit b8c13fc: that was reverted in d6312c1, and it still fails. Put that warm-up back, in a robust form, once the stall is fixed.
-- Fixer 1's unfinished, untested edits toward this are on `wip/round-8-fixer1-partial`.
-
-**Still to do before v2.8 ships:**
-1. The `b` stall above.
-2. Forever still opens from a dot and shrinks back to one, which is the owner's complaint. trans8's side-entry attempt flickered more and was reverted.
-3. A change of mode is 4.5 to 6 s of the plain film's flight, then the new colours inside a disc growing from a corner. It must merge in instead (src/worlds/engine.js).
-4. An independent check against live v2.7: flashes on four songs, the real-time stutter probe (scratchpad perf8/stutter.mjs), modes, the tricks above, and the 3D patterns. Then upload as v2.8.
-
-## Known, not blocking
-
-- Tile flicker on three songs is still above v2.6.1 (PPP 4 vs 3, Disclosure 4 vs 2, Wildflower 4 vs 3); see round8-trans8.txt.
-- Prism's own lane calls it "not next level": the flash fixes left many frames as two or three neighbouring hues.
-- The remaining slow frames are the GPU drawing heavy tricks at full size: 20 to 55 ms at 3024x1964.
+- The first `v` into Prism, Retina or Matter during a song still freezes briefly, as in v2.9. The warm-up only runs while a song is paused, because each first draw holds the picture for 0.2 to 0.8 s, and holding frames during playback is the stutter the owner complained about.
+  - Option for the owner: warm every mode during the song's load. Ready would come 10 to 15 s later on a cold start.
+- Time Well's flicker. See `.wt/reports/round12-wellfix12.txt` for what was tried and the next ideas: cap level times the delay's rate, and ease the delay on the way out.
+- Forever's way in still flickers where the sheet turns under the fan's mirrors (Wildflower seed 1, 102 to 104 s). This predates v3.0. The likely fix is to turn the fan with the sheet (foldkit fanIn); see round12-tunnelfix12.txt.
+- The forever handover shows a corner tile flashing twice a second at 110.3 s, measured at 12 fps. At 60 fps it reads as 1.
+- Arriving in Retina or Matter still shows mostly black and white, which is their own palette.
+- `b` inside a mode still drains to the film before Beyond opens.
+- Each change between two modes draws twice in its middle 28%, which is about 2.5 times the GPU time for roughly 3.6 s.
+- The relay.rooms to folds glide pop hasn't been reproduced since round 10.
+- Load times are noisy: 30 to 70 s cold on the lab machine.
 
 ## Waiting on the owner
 
-1. Whether heavy tricks may be drawn smaller from the start: the existing flag `gpuTiers`, off. It means fewer stutters during heavy effects, and softer detail while they're up.
-2. Whether Prism stays, after they see it.
+1. Whether heavy tricks may be drawn smaller from the start: the existing flag `gpuTiers`, off.
+2. Whether to warm all modes during the song's load (see above).
 3. A rock song and a slow reverb-heavy song in `media/`, for testing.
 
 ## Later ideas
 
 These are in `.wt/reports/next-level-plan.md`:
-- Time Well
 - The Reveal
 - Paper
 - Marbling
 - Retina part 2
 - Matter part 2
-
-More sheet-in-space worlds too, as the owner asked.
+- more sheet-in-space worlds
 
 ## How the work is set up
 
@@ -78,3 +59,4 @@ More sheet-in-space worlds too, as the owner asked.
 - Run lab tests with `LAB_SLOTS=2` while the owner is using the machine.
 - The lead merges, checks independently, and only then pushes `main`, which deploys to Vercel.
 - Never play sound out loud in testing, never commit songs or video, and leave port 5173 alone.
+- Reports from each round are in `.wt/reports/round*-*.txt`.
